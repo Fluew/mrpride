@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { Head } from '@inertiajs/vue3';
 import PublicLayout from '@/layouts/PublicLayout.vue';
+import SpecularButton from '@/components/ui/SpecularButton.vue';
 </script>
 
 <template>
@@ -30,19 +31,25 @@ import PublicLayout from '@/layouts/PublicLayout.vue';
                     </p>
 
                     <div class="flex flex-col sm:flex-row justify-center items-center gap-4">
-                        <Link 
+                        <SpecularButton 
                             href="/products"
-                            class="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-[#F8B803] to-[#4b5320] text-black font-bold rounded-full hover:shadow-[0_0_20px_rgba(248,184,3,0.3)] transition-all duration-300 transform hover:-translate-y-1"
+                            variant="brand-gold"
+                            size="lg"
+                            :radius="9999"
+                            class="w-full sm:w-auto px-8 py-4 font-bold text-black shadow-md cursor-pointer"
                         >
                             Browse Products
-                        </Link>
+                        </SpecularButton>
                         
-                        <Link 
+                        <SpecularButton 
                             href="/quotation"
-                            class="w-full sm:w-auto px-8 py-4 bg-white text-gray-900 font-bold rounded-full border border-gray-200 hover:border-[#F8B803] transition-all duration-300 shadow-sm"
+                            variant="secondary"
+                            size="lg"
+                            :radius="9999"
+                            class="w-full sm:w-auto px-8 py-4 font-bold text-gray-900 shadow-sm cursor-pointer"
                         >
                             Request Quotation
-                        </Link>
+                        </SpecularButton>
                     </div>
                 </div>
             </div>
@@ -74,12 +81,15 @@ import PublicLayout from '@/layouts/PublicLayout.vue';
             <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
                 <h2 class="text-4xl font-bold text-gray-900 mb-6">Ready to Power Up?</h2>
                 <p class="text-xl text-gray-600 mb-10">Join hundreds of industrial leaders who trust MR-Pride Electrical Supplies for their critical electrical infrastructure.</p>
-                <Link 
+                <SpecularButton 
                     href="/quotation"
-                    class="inline-flex items-center justify-center px-8 py-4 text-lg font-bold bg-gradient-to-r from-[#F8B803] to-[#4b5320] text-black rounded-full hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
+                    variant="brand-gold"
+                    size="lg"
+                    :radius="9999"
+                    class="inline-flex items-center justify-center px-8 py-4 text-lg font-bold text-black shadow-lg cursor-pointer"
                 >
                     Get in Touch Today
-                </Link>
+                </SpecularButton>
             </div>
         </div>
     </PublicLayout>

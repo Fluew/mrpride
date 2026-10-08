@@ -20,7 +20,13 @@ class EnsureTeamMembership
     {
         [$user, $team] = [$request->user(), $this->team($request)];
 
-        abort_if(! $user || ! $team || ! $user->belongsToTeam($team), 403);
+        if (! $user || ! $team) {
+            abort(403, 'Unauthorized team access.');
+        }
+
+        if (! $user->belongsToTeam($team)) {
+            abort(403, 'Unauthorized team access.');
+        }
 
         $this->ensureTeamMemberHasRequiredRole($user, $team, $minimumRole);
 

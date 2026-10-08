@@ -170,3 +170,89 @@
         @apply bg-background text-foreground;
     }
 }
+
+/* Shared MR-Pride design language */
+@theme {
+    --color-brand: #4b5320;
+    --color-brand-gold: #f8b803;
+}
+@layer components {
+    .brand-button {
+        @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#3b4219] disabled:pointer-events-none disabled:opacity-50;
+    }
+    .secondary-button {
+        @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-700 transition-colors hover:border-brand/40 hover:bg-gray-50;
+    }
+    .section-eyebrow {
+        @apply text-xs font-bold tracking-[0.18em] text-brand uppercase;
+    }
+    .skip-link {
+        @apply fixed top-3 left-3 z-[100] -translate-y-24 rounded-lg bg-brand-gold px-5 py-3 text-sm font-bold text-gray-900 shadow-lg focus:translate-y-0;
+    }
+    .field-control {
+        @apply min-h-11 w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 shadow-xs transition-colors outline-none placeholder:text-gray-400 focus:border-brand focus:ring-2 focus:ring-brand/15 disabled:cursor-not-allowed disabled:opacity-60;
+    }
+    .field-label {
+        @apply mb-2 block text-sm font-semibold text-gray-700;
+    }
+    .workspace-page {
+        @apply mx-auto flex w-full max-w-[1600px] min-w-0 flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8;
+    }
+    .workspace-page > div:first-child h1 {
+        @apply text-2xl font-bold tracking-tight sm:text-3xl;
+    }
+    .workspace-page :where(table) {
+        @apply text-sm;
+    }
+    .workspace-page :where(thead) {
+        @apply bg-gray-50/80;
+    }
+    .workspace-page :where(th) {
+        @apply px-4 py-3 text-xs font-semibold tracking-wide text-gray-500;
+    }
+    .workspace-page :where(td) {
+        @apply px-4 py-3;
+    }
+    .workspace-page :where(tbody tr) {
+        @apply transition-colors hover:bg-gray-50/70;
+    }
+}
+@layer base {
+    :where(
+        a,
+        button,
+        input,
+        select,
+        textarea,
+        summary,
+        [tabindex]
+    ):focus-visible {
+        outline: 2px solid #4b5320;
+        outline-offset: 3px;
+    }
+    button:not(:disabled),
+    summary {
+        cursor: pointer;
+    }
+    button:disabled {
+        cursor: not-allowed;
+    }
+    input,
+    select,
+    textarea {
+        scroll-margin-block: 7rem;
+    }
+    ::selection {
+        background: #f8b80355;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}

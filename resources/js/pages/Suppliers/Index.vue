@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import { ref } from 'vue';
+import SpecularButton from '@/components/ui/SpecularButton.vue';
 
 const suppliers = ref([
     { id: 1, name: 'ElectroTech Industries', contactPerson: 'Michael Chang', phone: '+1 (555) 123-4567', email: 'sales@electrotech.com', status: 'Active', ahpScore: 0.842, metrics: { price: 9, quality: 8, delivery: 9, service: 7 } },
@@ -26,19 +27,29 @@ const deleteSupplier = () => { alert('Supplier deleted (Prototype)'); showDelete
 <template>
     <Head title="Supplier Management" />
 
-    <div class="flex h-full flex-1 flex-col gap-6 overflow-y-auto rounded-xl p-6">
+    <div class="workspace-page">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
             <div>
                 <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Supplier Management</h1>
                 <p class="text-gray-500 mt-1">Manage vendor contact information and details.</p>
             </div>
             <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                <button @click="showAhpModal = true" class="w-full sm:w-auto px-5 py-2.5 bg-white border border-gray-200 text-gray-700 font-medium rounded-lg hover:border-[#F8B803] hover:text-gray-900 transition-all duration-300 shadow-sm">
+                <SpecularButton
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showAhpModal = true"
+                >
                     Run AHP Evaluation
-                </button>
-                <button @click="openAddModal" class="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-[#F8B803] to-[#4b5320] text-white font-bold rounded-lg hover:shadow-lg transition-all duration-300">
+                </SpecularButton>
+                <SpecularButton
+                    variant="brand"
+                    size="md"
+                    :radius="10"
+                    @click="openAddModal"
+                >
                     + Add Supplier
-                </button>
+                </SpecularButton>
             </div>
         </div>
 
@@ -105,8 +116,22 @@ const deleteSupplier = () => { alert('Supplier deleted (Prototype)'); showDelete
                 </div>
             </div>
             <div class="flex justify-end gap-3 mt-6">
-                <button @click="showAddModal = false; showEditModal = false" class="px-4 py-2 text-gray-500 hover:text-gray-900">Cancel</button>
-                <button @click="saveSupplier" class="px-4 py-2 bg-gradient-to-r from-[#F8B803] to-[#4b5320] text-white font-bold rounded-lg hover:shadow-lg transition-all">Save</button>
+                <SpecularButton
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showAddModal = false; showEditModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    variant="brand"
+                    size="md"
+                    :radius="10"
+                    @click="saveSupplier"
+                >
+                    Save
+                </SpecularButton>
             </div>
         </div>
     </div>
@@ -116,8 +141,22 @@ const deleteSupplier = () => { alert('Supplier deleted (Prototype)'); showDelete
             <h3 class="text-xl font-bold text-gray-900 mb-2">Confirm Delete</h3>
             <p class="text-gray-600 mb-6">Are you sure you want to delete {{ selectedSupplier?.name }}? This action cannot be undone.</p>
             <div class="flex justify-end gap-3">
-                <button @click="showDeleteModal = false" class="px-4 py-2 text-gray-500 hover:text-gray-900">Cancel</button>
-                <button @click="deleteSupplier" class="px-4 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700">Delete</button>
+                <SpecularButton
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showDeleteModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    variant="destructive"
+                    size="md"
+                    :radius="10"
+                    @click="deleteSupplier"
+                >
+                    Delete
+                </SpecularButton>
             </div>
         </div>
     </div>
@@ -186,9 +225,14 @@ const deleteSupplier = () => { alert('Supplier deleted (Prototype)'); showDelete
             </div>
             
             <div class="mt-6 flex justify-end">
-                <button @click="showAhpModal = false" class="px-5 py-2.5 bg-gradient-to-r from-[#F8B803] to-[#4b5320] text-white font-bold rounded-lg hover:shadow-lg transition-all duration-300">
+                <SpecularButton
+                    variant="brand"
+                    size="md"
+                    :radius="10"
+                    @click="showAhpModal = false"
+                >
                     Close Evaluation
-                </button>
+                </SpecularButton>
             </div>
         </div>
     </div>

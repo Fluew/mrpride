@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
+import SpecularButton from '@/components/ui/SpecularButton.vue';
 
 const sales = ref([
     { id: 'INV-2023-001', date: '2023-10-24 14:30', customer: 'Walk-in Customer', items: 3, total: 4500, status: 'Completed' },
@@ -73,18 +74,24 @@ const printInvoice = (id: string) => {
 <template>
     <Head title="Sales Management" />
 
-    <div class="flex h-full flex-1 flex-col gap-4 p-6">
+    <div class="workspace-page">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
             <div>
                 <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Sales Management</h1>
                 <p class="text-gray-500 mt-1">Record transactions and manage customer sales.</p>
             </div>
-            <button @click="openPosModal" class="w-full md:w-auto px-5 py-2.5 bg-gradient-to-r from-[#F8B803] to-[#4b5320] text-white font-bold rounded-lg hover:shadow-lg transition-all duration-300 flex justify-center items-center gap-2">
+            <SpecularButton
+                variant="brand"
+                size="md"
+                :radius="10"
+                @click="openPosModal"
+                class="w-full md:w-auto"
+            >
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
-                New Transaction (POS)
-            </button>
+                <span>New Transaction (POS)</span>
+            </SpecularButton>
         </div>
 
         <!-- Sales History Table -->
@@ -125,9 +132,14 @@ const printInvoice = (id: string) => {
                                 </span>
                             </td>
                             <td class="px-6 py-4 text-right">
-                                <button @click="printInvoice(sale.id)" class="px-3 py-1 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded text-xs transition-colors">
+                                <SpecularButton
+                                    variant="secondary"
+                                    size="sm"
+                                    :radius="8"
+                                    @click="printInvoice(sale.id)"
+                                >
                                     View / Print Invoice
-                                </button>
+                                </SpecularButton>
                             </td>
                         </tr>
                     </tbody>
@@ -197,9 +209,15 @@ const printInvoice = (id: string) => {
                             <span class="text-[#F8B803]">{{ formatCurrency(cartTotal) }}</span>
                         </div>
                         
-                        <button @click="completeTransaction" class="w-full py-3 bg-gradient-to-r from-[#F8B803] to-[#4b5320] text-white font-bold rounded-lg hover:shadow-lg transition-all duration-300">
+                        <SpecularButton
+                            variant="brand"
+                            size="lg"
+                            :radius="10"
+                            class="w-full"
+                            @click="completeTransaction"
+                        >
                             Complete Transaction
-                        </button>
+                        </SpecularButton>
                     </div>
                 </div>
 

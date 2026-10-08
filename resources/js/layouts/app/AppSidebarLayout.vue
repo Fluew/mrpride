@@ -17,10 +17,17 @@ withDefaults(defineProps<Props>(), {
 
 <template>
     <AppShell variant="sidebar">
+        <a href="#workspace-content" class="skip-link">Skip to workspace</a>
         <AppSidebar />
-        <AppContent variant="sidebar" class="overflow-x-hidden">
+        <AppContent variant="sidebar" class="min-w-0 bg-gray-50">
             <AppSidebarHeader :breadcrumbs="breadcrumbs" />
-            <slot />
+            <div
+                id="workspace-content"
+                tabindex="-1"
+                class="flex min-w-0 flex-1 flex-col focus:outline-none"
+            >
+                <slot />
+            </div>
         </AppContent>
         <Toaster />
     </AppShell>

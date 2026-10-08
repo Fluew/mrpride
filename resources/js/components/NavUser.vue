@@ -31,7 +31,7 @@ const currentTeam = computed(() => page.props.currentTeam as Team | null);
                 <DropdownMenuTrigger as-child>
                     <SidebarMenuButton
                         size="lg"
-                        class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                        class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground [&_.text-muted-foreground]:text-white/65"
                         data-test="sidebar-menu-button"
                     >
                         <UserInfo :user="user" :team="currentTeam" />

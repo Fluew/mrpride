@@ -100,7 +100,7 @@ const chartOptions = {
 <template>
     <Head title="Demand Forecasting" />
 
-    <div class="flex h-full flex-1 flex-col gap-6 overflow-y-auto rounded-xl p-6">
+    <div class="workspace-page">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
             <div>
                 <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Demand Forecasting</h1>

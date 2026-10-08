@@ -26,12 +26,13 @@ createInertiaApp({
         }
     },
     progress: {
-        color: '#4B5563',
+        color: '#F8B803',
+        showSpinner: true,
     },
 });
 
-// This will set light / dark mode on page load...
+// Set light/dark mode on page load
 initializeTheme();
 
-// This will listen for flash toast data from the server...
+// Listen for flash toast data from the server
 initializeFlashToast();

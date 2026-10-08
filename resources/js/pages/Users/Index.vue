@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
+import SpecularButton from '@/components/ui/SpecularButton.vue';
 
 const users = ref([
     { id: 1, name: 'John Doe', email: 'admin@mrp.com', role: 'Admin', status: 'Active' },
@@ -56,15 +57,20 @@ const deleteUser = () => {
 <template>
     <Head title="User Management" />
 
-    <div class="flex h-full flex-1 flex-col gap-6 overflow-y-auto rounded-xl p-6">
+    <div class="workspace-page">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
             <div>
                 <h1 class="text-3xl font-bold text-gray-900 tracking-tight">User Management</h1>
                 <p class="text-gray-500 mt-1">Manage system administrators and staff accounts.</p>
             </div>
-            <button @click="openAddModal" class="w-full md:w-auto px-5 py-2.5 bg-gradient-to-r from-[#F8B803] to-[#4b5320] text-white font-bold rounded-lg hover:shadow-lg transition-all duration-300">
+            <SpecularButton
+                variant="brand"
+                size="md"
+                :radius="10"
+                @click="openAddModal"
+            >
                 + Add User
-            </button>
+            </SpecularButton>
         </div>
 
         <div class="flex flex-col sm:flex-row gap-4 mb-2">
@@ -133,8 +139,22 @@ const deleteUser = () => {
                 </div>
             </div>
             <div class="flex justify-end gap-3 mt-6">
-                <button @click="showAddModal = false; showEditModal = false" class="px-4 py-2 text-gray-500 hover:text-gray-900">Cancel</button>
-                <button @click="saveUser" class="px-4 py-2 bg-gradient-to-r from-[#F8B803] to-[#4b5320] text-white font-bold rounded-lg hover:shadow-lg transition-all">Save</button>
+                <SpecularButton
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showAddModal = false; showEditModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    variant="brand"
+                    size="md"
+                    :radius="10"
+                    @click="saveUser"
+                >
+                    Save
+                </SpecularButton>
             </div>
         </div>
     </div>
@@ -144,8 +164,22 @@ const deleteUser = () => {
             <h3 class="text-xl font-bold text-gray-900 mb-2">Confirm Delete</h3>
             <p class="text-gray-600 mb-6">Are you sure you want to delete {{ selectedUser?.name }}? This action cannot be undone.</p>
             <div class="flex justify-end gap-3">
-                <button @click="showDeleteModal = false" class="px-4 py-2 text-gray-500 hover:text-gray-900">Cancel</button>
-                <button @click="deleteUser" class="px-4 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700">Delete</button>
+                <SpecularButton
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showDeleteModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    variant="destructive"
+                    size="md"
+                    :radius="10"
+                    @click="deleteUser"
+                >
+                    Delete
+                </SpecularButton>
             </div>
         </div>
     </div>

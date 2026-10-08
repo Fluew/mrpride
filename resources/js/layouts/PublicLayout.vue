@@ -1,125 +1,199 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
-import { ref, onMounted, onUnmounted } from 'vue';
+import { Link, usePage } from '@inertiajs/vue3';
+import { ArrowRight, Menu, X, MapPin } from '@lucide/vue';
+import { computed, ref, watch } from 'vue';
+import { home } from '@/routes';
+import { index as company } from '@/routes/company';
+import { index as products } from '@/routes/products';
+import { create as quotation } from '@/routes/quotations';
 
-const isScrolled = ref(false);
-
-const handleScroll = () => {
-    isScrolled.value = window.scrollY > 20;
-};
-
-onMounted(() => {
-    window.addEventListener('scroll', handleScroll);
-});
-
-onUnmounted(() => {
-    window.removeEventListener('scroll', handleScroll);
-});
-
+const page = usePage();
+const mobileOpen = ref(false);
+const menuButton = ref<HTMLButtonElement>();
+const currentPath = computed(() => page.url.split(/[?#]/)[0]);
 const navigation = [
-    { name: 'Home', href: '/' },
-    { name: 'Products', href: '/products' },
-    { name: 'Company Info', href: '/company' },
+    { name: 'Home', href: home().url },
+    { name: 'Products', href: products().url },
+    { name: 'Company Info', href: company().url },
 ];
+watch(
+    () => page.url,
+    () => {
+        mobileOpen.value = false;
+    },
+);
+function closeMenu() {
+    mobileOpen.value = false;
+    menuButton.value?.focus();
+}
 </script>
-
 <template>
-    <div class="min-h-screen bg-gray-50 text-gray-900 font-sans selection:bg-[#F8B803] selection:text-white">
-        <!-- Navigation -->
-        <nav 
-            :class="[
-                'fixed top-0 w-full z-50 transition-all duration-300 border-b',
-                isScrolled 
-                    ? 'bg-white/90 backdrop-blur-md border-gray-200 shadow-sm' 
-                    : 'bg-transparent border-transparent'
-            ]"
+    <div
+        class="public-site min-h-screen bg-gray-50 font-sans text-gray-900 selection:bg-[#F8B803]/40"
+    >
+        <a href="#main-content" class="skip-link">Skip to content</a>
+        <header
+            class="fixed inset-x-0 top-0 z-50 border-b border-gray-200/80 bg-white/95 backdrop-blur-xl"
+            @keydown.esc="closeMenu"
         >
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between items-center h-20">
-                    <!-- Logo -->
-                    <div class="flex-shrink-0 flex items-center gap-2">
-                        <Link href="/" class="flex items-center gap-2">
-                            <img src="/LOGO_MR_PRIDE.png" alt="MR-Pride Logo" class="w-10 h-10 object-contain" />
-                            <div class="flex flex-col justify-center leading-none">
-                                <span class="text-lg font-bold tracking-tight text-gray-900">MR-PRIDE</span>
-                                <span class="text-[10px] font-bold tracking-widest text-gray-500 uppercase mt-0.5">Electrical Supplies</span>
-                            </div>
-                        </Link>
-                    </div>
-
-                    <!-- Desktop Menu -->
-                    <div class="hidden md:flex items-center space-x-8">
-                        <Link 
-                            v-for="item in navigation" 
-                            :key="item.name" 
+            <nav
+                aria-label="Main navigation"
+                class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"
+            >
+                <div class="flex h-20 items-center justify-between gap-4">
+                    <Link
+                        :href="home()"
+                        aria-label="MR-Pride home"
+                        class="flex shrink-0 items-center gap-3 rounded-lg"
+                    >
+                        <img
+                            src="/LOGO_MR_PRIDE.png"
+                            alt=""
+                            class="size-11 object-contain"
+                        />
+                        <span class="flex flex-col gap-1 leading-none"
+                            ><span class="text-lg font-extrabold tracking-tight"
+                                >MR-PRIDE</span
+                            ><span
+                                class="text-[9px] font-semibold tracking-[0.16em] text-gray-500 uppercase"
+                                >Electrical Supplies</span
+                            ></span
+                        >
+                    </Link>
+                    <div class="hidden items-center gap-2 md:flex">
+                        <Link
+                            v-for="item in navigation"
+                            :key="item.name"
                             :href="item.href"
-                            class="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors duration-200"
+                            :aria-current="
+                                currentPath === item.href ? 'page' : undefined
+                            "
+                            class="rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors"
+                            :class="
+                                currentPath === item.href
+                                    ? 'bg-[#4b5320]/10 text-[#4b5320]'
+                                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                            "
+                            >{{ item.name }}</Link
                         >
-                            {{ item.name }}
-                        </Link>
-                        
-                        <Link 
-                            href="/quotation"
-                            class="inline-flex items-center justify-center px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gray-900 text-white rounded-full hover:bg-gray-800 hover:scale-105 active:scale-95"
-                        >
-                            Request Quotation
-                        </Link>
+                        <Link :href="quotation()" class="brand-button ml-3"
+                            >Request Quotation<ArrowRight
+                                class="size-4"
+                                aria-hidden="true"
+                        /></Link>
                     </div>
-
-                    <!-- Mobile Menu Button -->
-                    <div class="md:hidden flex items-center">
-                        <button class="text-gray-600 hover:text-gray-900 p-2">
-                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-                            </svg>
-                        </button>
-                    </div>
+                    <button
+                        ref="menuButton"
+                        type="button"
+                        class="flex size-11 items-center justify-center rounded-xl border border-gray-200 text-[#4b5320] md:hidden"
+                        :aria-label="
+                            mobileOpen ? 'Close navigation' : 'Open navigation'
+                        "
+                        :aria-expanded="mobileOpen"
+                        aria-controls="mobile-navigation"
+                        @click="mobileOpen = !mobileOpen"
+                    >
+                        <X v-if="mobileOpen" class="size-5" /><Menu
+                            v-else
+                            class="size-5"
+                        />
+                    </button>
                 </div>
-            </div>
-        </nav>
-
-        <!-- Main Content -->
-        <main class="pt-20">
+                <div
+                    v-if="mobileOpen"
+                    id="mobile-navigation"
+                    class="grid gap-2 border-t border-gray-100 py-4 md:hidden"
+                >
+                    <Link
+                        v-for="item in navigation"
+                        :key="item.name"
+                        :href="item.href"
+                        :aria-current="
+                            currentPath === item.href ? 'page' : undefined
+                        "
+                        class="rounded-xl px-4 py-3 text-sm font-semibold"
+                        :class="
+                            currentPath === item.href
+                                ? 'bg-[#4b5320]/10 text-[#4b5320]'
+                                : 'text-gray-700 hover:bg-gray-100'
+                        "
+                        @click="mobileOpen = false"
+                        >{{ item.name }}</Link
+                    >
+                    <Link
+                        :href="quotation()"
+                        class="brand-button mt-2"
+                        @click="mobileOpen = false"
+                        >Request Quotation<ArrowRight class="size-4"
+                    /></Link>
+                </div>
+            </nav>
+        </header>
+        <main id="main-content" tabindex="-1" class="pt-20 focus:outline-none">
             <slot />
         </main>
-
-        <!-- Footer -->
-        <footer class="border-t border-gray-200 bg-white pt-16 pb-8 mt-24">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
-                    <div class="col-span-1 md:col-span-2">
-                        <div class="flex items-center gap-2 mb-4">
-                            <img src="/LOGO_MR_PRIDE.png" alt="MR-Pride Logo" class="w-8 h-8 object-contain" />
-                            <div class="flex flex-col justify-center leading-none">
-                                <span class="text-lg font-bold text-gray-900">MR-PRIDE</span>
-                                <span class="text-[10px] font-bold tracking-widest text-gray-500 uppercase mt-0.5">Electrical Supplies</span>
-                            </div>
-                        </div>
-                        <p class="text-gray-600 text-sm max-w-sm">
-                            Your premier partner for industrial electrical supplies, providing innovative solutions and top-tier brands since 1998.
+        <footer class="border-t border-gray-200 bg-white">
+            <div class="mx-auto max-w-7xl px-4 pt-14 pb-7 sm:px-6 lg:px-8">
+                <div class="grid gap-10 pb-12 md:grid-cols-[2fr_1fr_1fr]">
+                    <div>
+                        <p class="text-lg font-extrabold text-[#4b5320]">
+                            MR-PRIDE<span class="text-[#F8B803]">.</span>
+                        </p>
+                        <p
+                            class="mt-4 max-w-sm text-sm leading-7 text-gray-600"
+                        >
+                            Electrical, hardware, and industrial supplies for
+                            your next project. Quality products. Trusted brand
+                            partners.
                         </p>
                     </div>
                     <div>
-                        <h3 class="text-gray-900 font-semibold mb-4">Quick Links</h3>
-                        <ul class="space-y-2 text-sm text-gray-600">
-                            <li><Link href="/products" class="hover:text-gray-900 transition-colors">Products</Link></li>
-                            <li><Link href="/company" class="hover:text-gray-900 transition-colors">Company Info</Link></li>
-                            <li><Link href="/quotation" class="hover:text-gray-900 transition-colors">Request Quotation</Link></li>
+                        <h2
+                            class="text-xs font-bold tracking-widest text-gray-500 uppercase"
+                        >
+                            Explore
+                        </h2>
+                        <ul class="mt-5 grid gap-3 text-sm font-medium">
+                            <li v-for="item in navigation" :key="item.name">
+                                <Link
+                                    :href="item.href"
+                                    class="hover:text-[#4b5320] hover:underline"
+                                    >{{ item.name }}</Link
+                                >
+                            </li>
+                            <li>
+                                <Link
+                                    :href="quotation()"
+                                    class="hover:text-[#4b5320] hover:underline"
+                                    >Request Quotation</Link
+                                >
+                            </li>
                         </ul>
                     </div>
                     <div>
-                        <h3 class="text-gray-900 font-semibold mb-4">Contact</h3>
-                        <ul class="space-y-2 text-sm text-gray-600">
-                            <li>sales@mrpelectrodesk.com</li>
-                            <li>+1 (555) 123-4567</li>
-                            <li>123 Industrial Parkway, Suite 100</li>
-                        </ul>
+                        <h2
+                            class="text-xs font-bold tracking-widest text-gray-500 uppercase"
+                        >
+                            Visit our office
+                        </h2>
+                        <p
+                            class="mt-5 flex gap-2 text-sm leading-7 text-gray-600"
+                        >
+                            <MapPin
+                                class="mt-1 size-4 shrink-0 text-[#4b5320]"
+                                aria-hidden="true"
+                            />#610 Esguerra St.<br />Tondo, Manila, Philippines
+                        </p>
                     </div>
                 </div>
-                <div class="border-t border-gray-200 pt-8 flex flex-col md:flex-row justify-between items-center">
-                    <p class="text-gray-500 text-xs">
-                        &copy; {{ new Date().getFullYear() }} MR-Pride Electrical Supplies. All rights reserved.
+                <div
+                    class="flex flex-col gap-3 border-t border-gray-100 pt-6 text-xs text-gray-500 sm:flex-row sm:justify-between"
+                >
+                    <p>
+                        &copy; {{ new Date().getFullYear() }} MR-Pride
+                        Electrical Supplies.
                     </p>
+                    <p>Hardware · Electrical · Industrial · Safety</p>
                 </div>
             </div>
         </footer>

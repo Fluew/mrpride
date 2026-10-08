@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
-import { ref } from 'vue';
 import { Package, AlertTriangle, FileText, LineChart, Download } from '@lucide/vue';
+import SpecularButton from '@/components/ui/SpecularButton.vue';
 
 const exportReport = (reportName: string) => {
     alert(`Downloading ${reportName} (Prototype)`);
@@ -11,15 +11,22 @@ const exportReport = (reportName: string) => {
 <template>
     <Head title="System Reports" />
 
-    <div class="flex h-full flex-1 flex-col gap-6 overflow-y-auto rounded-xl p-6">
+    <div class="workspace-page">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
             <div>
                 <h1 class="text-3xl font-bold text-gray-900 tracking-tight">System Reports</h1>
                 <p class="text-gray-500 mt-1">Generate and export system data for review.</p>
             </div>
-            <button @click="exportReport('All Master Data Report.pdf')" class="w-full md:w-auto px-5 py-2.5 bg-gradient-to-r from-[#F8B803] to-[#4b5320] text-white font-bold rounded-lg hover:shadow-lg transition-all duration-300 flex justify-center items-center gap-2">
-                <Download class="w-4 h-4" /> Export All Data
-            </button>
+            <SpecularButton
+                variant="brand"
+                size="md"
+                :radius="10"
+                class="w-full md:w-auto"
+                @click="exportReport('All Master Data Report.pdf')"
+            >
+                <Download class="w-4 h-4" />
+                <span>Export All Data</span>
+            </SpecularButton>
         </div>
 
         <div class="grid md:grid-cols-2 gap-6">
@@ -33,12 +40,26 @@ const exportReport = (reportName: string) => {
                     <p class="text-gray-500 text-sm mb-6">Complete list of all electrical supplies, current stock levels, categories, and unit pricing.</p>
                 </div>
                 <div class="flex gap-3">
-                    <button @click="exportReport('Inventory_Report.pdf')" class="flex-1 py-2 bg-white hover:bg-gray-50 text-gray-700 rounded-lg border border-gray-200 transition-colors text-sm font-medium flex justify-center items-center gap-2 shadow-sm">
-                        <Download class="w-4 h-4" /> PDF
-                    </button>
-                    <button @click="exportReport('Inventory_Report.csv')" class="flex-1 py-2 bg-white hover:bg-gray-50 text-gray-700 rounded-lg border border-gray-200 transition-colors text-sm font-medium flex justify-center items-center gap-2 shadow-sm">
-                        <Download class="w-4 h-4" /> CSV
-                    </button>
+                    <SpecularButton
+                        variant="secondary"
+                        size="sm"
+                        :radius="8"
+                        class="flex-1"
+                        @click="exportReport('Inventory_Report.pdf')"
+                    >
+                        <Download class="w-4 h-4" />
+                        <span>PDF</span>
+                    </SpecularButton>
+                    <SpecularButton
+                        variant="secondary"
+                        size="sm"
+                        :radius="8"
+                        class="flex-1"
+                        @click="exportReport('Inventory_Report.csv')"
+                    >
+                        <Download class="w-4 h-4" />
+                        <span>CSV</span>
+                    </SpecularButton>
                 </div>
             </div>
 
@@ -52,12 +73,26 @@ const exportReport = (reportName: string) => {
                     <p class="text-gray-500 text-sm mb-6">List of items that have fallen below their minimum required threshold and require immediate reordering.</p>
                 </div>
                 <div class="flex gap-3">
-                    <button @click="exportReport('LowStock_Report.pdf')" class="flex-1 py-2 bg-white hover:bg-gray-50 text-gray-700 rounded-lg border border-gray-200 transition-colors text-sm font-medium flex justify-center items-center gap-2 shadow-sm">
-                        <Download class="w-4 h-4" /> PDF
-                    </button>
-                    <button @click="exportReport('LowStock_Report.csv')" class="flex-1 py-2 bg-white hover:bg-gray-50 text-gray-700 rounded-lg border border-gray-200 transition-colors text-sm font-medium flex justify-center items-center gap-2 shadow-sm">
-                        <Download class="w-4 h-4" /> CSV
-                    </button>
+                    <SpecularButton
+                        variant="secondary"
+                        size="sm"
+                        :radius="8"
+                        class="flex-1"
+                        @click="exportReport('LowStock_Report.pdf')"
+                    >
+                        <Download class="w-4 h-4" />
+                        <span>PDF</span>
+                    </SpecularButton>
+                    <SpecularButton
+                        variant="secondary"
+                        size="sm"
+                        :radius="8"
+                        class="flex-1"
+                        @click="exportReport('LowStock_Report.csv')"
+                    >
+                        <Download class="w-4 h-4" />
+                        <span>CSV</span>
+                    </SpecularButton>
                 </div>
             </div>
 
@@ -71,12 +106,26 @@ const exportReport = (reportName: string) => {
                     <p class="text-gray-500 text-sm mb-6">Summary of all generated quotes, their current approval status, and total potential revenue.</p>
                 </div>
                 <div class="flex gap-3">
-                    <button @click="exportReport('Quotations_Report.pdf')" class="flex-1 py-2 bg-white hover:bg-gray-50 text-gray-700 rounded-lg border border-gray-200 transition-colors text-sm font-medium flex justify-center items-center gap-2 shadow-sm">
-                        <Download class="w-4 h-4" /> PDF
-                    </button>
-                    <button @click="exportReport('Quotations_Report.csv')" class="flex-1 py-2 bg-white hover:bg-gray-50 text-gray-700 rounded-lg border border-gray-200 transition-colors text-sm font-medium flex justify-center items-center gap-2 shadow-sm">
-                        <Download class="w-4 h-4" /> CSV
-                    </button>
+                    <SpecularButton
+                        variant="secondary"
+                        size="sm"
+                        :radius="8"
+                        class="flex-1"
+                        @click="exportReport('Quotations_Report.pdf')"
+                    >
+                        <Download class="w-4 h-4" />
+                        <span>PDF</span>
+                    </SpecularButton>
+                    <SpecularButton
+                        variant="secondary"
+                        size="sm"
+                        :radius="8"
+                        class="flex-1"
+                        @click="exportReport('Quotations_Report.csv')"
+                    >
+                        <Download class="w-4 h-4" />
+                        <span>CSV</span>
+                    </SpecularButton>
                 </div>
             </div>
 
@@ -90,12 +139,26 @@ const exportReport = (reportName: string) => {
                     <p class="text-gray-500 text-sm mb-6">Analytical data for predicted demand over the next 3 months based on historical Simple Moving Averages.</p>
                 </div>
                 <div class="flex gap-3">
-                    <button @click="exportReport('Forecast_Analysis.pdf')" class="flex-1 py-2 bg-white hover:bg-gray-50 text-gray-700 rounded-lg border border-gray-200 transition-colors text-sm font-medium flex justify-center items-center gap-2 shadow-sm">
-                        <Download class="w-4 h-4" /> PDF
-                    </button>
-                    <button @click="exportReport('Forecast_Analysis.csv')" class="flex-1 py-2 bg-white hover:bg-gray-50 text-gray-700 rounded-lg border border-gray-200 transition-colors text-sm font-medium flex justify-center items-center gap-2 shadow-sm">
-                        <Download class="w-4 h-4" /> CSV
-                    </button>
+                    <SpecularButton
+                        variant="secondary"
+                        size="sm"
+                        :radius="8"
+                        class="flex-1"
+                        @click="exportReport('Forecast_Analysis.pdf')"
+                    >
+                        <Download class="w-4 h-4" />
+                        <span>PDF</span>
+                    </SpecularButton>
+                    <SpecularButton
+                        variant="secondary"
+                        size="sm"
+                        :radius="8"
+                        class="flex-1"
+                        @click="exportReport('Forecast_Analysis.csv')"
+                    >
+                        <Download class="w-4 h-4" />
+                        <span>CSV</span>
+                    </SpecularButton>
                 </div>
             </div>
         </div>

@@ -33,13 +33,13 @@ const saveRequest = () => {
 <template>
     <Head title="Procurement Monitoring" />
 
-    <div class="flex h-full flex-1 flex-col gap-6 overflow-y-auto rounded-xl p-6">
+    <div class="workspace-page">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
             <div>
                 <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Procurement Monitoring</h1>
                 <p class="text-gray-500 mt-1">Track purchase requests and delivery statuses.</p>
             </div>
-            <button @click="showCreateModal = true" class="w-full md:w-auto px-5 py-2.5 bg-gradient-to-r from-[#F8B803] to-[#4b5320] text-white font-bold rounded-lg hover:shadow-lg transition-all duration-300">
+            <button @click="showCreateModal = true" class="w-full md:w-auto px-5 py-2.5 bg-[#4b5320] text-white font-bold rounded-lg hover:shadow-lg transition-all duration-300">
                 + New Purchase Request
             </button>
         </div>
@@ -110,7 +110,7 @@ const saveRequest = () => {
             </div>
             <div class="flex justify-end gap-3 mt-8">
                 <button @click="showCreateModal = false" class="px-4 py-2 text-gray-500 hover:text-gray-900">Cancel</button>
-                <button @click="saveRequest" class="px-4 py-2 bg-gradient-to-r from-[#F8B803] to-[#4b5320] text-white font-bold rounded-lg hover:shadow-lg transition-all">Submit Request</button>
+                <button @click="saveRequest" class="px-4 py-2 bg-[#4b5320] text-white font-bold rounded-lg hover:shadow-lg transition-all">Submit Request</button>
             </div>
         </div>
     </div>

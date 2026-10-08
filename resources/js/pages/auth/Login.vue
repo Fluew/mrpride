@@ -60,7 +60,7 @@ defineProps<{
                     autofocus
                     autocomplete="email"
                     placeholder="email@example.com"
-                    class="bg-white/10 border-white/20 text-white placeholder:text-white/70 focus:border-white focus-visible:ring-white/50"
+                    class="border-white/20 bg-white/10 text-white placeholder:text-white/70 focus:border-white focus-visible:ring-white/50"
                 />
                 <InputError :message="errors.email" />
             </div>
@@ -72,7 +72,6 @@ defineProps<{
                         v-if="canResetPassword"
                         :href="request()"
                         class="text-sm text-white/80 hover:text-white"
-                        :tabindex="5"
                     >
                         Forgot password?
                     </TextLink>
@@ -83,22 +82,28 @@ defineProps<{
                     required
                     autocomplete="current-password"
                     placeholder="Password"
-                    class="bg-white/10 border-white/20 text-white placeholder:text-white/70 focus:border-white focus-visible:ring-white/50"
+                    class="border-white/20 bg-white/10 text-white placeholder:text-white/70 focus:border-white focus-visible:ring-white/50"
                 />
                 <InputError :message="errors.password" />
             </div>
 
             <div class="flex items-center justify-between">
-                <Label for="remember" class="flex items-center space-x-3 text-white/90">
-                    <Checkbox id="remember" name="remember" :tabindex="3" class="border-white/50 data-[state=checked]:bg-white data-[state=checked]:text-[#4b5320]" />
+                <Label
+                    for="remember"
+                    class="flex items-center space-x-3 text-white/90"
+                >
+                    <Checkbox
+                        id="remember"
+                        name="remember"
+                        class="border-white/50 data-[state=checked]:bg-white data-[state=checked]:text-[#4b5320]"
+                    />
                     <span>Remember me</span>
                 </Label>
             </div>
 
             <Button
                 type="submit"
-                class="mt-4 w-full bg-white text-[#4b5320] font-bold hover:bg-gray-100 hover:shadow-lg transition-all"
-                :tabindex="4"
+                class="mt-4 w-full bg-white font-bold text-[#4b5320] transition-all hover:bg-gray-100 hover:shadow-lg"
                 :disabled="processing"
                 data-test="login-button"
             >
