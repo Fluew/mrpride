@@ -1,10 +1,16 @@
 <?php
 
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ForecastController;
 use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\ProcurementController;
 use App\Http\Controllers\PublicQuotationController;
 use App\Http\Controllers\QuotationController;
+use App\Http\Controllers\ReportController;
+use App\Http\Controllers\SalesController;
+use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\Teams\TeamInvitationController;
+use App\Http\Controllers\UserController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
 
@@ -35,8 +41,11 @@ Route::prefix('{current_team}')
     ->group(function () {
         Route::get('dashboard', DashboardController::class)->name('dashboard');
         
-        // Capstone Modules
-        Route::inertia('users', 'Users/Index')->name('users.index');
+        // User Management Module (Database-backed)
+        Route::get('users', [UserController::class, 'index'])->name('users.index');
+        Route::post('users', [UserController::class, 'store'])->name('users.store');
+        Route::put('users/{user}', [UserController::class, 'update'])->name('users.update');
+        Route::delete('users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
         
         // Inventory Management Module
         Route::get('inventory', [InventoryController::class, 'index'])->name('inventory.index');
@@ -50,7 +59,12 @@ Route::prefix('{current_team}')
         Route::post('inventory/import-csv', [InventoryController::class, 'importCsv'])->name('inventory.import-csv');
         Route::get('inventory/export-csv', [InventoryController::class, 'exportCsv'])->name('inventory.export-csv');
 
-        Route::inertia('suppliers', 'Suppliers/Index')->name('suppliers.index');
+        // Supplier Management Module (Database-backed + AHP)
+        Route::get('suppliers', [SupplierController::class, 'index'])->name('suppliers.index');
+        Route::post('suppliers', [SupplierController::class, 'store'])->name('suppliers.store');
+        Route::put('suppliers/{supplier}', [SupplierController::class, 'update'])->name('suppliers.update');
+        Route::delete('suppliers/{supplier}', [SupplierController::class, 'destroy'])->name('suppliers.destroy');
+        Route::post('suppliers/evaluate-ahp', [SupplierController::class, 'evaluate'])->name('suppliers.evaluate');
         
         // Quotation Management Module
         Route::get('quotations', [QuotationController::class, 'index'])->name('admin.quotations.index');
@@ -60,10 +74,26 @@ Route::prefix('{current_team}')
         Route::post('quotations/{quotation}/convert-to-sale', [QuotationController::class, 'convertToSale'])->name('admin.quotations.convertToSale');
         Route::delete('quotations/{quotation}', [QuotationController::class, 'destroy'])->name('admin.quotations.destroy');
 
-        Route::inertia('procurement', 'Procurement/Index')->name('procurement.index');
-        Route::inertia('sales', 'Sales/Index')->name('sales.index');
-        Route::inertia('forecast', 'Forecast/Index')->name('forecast.index');
-        Route::inertia('reports', 'Reports/Index')->name('reports.index');
+        // Procurement Monitoring Module (Database-backed)
+        Route::get('procurement', [ProcurementController::class, 'index'])->name('procurement.index');
+        Route::post('procurement', [ProcurementController::class, 'store'])->name('procurement.store');
+        Route::patch('procurement/{procurement}/status', [ProcurementController::class, 'updateStatus'])->name('procurement.updateStatus');
+        Route::delete('procurement/{procurement}', [ProcurementController::class, 'destroy'])->name('procurement.destroy');
+
+        // Sales & POS Module (Database-backed)
+        Route::get('sales', [SalesController::class, 'index'])->name('sales.index');
+        Route::post('sales', [SalesController::class, 'store'])->name('sales.store');
+
+        // Demand Forecasting Module (Database-backed)
+        Route::get('forecast', [ForecastController::class, 'index'])->name('forecast.index');
+
+        // System Reports Module (Database-backed + Real CSV Exports)
+        Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
+        Route::get('reports/export/inventory', [ReportController::class, 'exportInventory'])->name('reports.export.inventory');
+        Route::get('reports/export/quotations', [ReportController::class, 'exportQuotations'])->name('reports.export.quotations');
+        Route::get('reports/export/sales', [ReportController::class, 'exportSales'])->name('reports.export.sales');
+        Route::get('reports/export/suppliers', [ReportController::class, 'exportSuppliers'])->name('reports.export.suppliers');
+        Route::get('reports/export/master', [ReportController::class, 'exportMaster'])->name('reports.export.master');
     });
 
 Route::middleware(['auth'])->group(function () {

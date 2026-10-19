@@ -42,7 +42,7 @@ const dashboardUrl = computed(() =>
         ? dashboard(page.props.currentTeam.slug).url
         : home().url,
 );
-const operations = computed<NavItem[]>(() => {
+const navItems = computed<NavItem[]>(() => {
     const team = page.props.currentTeam?.slug;
 
     if (!team) {
@@ -50,25 +50,15 @@ const operations = computed<NavItem[]>(() => {
     }
 
     return [
+        { title: 'User Management', href: users(team), icon: Users },
         { title: 'Overview', href: dashboard(team), icon: LayoutGrid },
         { title: 'Inventory', href: inventory(team), icon: Package },
         { title: 'Suppliers', href: suppliers(team), icon: Truck },
         { title: 'Quotations', href: quotations(team), icon: FileText },
         { title: 'Procurement', href: procurement(team), icon: ShoppingCart },
         { title: 'Sales', href: sales(team), icon: Banknote },
-    ];
-});
-const insights = computed<NavItem[]>(() => {
-    const team = page.props.currentTeam?.slug;
-
-    if (!team) {
-        return [];
-    }
-
-    return [
         { title: 'Demand Forecasting', href: forecast(team), icon: LineChart },
         { title: 'Reports', href: reports(team), icon: PieChart },
-        { title: 'User Management', href: users(team), icon: Users },
     ];
 });
 </script>
@@ -88,11 +78,9 @@ const insights = computed<NavItem[]>(() => {
                 ><SidebarMenuItem><TeamSwitcher /></SidebarMenuItem
             ></SidebarMenu>
         </SidebarHeader>
-        <SidebarContent
-            ><NavMain :items="operations" label="Operations" /><NavMain
-                :items="insights"
-                label="Insights & administration"
-        /></SidebarContent>
+        <SidebarContent>
+            <NavMain :items="navItems" />
+        </SidebarContent>
         <SidebarFooter class="gap-3 p-3"
             ><SidebarMenu
                 ><SidebarMenuItem

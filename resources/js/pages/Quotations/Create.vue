@@ -22,6 +22,35 @@ const form = useForm({
     timeline: '1-3 months',
     requirements: '',
 });
+const selectedMaterialCategory = ref('');
+const otherMaterialDetails = ref('');
+
+const materialOptions = [
+    'Electrical Wiring & Cabling (THHN, Romex, Armored)',
+    'Circuit Breakers, Panelboards & Switchgears',
+    'Commercial & Industrial LED Lighting Systems',
+    'Transformers & Power Distribution Equipment',
+    'Conduits, Fittings & Cable Trays (EMT, PVC, RSC)',
+    'Industrial Automation, Contactors & Relays',
+    'Solar Panels & Renewable Energy Hardware',
+    'Safety Gear, Test Meters & General Electrical Hardware',
+    'Others',
+];
+
+function syncRequirements() {
+    if (selectedMaterialCategory.value === 'Others') {
+        form.requirements = otherMaterialDetails.value.trim();
+    } else if (selectedMaterialCategory.value) {
+        if (otherMaterialDetails.value.trim()) {
+            form.requirements = `${selectedMaterialCategory.value}\nSpecifications / Details: ${otherMaterialDetails.value.trim()}`;
+        } else {
+            form.requirements = selectedMaterialCategory.value;
+        }
+    } else {
+        form.requirements = '';
+    }
+}
+
 const submittedSuccess = ref(false);
 const formElement = ref<HTMLFormElement>();
 const successMessage = ref<HTMLElement>();
@@ -70,6 +99,8 @@ function submit() {
         onSuccess: async () => {
             submittedSuccess.value = true;
             form.reset();
+            selectedMaterialCategory.value = '';
+            otherMaterialDetails.value = '';
             await nextTick();
             successMessage.value?.focus();
         },
@@ -253,36 +284,56 @@ function submit() {
                             </p>
                         </div>
                     </div>
-                    <div>
-                        <label for="requirements" class="field-label"
-                            >Materials & project requirements
-                            <span aria-hidden="true">*</span></label
-                        ><textarea
-                            id="requirements"
-                            v-model="form.requirements"
-                            rows="6"
-                            maxlength="3000"
-                            required
-                            class="field-control resize-y"
-                            placeholder="List the products, specifications, and quantities you need…"
-                            :aria-invalid="!!form.errors.requirements"
-                            aria-describedby="requirements-help requirements-error"
-                        ></textarea>
-                        <div
-                            id="requirements-help"
-                            class="mt-2 flex justify-between gap-3 text-xs text-gray-500"
-                        >
-                            <span
-                                >Include sizes, brands, or model numbers if
-                                available.</span
-                            ><span class="shrink-0"
-                                >{{ form.requirements.length }}/3000</span
+                    <div class="space-y-3">
+                        <div>
+                            <label for="material-category" class="field-label"
+                                >Materials & project requirements
+                                <span aria-hidden="true">*</span></label
                             >
+                            <select
+                                id="material-category"
+                                v-model="selectedMaterialCategory"
+                                required
+                                class="field-control"
+                                :aria-invalid="!!form.errors.requirements"
+                                @change="syncRequirements"
+                            >
+                                <option value="" disabled>Select material or package requirement...</option>
+                                <option
+                                    v-for="opt in materialOptions"
+                                    :key="opt"
+                                    :value="opt"
+                                >
+                                    {{ opt }}
+                                </option>
+                            </select>
                         </div>
+
+                        <!-- Text box for Others or additional specifications -->
+                        <div v-if="selectedMaterialCategory">
+                            <label for="other-requirements" class="field-label text-xs font-medium text-gray-700">
+                                {{ selectedMaterialCategory === 'Others' ? 'Please specify materials & requirements *' : 'Additional specifications or quantities (optional)' }}
+                            </label>
+                            <textarea
+                                id="other-requirements"
+                                v-model="otherMaterialDetails"
+                                rows="4"
+                                maxlength="3000"
+                                :required="selectedMaterialCategory === 'Others'"
+                                class="field-control resize-y mt-1"
+                                :placeholder="selectedMaterialCategory === 'Others' ? 'Describe the materials, sizes, brands, or specifications you need…' : 'List specific brands, model numbers, dimensions, or item quantities…'"
+                                @input="syncRequirements"
+                            ></textarea>
+                            <div class="mt-1 flex justify-between gap-3 text-xs text-gray-500">
+                                <span>Include details, sizes, or brand preferences.</span>
+                                <span class="shrink-0">{{ otherMaterialDetails.length }}/3000</span>
+                            </div>
+                        </div>
+
                         <p
                             v-if="form.errors.requirements"
                             id="requirements-error"
-                            class="mt-2 text-xs text-red-600"
+                            class="mt-1 text-xs text-red-600"
                         >
                             {{ form.errors.requirements }}
                         </p>

@@ -1,78 +1,191 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { Head, useForm, usePage, router } from '@inertiajs/vue3';
+import { ref, computed } from 'vue';
+import { ShoppingCart, Plus, CheckCircle2, RefreshCw, Trash2, Clock, AlertCircle } from '@lucide/vue';
+import SpecularButton from '@/components/ui/SpecularButton.vue';
 
-const requests = ref([
-    { id: 'PR-10045', item: 'Heavy Duty Copper Wire (100m)', supplier: 'Global Wire Systems', qty: 50, date: 'Oct 25, 2026', status: 'Requested' },
-    { id: 'PR-10044', item: 'LED Floodlight 200W', supplier: 'Lumen Lighting Co.', qty: 200, date: 'Oct 22, 2026', status: 'Ordered' },
-    { id: 'PR-10043', item: 'Magnetic Contactor 220V', supplier: 'ElectroTech Industries', qty: 150, date: 'Oct 18, 2026', status: 'Delivered' },
-    { id: 'PR-10042', item: 'Industrial Circuit Breaker', supplier: 'ElectroTech Industries', qty: 20, date: 'Oct 10, 2026', status: 'Cancelled' },
-]);
+interface ProcurementItem {
+    id: string; // PR-10045
+    db_id: number;
+    item: string;
+    supplier: string;
+    qty: number;
+    date: string;
+    status: string;
+    notes?: string;
+}
+
+const props = defineProps<{
+    requests: ProcurementItem[];
+    suppliers?: Array<{ id: number; name: string }>;
+    products?: Array<{ id: number; name: string; sku: string }>;
+}>();
+
+const page = usePage();
+const teamSlug = computed(() => (page.props as any).currentTeam?.slug || '');
 
 const getStatusClass = (status: string) => {
-    if (status === 'Requested') return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
-    if (status === 'Ordered') return 'bg-[#F8B803]/10 text-[#F8B803] border-[#F8B803]/20';
-    if (status === 'Delivered') return 'bg-green-500/10 text-green-500 border-green-500/20';
-    return 'bg-red-500/10 text-red-500 border-red-500/20';
-};
-
-const updateStatus = (req: any) => {
-    const statuses = ['Requested', 'Ordered', 'Delivered', 'Cancelled'];
-    const currentIndex = statuses.indexOf(req.status);
-    req.status = statuses[(currentIndex + 1) % statuses.length];
+    if (status === 'Requested') return 'bg-blue-50 text-blue-700 border-blue-200';
+    if (status === 'Ordered') return 'bg-amber-50 text-amber-700 border-amber-200';
+    if (status === 'Delivered') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    return 'bg-red-50 text-red-700 border-red-200';
 };
 
 const showCreateModal = ref(false);
+const showDeleteModal = ref(false);
+const selectedRequest = ref<ProcurementItem | null>(null);
 
-const saveRequest = () => {
-    alert('Purchase request submitted! (Prototype)');
-    showCreateModal.value = false;
+const form = useForm({
+    item: '',
+    supplier: '',
+    qty: 50,
+    product_id: '' as any,
+    supplier_id: '' as any,
+    notes: '',
+});
+
+const onProductSelect = (event: Event) => {
+    const prodId = (event.target as HTMLSelectElement).value;
+    const prod = props.products?.find(p => p.id === Number(prodId));
+    if (prod) {
+        form.item = prod.name;
+    }
+};
+
+const onSupplierSelect = (event: Event) => {
+    const supId = (event.target as HTMLSelectElement).value;
+    const sup = props.suppliers?.find(s => s.id === Number(supId));
+    if (sup) {
+        form.supplier = sup.name;
+    }
+};
+
+const openCreateModal = () => {
+    form.reset();
+    form.clearErrors();
+    if (props.products && props.products.length > 0) {
+        form.product_id = props.products[0].id;
+        form.item = props.products[0].name;
+    }
+    if (props.suppliers && props.suppliers.length > 0) {
+        form.supplier_id = props.suppliers[0].id;
+        form.supplier = props.suppliers[0].name;
+    }
+    showCreateModal.value = true;
+};
+
+const submitRequest = () => {
+    form.post(`/${teamSlug.value}/procurement`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            showCreateModal.value = false;
+            form.reset();
+        },
+    });
+};
+
+const cycleStatus = (req: ProcurementItem) => {
+    const statuses = ['Requested', 'Ordered', 'Delivered', 'Cancelled'];
+    const currentIndex = statuses.indexOf(req.status);
+    const nextStatus = statuses[(currentIndex + 1) % statuses.length];
+
+    router.patch(`/${teamSlug.value}/procurement/${req.db_id}/status`, {
+        status: nextStatus,
+    }, {
+        preserveScroll: true,
+    });
+};
+
+const openDeleteModal = (req: ProcurementItem) => {
+    selectedRequest.value = req;
+    showDeleteModal.value = true;
+};
+
+const submitDelete = () => {
+    if (!selectedRequest.value) return;
+    router.delete(`/${teamSlug.value}/procurement/${selectedRequest.value.db_id}`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            showDeleteModal.value = false;
+            selectedRequest.value = null;
+        },
+    });
 };
 </script>
 
 <template>
     <Head title="Procurement Monitoring" />
 
-    <div class="workspace-page">
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
+    <div class="workspace-page p-6 max-w-7xl mx-auto">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
             <div>
-                <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Procurement Monitoring</h1>
-                <p class="text-gray-500 mt-1">Track purchase requests and delivery statuses.</p>
+                <h1 class="text-3xl font-bold text-gray-900 tracking-tight flex items-center gap-3">
+                    <ShoppingCart class="w-8 h-8 text-[#4b5320]" />
+                    <span>Procurement Monitoring</span>
+                </h1>
+                <p class="text-gray-500 mt-1">Track purchase requests, vendor deliveries, and automated stock replenishment.</p>
             </div>
-            <button @click="showCreateModal = true" class="w-full md:w-auto px-5 py-2.5 bg-[#4b5320] text-white font-bold rounded-lg hover:shadow-lg transition-all duration-300">
-                + New Purchase Request
-            </button>
+            <SpecularButton 
+                variant="brand"
+                size="md"
+                :radius="10"
+                class="flex items-center gap-2"
+                @click="openCreateModal"
+            >
+                <Plus class="w-4 h-4" />
+                <span>+ New Purchase Request</span>
+            </SpecularButton>
         </div>
 
-        <div class="flex-1 rounded-2xl bg-white border border-gray-200 p-6 shadow-sm">
+        <!-- Procurement Table -->
+        <div class="rounded-2xl bg-white border border-gray-200 shadow-sm overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead>
-                        <tr class="border-b border-gray-200 text-gray-500 text-sm">
-                            <th class="pb-3 font-medium">Request ID</th>
-                            <th class="pb-3 font-medium">Item Name</th>
-                            <th class="pb-3 font-medium">Supplier</th>
-                            <th class="pb-3 font-medium text-center">Qty</th>
-                            <th class="pb-3 font-medium">Date Requested</th>
-                            <th class="pb-3 font-medium text-center">Status</th>
-                            <th class="pb-3 font-medium text-right">Actions</th>
+                        <tr class="border-b border-gray-200 bg-gray-50/70 text-gray-600 text-xs font-semibold uppercase tracking-wider">
+                            <th class="py-3.5 px-6">Request ID</th>
+                            <th class="py-3.5 px-6">Item / Electrical Supply</th>
+                            <th class="py-3.5 px-6">Supplier Vendor</th>
+                            <th class="py-3.5 px-6 text-center">Qty</th>
+                            <th class="py-3.5 px-6">Date Requested</th>
+                            <th class="py-3.5 px-6 text-center">Status (Click to Advance)</th>
+                            <th class="py-3.5 px-6 text-right">Actions</th>
                         </tr>
                     </thead>
-                    <tbody class="text-sm">
-                        <tr v-for="req in requests" :key="req.id" class="border-b border-gray-100 hover:bg-gray-50 transition-colors group">
-                            <td class="py-4 text-gray-900 font-medium">{{ req.id }}</td>
-                            <td class="py-4 text-gray-600">{{ req.item }}</td>
-                            <td class="py-4 text-gray-500">{{ req.supplier }}</td>
-                            <td class="py-4 text-center text-gray-900 font-bold">{{ req.qty }}</td>
-                            <td class="py-4 text-gray-500">{{ req.date }}</td>
-                            <td class="py-4 text-center">
-                                <span :class="getStatusClass(req.status)" class="px-2.5 py-1 rounded-full text-xs font-medium border">
-                                    {{ req.status }}
-                                </span>
+                    <tbody class="text-sm divide-y divide-gray-100">
+                        <tr v-if="requests.length === 0">
+                            <td colspan="7" class="text-center py-10 text-gray-500">
+                                No procurement requests on record.
                             </td>
-                            <td class="py-4 text-right">
-                                <button @click="updateStatus(req)" class="px-3 py-1 bg-white border border-gray-200 hover:border-[#F8B803] text-gray-600 hover:text-gray-900 rounded text-xs transition-colors shadow-sm">
-                                    Update Status
+                        </tr>
+                        <tr 
+                            v-for="req in requests" 
+                            :key="req.id" 
+                            class="hover:bg-gray-50/80 transition-colors"
+                        >
+                            <td class="py-4 px-6 text-gray-900 font-bold text-xs">{{ req.id }}</td>
+                            <td class="py-4 px-6 text-gray-900 font-medium">{{ req.item }}</td>
+                            <td class="py-4 px-6 text-gray-600">{{ req.supplier }}</td>
+                            <td class="py-4 px-6 text-center font-bold text-gray-900">{{ req.qty }}</td>
+                            <td class="py-4 px-6 text-gray-500 text-xs">{{ req.date }}</td>
+                            <td class="py-4 px-6 text-center">
+                                <button 
+                                    @click="cycleStatus(req)"
+                                    :class="getStatusClass(req.status)"
+                                    class="px-3 py-1 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5 hover:opacity-85 transition-opacity"
+                                    title="Click to cycle status"
+                                >
+                                    <RefreshCw class="w-3 h-3" />
+                                    <span>{{ req.status }}</span>
+                                </button>
+                            </td>
+                            <td class="py-4 px-6 text-right">
+                                <button 
+                                    @click="openDeleteModal(req)" 
+                                    class="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Delete Request"
+                                >
+                                    <Trash2 class="w-4 h-4 inline" />
                                 </button>
                             </td>
                         </tr>
@@ -84,33 +197,112 @@ const saveRequest = () => {
 
     <!-- Create Request Modal -->
     <div v-if="showCreateModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-2xl">
-            <h3 class="text-xl font-bold text-gray-900 mb-4">New Purchase Request</h3>
-            <div class="space-y-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
+            <h3 class="text-xl font-bold text-gray-900 mb-1">New Purchase Request</h3>
+            <p class="text-xs text-gray-500 mb-5">Submit a procurement order to restock electrical materials.</p>
+
+            <form @submit.prevent="submitRequest" class="space-y-4">
                 <div>
-                    <label class="block text-gray-700 text-sm mb-1">Item to Order</label>
-                    <select class="w-full bg-white border border-gray-200 rounded-lg p-2 text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm">
-                        <option>Heavy Duty Copper Wire (100m)</option>
-                        <option>LED Floodlight 200W</option>
-                        <option>Magnetic Contactor 220V</option>
+                    <label class="block text-gray-700 text-xs font-semibold uppercase tracking-wider mb-1">Select Catalog Item</label>
+                    <select 
+                        v-model="form.product_id" 
+                        class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-gray-900 focus:border-[#F8B803] focus:outline-none text-sm"
+                        @change="onProductSelect"
+                    >
+                        <option value="">Custom Item (Enter below)</option>
+                        <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }} ({{ p.sku }})</option>
                     </select>
                 </div>
+
                 <div>
-                    <label class="block text-gray-700 text-sm mb-1">Supplier</label>
-                    <select class="w-full bg-white border border-gray-200 rounded-lg p-2 text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm">
-                        <option>Global Wire Systems</option>
-                        <option>Lumen Lighting Co.</option>
-                        <option>ElectroTech Industries</option>
+                    <label class="block text-gray-700 text-xs font-semibold uppercase tracking-wider mb-1">Item Name *</label>
+                    <input 
+                        v-model="form.item" 
+                        type="text" 
+                        required 
+                        placeholder="e.g. THHN Stranded Wire 3.5mm²"
+                        class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-gray-900 focus:border-[#F8B803] focus:outline-none text-sm"
+                    />
+                </div>
+
+                <div>
+                    <label class="block text-gray-700 text-xs font-semibold uppercase tracking-wider mb-1">Supplier Vendor</label>
+                    <select 
+                        v-model="form.supplier_id" 
+                        class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-gray-900 focus:border-[#F8B803] focus:outline-none text-sm mb-2"
+                        @change="onSupplierSelect"
+                    >
+                        <option value="">Custom Vendor (Enter below)</option>
+                        <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
                     </select>
+                    <input 
+                        v-model="form.supplier" 
+                        type="text" 
+                        required 
+                        placeholder="e.g. ElectroTech Industries"
+                        class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-gray-900 focus:border-[#F8B803] focus:outline-none text-sm"
+                    />
                 </div>
+
                 <div>
-                    <label class="block text-gray-700 text-sm mb-1">Quantity</label>
-                    <input type="number" min="1" value="10" class="w-full bg-white border border-gray-200 rounded-lg p-2 text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" />
+                    <label class="block text-gray-700 text-xs font-semibold uppercase tracking-wider mb-1">Quantity *</label>
+                    <input 
+                        v-model.number="form.qty" 
+                        type="number" 
+                        min="1" 
+                        required 
+                        class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-gray-900 focus:border-[#F8B803] focus:outline-none text-sm"
+                    />
                 </div>
-            </div>
-            <div class="flex justify-end gap-3 mt-8">
-                <button @click="showCreateModal = false" class="px-4 py-2 text-gray-500 hover:text-gray-900">Cancel</button>
-                <button @click="saveRequest" class="px-4 py-2 bg-[#4b5320] text-white font-bold rounded-lg hover:shadow-lg transition-all">Submit Request</button>
+
+                <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                    <SpecularButton
+                        variant="secondary"
+                        size="md"
+                        :radius="10"
+                        type="button"
+                        @click="showCreateModal = false"
+                    >
+                        Cancel
+                    </SpecularButton>
+                    <SpecularButton
+                        variant="brand"
+                        size="md"
+                        :radius="10"
+                        type="submit"
+                        :disabled="form.processing"
+                    >
+                        {{ form.processing ? 'Submitting...' : 'Submit Request' }}
+                    </SpecularButton>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
+            <h3 class="text-xl font-bold text-gray-900 mb-2">Delete Purchase Request</h3>
+            <p class="text-gray-600 text-sm mb-6">
+                Are you sure you want to delete purchase request <span class="font-semibold text-gray-900">{{ selectedRequest?.id }}</span>?
+            </p>
+            <div class="flex justify-end gap-3">
+                <SpecularButton
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showDeleteModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    variant="destructive"
+                    size="md"
+                    :radius="10"
+                    @click="submitDelete"
+                >
+                    Delete Request
+                </SpecularButton>
             </div>
         </div>
     </div>

@@ -11,7 +11,7 @@ import {
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import type { NavItem } from '@/types';
 withDefaults(defineProps<{ items: NavItem[]; label?: string }>(), {
-    label: 'Workspace',
+    label: '',
 });
 const { isCurrentUrl } = useCurrentUrl();
 const { isMobile, setOpenMobile } = useSidebar();
@@ -24,6 +24,7 @@ function closeOnMobile() {
 <template>
     <SidebarGroup class="px-3 py-2">
         <SidebarGroupLabel
+            v-if="label"
             class="mb-2 px-3 text-[10px] font-bold tracking-[0.16em] text-white/60 uppercase"
             >{{ label }}</SidebarGroupLabel
         >
