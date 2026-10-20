@@ -45,7 +45,8 @@ class UserFactory extends Factory
     {
         return $this->afterCreating(function ($user) {
             $team = Team::factory()->personal()->create([
-                'name' => $user->name."'s Team",
+                'name' => 'MR Pride',
+                'slug' => 'mr-pride',
             ]);
 
             $team->members()->attach($user, [

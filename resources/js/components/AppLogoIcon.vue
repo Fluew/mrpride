@@ -1,22 +1,20 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from 'vue';
-
-defineOptions({
-    inheritAttrs: false,
-});
+import { cn } from '@/lib/utils';
 
 type Props = {
+    class?: HTMLAttributes['class'];
     className?: HTMLAttributes['class'];
 };
 
-defineProps<Props>();
+const props = defineProps<Props>();
 </script>
 
 <template>
     <img
         src="/LOGO_MR_PRIDE.png"
         alt="MR-Pride Logo"
-        :class="className"
+        :class="cn('object-contain', props.class, props.className)"
         v-bind="$attrs"
     />
 </template>

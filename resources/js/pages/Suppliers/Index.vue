@@ -1,45 +1,310 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { Head, router, useForm, usePage } from '@inertiajs/vue3';
+import { ref, computed, watch } from 'vue';
 import SpecularButton from '@/components/ui/SpecularButton.vue';
+import { Search, Plus, SlidersHorizontal, Trash2, Pencil, X, Check, CheckCircle2, Building2, Phone, Mail, Award } from '@lucide/vue';
 
-const suppliers = ref([
-    { id: 1, name: 'ElectroTech Industries', contactPerson: 'Michael Chang', phone: '+1 (555) 123-4567', email: 'sales@electrotech.com', status: 'Active', ahpScore: 0.842, metrics: { price: 9, quality: 8, delivery: 9, service: 7 } },
-    { id: 2, name: 'Global Wire Systems', contactPerson: 'Sarah Jenkins', phone: '+1 (555) 987-6543', email: 'orders@globalwire.com', status: 'Active', ahpScore: 0.615, metrics: { price: 6, quality: 7, delivery: 5, service: 8 } },
-    { id: 3, name: 'Lumen Lighting Co.', contactPerson: 'David Ross', phone: '+1 (555) 456-7890', email: 'support@lumenlight.com', status: 'Inactive', ahpScore: 0.420, metrics: { price: 5, quality: 6, delivery: 4, service: 4 } },
-]);
+interface SupplierMetrics {
+    price?: number;
+    quality?: number;
+    delivery?: number;
+    service?: number;
+}
 
-const showAhpModal = ref(false);
+interface Supplier {
+    id: number;
+    name: string;
+    contact_person?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    address?: string | null;
+    status: 'Active' | 'Inactive';
+    ahp_score?: number | null;
+    metrics?: SupplierMetrics | null;
+}
 
+const props = defineProps<{
+    suppliers: {
+        data: Supplier[];
+        current_page: number;
+        last_page: number;
+        total: number;
+        links: any[];
+    };
+    filters?: {
+        search?: string;
+        status?: string;
+        sort?: string;
+    };
+}>();
+
+const page = usePage();
+const teamSlug = computed(() => (page.props as any).currentTeam?.slug || (page.props as any).team?.slug || '');
+
+// Search & Filter
+const search = ref(props.filters?.search || '');
+const selectedStatus = ref(props.filters?.status || 'All');
+const selectedSort = ref(props.filters?.sort || 'ahp_desc');
+let searchTimeout: ReturnType<typeof setTimeout> | null = null;
+
+const triggerNavigation = () => {
+    if (searchTimeout) clearTimeout(searchTimeout);
+    router.get(
+        `/${teamSlug.value}/suppliers`,
+        {
+            search: search.value || undefined,
+            status: selectedStatus.value !== 'All' ? selectedStatus.value : undefined,
+            sort: selectedSort.value !== 'ahp_desc' ? selectedSort.value : undefined,
+        },
+        { preserveState: true, preserveScroll: true, replace: true }
+    );
+};
+
+const applySearch = () => {
+    if (searchTimeout) clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(triggerNavigation, 300);
+};
+
+const applyFilter = () => {
+    triggerNavigation();
+};
+
+watch(() => props.filters, (newFilters) => {
+    if (newFilters) {
+        if (newFilters.search !== undefined) search.value = newFilters.search || '';
+        if (newFilters.status !== undefined) selectedStatus.value = newFilters.status || 'All';
+        if (newFilters.sort !== undefined) selectedSort.value = newFilters.sort || 'ahp_desc';
+    }
+}, { deep: true });
+
+// Modals
 const showAddModal = ref(false);
 const showEditModal = ref(false);
 const showDeleteModal = ref(false);
-const selectedSupplier = ref<any>(null);
+const showAhpModal = ref(false);
+const selectedSupplier = ref<Supplier | null>(null);
 
-const openAddModal = () => showAddModal.value = true;
-const openEditModal = (supplier: any) => { selectedSupplier.value = { ...supplier }; showEditModal.value = true; };
-const openDeleteModal = (supplier: any) => { selectedSupplier.value = supplier; showDeleteModal.value = true; };
+// Form
+const form = useForm({
+    id: null as number | null,
+    name: '',
+    contact_person: '',
+    phone: '',
+    email: '',
+    address: '',
+    status: 'Active' as 'Active' | 'Inactive',
+});
 
-const saveSupplier = () => { alert('Supplier saved (Prototype)'); showAddModal.value = false; showEditModal.value = false; };
-const deleteSupplier = () => { alert('Supplier deleted (Prototype)'); showDeleteModal.value = false; };
+const openAddModal = () => {
+    form.reset();
+    form.clearErrors();
+    form.status = 'Active';
+    showAddModal.value = true;
+};
+
+const openEditModal = (supplier: Supplier) => {
+    selectedSupplier.value = supplier;
+    form.clearErrors();
+    form.id = supplier.id;
+    form.name = supplier.name;
+    form.contact_person = supplier.contact_person || '';
+    form.phone = supplier.phone || '';
+    form.email = supplier.email || '';
+    form.address = supplier.address || '';
+    form.status = supplier.status;
+    showEditModal.value = true;
+};
+
+const openDeleteModal = (supplier: Supplier) => {
+    selectedSupplier.value = supplier;
+    showDeleteModal.value = true;
+};
+
+// Action Confirmation Modal State
+interface ConfirmActionOptions {
+    title: string;
+    description: string;
+    details?: Array<{ label: string; value: string | number }>;
+    confirmText?: string;
+    action: () => void;
+}
+
+const showConfirmModal = ref(false);
+const confirmOptions = ref<ConfirmActionOptions>({
+    title: 'Confirm Action',
+    description: 'Are you sure you want to proceed?',
+    details: [],
+    confirmText: 'Confirm & Save',
+    action: () => {},
+});
+
+const openConfirmModal = (options: ConfirmActionOptions) => {
+    confirmOptions.value = {
+        confirmText: 'Confirm & Save',
+        ...options,
+    };
+    showConfirmModal.value = true;
+};
+
+const handleConfirmedAction = () => {
+    showConfirmModal.value = false;
+    confirmOptions.value.action();
+};
+
+const promptSaveSupplier = () => {
+    if (!form.name.trim()) return;
+
+    if (showEditModal.value) {
+        openConfirmModal({
+            title: 'Confirm Supplier Changes',
+            description: `Are you sure you want to save modifications to "${form.name}"?`,
+            details: [
+                { label: 'Company Name', value: form.name },
+                { label: 'Contact Person', value: form.contact_person || 'N/A' },
+                { label: 'Phone', value: form.phone || 'N/A' },
+                { label: 'Status', value: form.status },
+            ],
+            confirmText: 'Save Changes',
+            action: submitEdit,
+        });
+    } else {
+        openConfirmModal({
+            title: 'Confirm New Supplier',
+            description: `Are you sure you want to register "${form.name}" as an active supplier?`,
+            details: [
+                { label: 'Company Name', value: form.name },
+                { label: 'Contact Person', value: form.contact_person || 'N/A' },
+                { label: 'Phone', value: form.phone || 'N/A' },
+                { label: 'Status', value: form.status },
+            ],
+            confirmText: 'Add Supplier',
+            action: submitAdd,
+        });
+    }
+};
+
+const submitAdd = () => {
+    form.post(`/${teamSlug.value}/suppliers`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            showAddModal.value = false;
+            form.reset();
+        },
+    });
+};
+
+const submitEdit = () => {
+    if (!form.id) return;
+    form.put(`/${teamSlug.value}/suppliers/${form.id}`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            showEditModal.value = false;
+            form.reset();
+        },
+    });
+};
+
+const confirmDelete = () => {
+    if (!selectedSupplier.value) return;
+    router.delete(`/${teamSlug.value}/suppliers/${selectedSupplier.value.id}`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            showDeleteModal.value = false;
+            selectedSupplier.value = null;
+        },
+    });
+};
+
+// AHP Evaluation State
+const ahpWeights = ref({
+    price: 45,
+    quality: 30,
+    delivery: 15,
+    service: 10,
+});
+
+const ahpSupplierScores = ref<Array<{
+    id: number;
+    name: string;
+    price: number;
+    quality: number;
+    delivery: number;
+    service: number;
+}>>([]);
+
+const initAhp = () => {
+    ahpSupplierScores.value = props.suppliers.data.map(s => ({
+        id: s.id,
+        name: s.name,
+        price: s.metrics?.price ?? 8,
+        quality: s.metrics?.quality ?? 8,
+        delivery: s.metrics?.delivery ?? 7,
+        service: s.metrics?.service ?? 7,
+    }));
+    showAhpModal.value = true;
+};
+
+const calculatedRankings = computed(() => {
+    const totalWeight = ahpWeights.value.price + ahpWeights.value.quality + ahpWeights.value.delivery + ahpWeights.value.service;
+    if (totalWeight <= 0) return [];
+
+    const normW = {
+        price: ahpWeights.value.price / totalWeight,
+        quality: ahpWeights.value.quality / totalWeight,
+        delivery: ahpWeights.value.delivery / totalWeight,
+        service: ahpWeights.value.service / totalWeight,
+    };
+
+    return ahpSupplierScores.value.map(s => {
+        const score = (s.price / 10) * normW.price +
+                      (s.quality / 10) * normW.quality +
+                      (s.delivery / 10) * normW.delivery +
+                      (s.service / 10) * normW.service;
+        return {
+            ...s,
+            calculatedScore: Number(score.toFixed(3)),
+        };
+    }).sort((a, b) => b.calculatedScore - a.calculatedScore);
+});
+
+const savingAhp = ref(false);
+const saveAhp = () => {
+    savingAhp.value = true;
+    router.post(
+        `/${teamSlug.value}/suppliers/ahp`,
+        {
+            criteria_weights: ahpWeights.value,
+            supplier_scores: ahpSupplierScores.value,
+        },
+        {
+            preserveScroll: true,
+            onFinish: () => {
+                savingAhp.value = false;
+                showAhpModal.value = false;
+            },
+        }
+    );
+};
 </script>
 
 <template>
     <Head title="Supplier Management" />
 
     <div class="workspace-page">
+        <!-- Header -->
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
             <div>
                 <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Supplier Management</h1>
-                <p class="text-gray-500 mt-1">Manage vendor contact information and details.</p>
+                <p class="text-gray-500 mt-1">Manage vendor contact information, contracts, and AHP evaluations.</p>
             </div>
             <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
                 <SpecularButton
                     variant="secondary"
                     size="md"
                     :radius="10"
-                    @click="showAhpModal = true"
+                    @click="initAhp"
                 >
+                    <SlidersHorizontal class="w-4 h-4 mr-1.5 inline" />
                     Run AHP Evaluation
                 </SpecularButton>
                 <SpecularButton
@@ -48,11 +313,51 @@ const deleteSupplier = () => { alert('Supplier deleted (Prototype)'); showDelete
                     :radius="10"
                     @click="openAddModal"
                 >
-                    + Add Supplier
+                    <Plus class="w-4 h-4 mr-1.5 inline" />
+                    Add Supplier
                 </SpecularButton>
             </div>
         </div>
 
+        <!-- Filter Bar -->
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+            <div class="relative flex-1 min-w-[240px] max-w-md">
+                <Search class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                    v-model="search"
+                    @input="applySearch"
+                    type="text"
+                    placeholder="Search by supplier name, contact, phone..."
+                    class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-[#F8B803] shadow-sm"
+                />
+            </div>
+
+            <div class="w-40">
+                <select
+                    v-model="selectedStatus"
+                    @change="applyFilter"
+                    class="w-full py-2 px-3 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:border-[#F8B803] shadow-sm cursor-pointer"
+                >
+                    <option value="All">All Statuses</option>
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                </select>
+            </div>
+
+            <div class="w-48">
+                <select
+                    v-model="selectedSort"
+                    @change="applyFilter"
+                    class="w-full py-2 px-3 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:border-[#F8B803] shadow-sm cursor-pointer"
+                >
+                    <option value="ahp_desc">Highest AHP Score</option>
+                    <option value="name_asc">Name (A-Z)</option>
+                    <option value="name_desc">Name (Z-A)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Suppliers Table -->
         <div class="flex-1 rounded-2xl bg-white border border-gray-200 p-6 shadow-sm">
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
@@ -60,19 +365,40 @@ const deleteSupplier = () => { alert('Supplier deleted (Prototype)'); showDelete
                         <tr class="border-b border-gray-200 text-gray-500 text-sm">
                             <th class="pb-3 font-medium">Company Name</th>
                             <th class="pb-3 font-medium">Contact Person</th>
-                            <th class="pb-3 font-medium">Phone</th>
+                            <th class="pb-3 font-medium">Phone & Email</th>
                             <th class="pb-3 font-medium">AHP Score</th>
                             <th class="pb-3 font-medium">Status</th>
                             <th class="pb-3 font-medium text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="text-sm">
-                        <tr v-for="supplier in suppliers" :key="supplier.id" class="border-b border-gray-100 hover:bg-gray-50 transition-colors group">
-                            <td class="py-4 text-gray-900 font-medium">{{ supplier.name }}</td>
-                            <td class="py-4 text-gray-600">{{ supplier.contactPerson }}</td>
-                            <td class="py-4 text-gray-600">{{ supplier.phone }}</td>
+                        <tr v-if="!suppliers.data.length">
+                            <td colspan="6" class="py-8 text-center text-gray-500">
+                                No suppliers found. Click "+ Add Supplier" to register your first supplier.
+                            </td>
+                        </tr>
+                        <tr v-for="supplier in suppliers.data" :key="supplier.id" class="border-b border-gray-100 hover:bg-gray-50 transition-colors group">
+                            <td class="py-4 text-gray-900 font-semibold flex items-center gap-2">
+                                <Building2 class="w-4 h-4 text-gray-400" />
+                                {{ supplier.name }}
+                            </td>
+                            <td class="py-4 text-gray-600">{{ supplier.contact_person || '—' }}</td>
+                            <td class="py-4 text-gray-600 text-xs space-y-0.5">
+                                <div v-if="supplier.phone" class="flex items-center gap-1.5">
+                                    <Phone class="w-3.5 h-3.5 text-gray-400" />
+                                    {{ supplier.phone }}
+                                </div>
+                                <div v-if="supplier.email" class="flex items-center gap-1.5">
+                                    <Mail class="w-3.5 h-3.5 text-gray-400" />
+                                    {{ supplier.email }}
+                                </div>
+                            </td>
                             <td class="py-4">
-                                <span class="text-[#F8B803] font-bold">{{ supplier.ahpScore }}</span>
+                                <span v-if="supplier.ahp_score !== null && supplier.ahp_score !== undefined" class="text-[#F8B803] font-bold text-base flex items-center gap-1">
+                                    <Award class="w-4 h-4 text-[#F8B803]" />
+                                    {{ Number(supplier.ahp_score).toFixed(3) }}
+                                </span>
+                                <span v-else class="text-gray-400 text-xs">Unranked</span>
                             </td>
                             <td class="py-4">
                                 <span :class="supplier.status === 'Active' ? 'text-green-600 bg-green-50 border-green-200' : 'text-gray-500 bg-gray-50 border-gray-200'" class="px-2.5 py-1 rounded-full text-xs font-medium border">
@@ -80,66 +406,106 @@ const deleteSupplier = () => { alert('Supplier deleted (Prototype)'); showDelete
                                 </span>
                             </td>
                             <td class="py-4 text-right">
-                                <button @click="showAhpModal = true" class="text-blue-600 hover:text-blue-800 mr-3 text-xs">AHP Details</button>
-                                <button @click="openEditModal(supplier)" class="text-gray-500 hover:text-gray-900 mr-3">Edit</button>
-                                <button @click="openDeleteModal(supplier)" class="text-red-500 hover:text-red-700">Delete</button>
+                                <button @click="openEditModal(supplier)" class="text-gray-500 hover:text-gray-900 mr-3 text-xs font-medium">Edit</button>
+                                <button @click="openDeleteModal(supplier)" class="text-red-500 hover:text-red-700 text-xs font-medium">Delete</button>
                             </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
+
+            <!-- Pagination -->
+            <div v-if="suppliers.total > suppliers.data.length" class="mt-6 flex items-center justify-between border-t border-gray-100 pt-4">
+                <span class="text-xs text-gray-500">
+                    Showing {{ suppliers.data.length }} of {{ suppliers.total }} suppliers
+                </span>
+                <div class="flex gap-1">
+                    <button
+                        v-for="(link, i) in suppliers.links"
+                        :key="i"
+                        :disabled="!link.url || link.active"
+                        @click="link.url && router.visit(link.url, { preserveScroll: true })"
+                        v-html="link.label"
+                        :class="[
+                            'px-3 py-1 text-xs rounded-lg border transition-colors',
+                            link.active ? 'bg-[#F8B803] text-white border-[#F8B803] font-bold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50',
+                            !link.url ? 'opacity-50 cursor-not-allowed' : ''
+                        ]"
+                    />
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- Modals -->
-    <div v-if="showAddModal || showEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-        <div class="bg-white border border-gray-200 p-6 rounded-xl w-[500px] shadow-2xl">
-            <h3 class="text-xl font-bold text-gray-900 mb-4">{{ showEditModal ? 'Edit Supplier' : 'Add Supplier' }}</h3>
-            <div class="space-y-4">
+    <!-- Add / Edit Modal -->
+    <div v-if="showAddModal || showEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-lg shadow-2xl">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="text-xl font-bold text-gray-900">{{ showEditModal ? 'Edit Supplier' : 'Add Supplier' }}</h3>
+                <button @click="showAddModal = false; showEditModal = false" class="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+
+            <form @submit.prevent="promptSaveSupplier" class="space-y-4">
                 <div>
-                    <label class="block text-gray-700 text-sm mb-1">Company Name</label>
-                    <input type="text" class="w-full bg-white border border-gray-200 rounded-lg p-2 text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" :value="selectedSupplier?.name || ''" />
+                    <label class="block text-gray-700 text-xs font-semibold mb-1">Company Name *</label>
+                    <input v-model="form.name" type="text" required class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" placeholder="e.g. Acme Electrical Supplies" />
+                    <span v-if="form.errors.name" class="text-xs text-red-500 mt-1 block">{{ form.errors.name }}</span>
                 </div>
                 <div>
-                    <label class="block text-gray-700 text-sm mb-1">Contact Person</label>
-                    <input type="text" class="w-full bg-white border border-gray-200 rounded-lg p-2 text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" :value="selectedSupplier?.contactPerson || ''" />
+                    <label class="block text-gray-700 text-xs font-semibold mb-1">Contact Person</label>
+                    <input v-model="form.contact_person" type="text" class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" placeholder="e.g. John Doe" />
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-gray-700 text-sm mb-1">Phone</label>
-                        <input type="text" class="w-full bg-white border border-gray-200 rounded-lg p-2 text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" :value="selectedSupplier?.phone || ''" />
+                        <label class="block text-gray-700 text-xs font-semibold mb-1">Phone</label>
+                        <input v-model="form.phone" type="text" class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" placeholder="+63 912 345 6789" />
                     </div>
                     <div>
-                        <label class="block text-gray-700 text-sm mb-1">Email</label>
-                        <input type="email" class="w-full bg-white border border-gray-200 rounded-lg p-2 text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" :value="selectedSupplier?.email || ''" />
+                        <label class="block text-gray-700 text-xs font-semibold mb-1">Email</label>
+                        <input v-model="form.email" type="email" class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" placeholder="sales@acme.com" />
                     </div>
                 </div>
-            </div>
-            <div class="flex justify-end gap-3 mt-6">
-                <SpecularButton
-                    variant="secondary"
-                    size="md"
-                    :radius="10"
-                    @click="showAddModal = false; showEditModal = false"
-                >
-                    Cancel
-                </SpecularButton>
-                <SpecularButton
-                    variant="brand"
-                    size="md"
-                    :radius="10"
-                    @click="saveSupplier"
-                >
-                    Save
-                </SpecularButton>
-            </div>
+                <div>
+                    <label class="block text-gray-700 text-xs font-semibold mb-1">Address / Notes</label>
+                    <textarea v-model="form.address" rows="2" class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" placeholder="Office location or warehouse details..."></textarea>
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-xs font-semibold mb-1">Status</label>
+                    <select v-model="form.status" class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm">
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-6 pt-2 border-t border-gray-100">
+                    <SpecularButton
+                        type="button"
+                        variant="secondary"
+                        size="md"
+                        :radius="10"
+                        @click="showAddModal = false; showEditModal = false"
+                    >
+                        Cancel
+                    </SpecularButton>
+                    <SpecularButton
+                        type="submit"
+                        variant="brand"
+                        size="md"
+                        :radius="10"
+                        :disabled="form.processing"
+                    >
+                        {{ form.processing ? 'Saving...' : 'Save Supplier' }}
+                    </SpecularButton>
+                </div>
+            </form>
         </div>
     </div>
 
-    <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-        <div class="bg-white border border-gray-200 p-6 rounded-xl w-[400px] shadow-2xl">
+    <!-- Delete Confirmation Modal -->
+    <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
             <h3 class="text-xl font-bold text-gray-900 mb-2">Confirm Delete</h3>
-            <p class="text-gray-600 mb-6">Are you sure you want to delete {{ selectedSupplier?.name }}? This action cannot be undone.</p>
+            <p class="text-gray-600 text-sm mb-6">Are you sure you want to delete <span class="font-semibold text-gray-900">{{ selectedSupplier?.name }}</span>? This will permanently remove the supplier record.</p>
             <div class="flex justify-end gap-3">
                 <SpecularButton
                     variant="secondary"
@@ -153,9 +519,9 @@ const deleteSupplier = () => { alert('Supplier deleted (Prototype)'); showDelete
                     variant="destructive"
                     size="md"
                     :radius="10"
-                    @click="deleteSupplier"
+                    @click="confirmDelete"
                 >
-                    Delete
+                    Delete Supplier
                 </SpecularButton>
             </div>
         </div>
@@ -163,75 +529,158 @@ const deleteSupplier = () => { alert('Supplier deleted (Prototype)'); showDelete
 
     <!-- AHP Evaluation Modal -->
     <div v-if="showAhpModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl">
             <div class="flex justify-between items-center mb-6">
                 <div>
                     <h3 class="text-2xl font-bold text-gray-900 tracking-tight">Analytic Hierarchy Process (AHP)</h3>
-                    <p class="text-gray-500">Supplier Evaluation Matrix & Pairwise Comparisons</p>
+                    <p class="text-gray-500 text-sm">Tune criteria weights and evaluate supplier metrics to calculate optimal vendor rankings.</p>
                 </div>
-                <button @click="showAhpModal = false" class="text-gray-500 hover:text-gray-900">&times;</button>
+                <button @click="showAhpModal = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
 
-            <div class="grid grid-cols-2 gap-6 mb-6">
-                <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                    <h4 class="text-gray-900 font-bold mb-3 border-b border-gray-200 pb-2">Criteria Weights (Normalized)</h4>
-                    <ul class="space-y-2 text-sm">
-                        <li class="flex justify-between"><span class="text-gray-600">Price (Cost)</span> <span class="text-[#F8B803] font-medium">0.450</span></li>
-                        <li class="flex justify-between"><span class="text-gray-600">Quality</span> <span class="text-[#F8B803] font-medium">0.300</span></li>
-                        <li class="flex justify-between"><span class="text-gray-600">Delivery Reliability</span> <span class="text-[#F8B803] font-medium">0.150</span></li>
-                        <li class="flex justify-between"><span class="text-gray-600">Service / Support</span> <span class="text-[#F8B803] font-medium">0.100</span></li>
-                    </ul>
-                    <div class="mt-4 pt-3 border-t border-gray-200">
-                        <p class="text-xs text-green-600">Consistency Ratio (CR) = 0.04 &lt; 0.10 (Acceptable)</p>
+            <!-- Criteria Weights -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div class="bg-gray-50 p-5 rounded-xl border border-gray-200">
+                    <h4 class="text-gray-900 font-bold mb-3 border-b border-gray-200 pb-2 text-sm">Criteria Relative Weights (%)</h4>
+                    <div class="space-y-3">
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="font-medium text-gray-700">Price / Cost ({{ ahpWeights.price }}%)</span>
+                            </div>
+                            <input v-model.number="ahpWeights.price" type="range" min="1" max="100" class="w-full accent-[#F8B803]" />
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="font-medium text-gray-700">Quality ({{ ahpWeights.quality }}%)</span>
+                            </div>
+                            <input v-model.number="ahpWeights.quality" type="range" min="1" max="100" class="w-full accent-[#F8B803]" />
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="font-medium text-gray-700">Delivery Reliability ({{ ahpWeights.delivery }}%)</span>
+                            </div>
+                            <input v-model.number="ahpWeights.delivery" type="range" min="1" max="100" class="w-full accent-[#F8B803]" />
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="font-medium text-gray-700">Service / Support ({{ ahpWeights.service }}%)</span>
+                            </div>
+                            <input v-model.number="ahpWeights.service" type="range" min="1" max="100" class="w-full accent-[#F8B803]" />
+                        </div>
                     </div>
                 </div>
 
-                <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                    <h4 class="text-gray-900 font-bold mb-3 border-b border-gray-200 pb-2">Final Supplier Rankings</h4>
-                    <ul class="space-y-3">
-                        <li v-for="(sup, index) in suppliers.sort((a,b) => b.ahpScore - a.ahpScore)" :key="sup.id" class="flex items-center gap-3">
-                            <span class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-700">{{ index + 1 }}</span>
-                            <span class="text-gray-900 flex-1">{{ sup.name }}</span>
-                            <span class="text-[#F8B803] font-bold">{{ sup.ahpScore }}</span>
-                        </li>
-                    </ul>
+                <!-- Calculated Rankings -->
+                <div class="bg-gray-50 p-5 rounded-xl border border-gray-200">
+                    <h4 class="text-gray-900 font-bold mb-3 border-b border-gray-200 pb-2 text-sm">Calculated Rankings</h4>
+                    <div class="space-y-2.5 max-h-[180px] overflow-y-auto pr-1">
+                        <div v-for="(sup, idx) in calculatedRankings" :key="sup.id" class="flex items-center justify-between p-2 rounded-lg bg-white border border-gray-200 text-sm">
+                            <div class="flex items-center gap-2.5">
+                                <span class="w-6 h-6 rounded-full bg-[#F8B803]/20 text-[#92400e] flex items-center justify-center text-xs font-bold">{{ idx + 1 }}</span>
+                                <span class="font-medium text-gray-900">{{ sup.name }}</span>
+                            </div>
+                            <span class="font-bold text-[#F8B803]">{{ sup.calculatedScore.toFixed(3) }}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="bg-gray-50 rounded-lg border border-gray-200 p-4">
-                <h4 class="text-gray-900 font-bold mb-4">Detailed Performance Matrix</h4>
+            <!-- Detailed Performance Matrix -->
+            <div class="bg-gray-50 rounded-xl border border-gray-200 p-5 mb-6">
+                <h4 class="text-gray-900 font-bold mb-3 text-sm">Rate Supplier Performance (1 = Poor, 10 = Excellent)</h4>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-sm text-gray-600">
                         <thead class="text-xs uppercase text-gray-500 border-b border-gray-200">
                             <tr>
                                 <th class="pb-2">Supplier</th>
-                                <th class="pb-2 text-center">Price (45%)</th>
-                                <th class="pb-2 text-center">Quality (30%)</th>
-                                <th class="pb-2 text-center">Delivery (15%)</th>
-                                <th class="pb-2 text-center">Service (10%)</th>
+                                <th class="pb-2 text-center">Price (1-10)</th>
+                                <th class="pb-2 text-center">Quality (1-10)</th>
+                                <th class="pb-2 text-center">Delivery (1-10)</th>
+                                <th class="pb-2 text-center">Service (1-10)</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200">
-                            <tr v-for="sup in suppliers" :key="sup.id">
-                                <td class="py-3 text-gray-900 font-medium">{{ sup.name }}</td>
-                                <td class="py-3 text-center">{{ sup.metrics.price }}/10</td>
-                                <td class="py-3 text-center">{{ sup.metrics.quality }}/10</td>
-                                <td class="py-3 text-center">{{ sup.metrics.delivery }}/10</td>
-                                <td class="py-3 text-center">{{ sup.metrics.service }}/10</td>
+                            <tr v-for="sup in ahpSupplierScores" :key="sup.id">
+                                <td class="py-3 text-gray-900 font-semibold">{{ sup.name }}</td>
+                                <td class="py-3 text-center">
+                                    <input v-model.number="sup.price" type="number" min="1" max="10" class="w-16 text-center bg-white border border-gray-200 rounded-lg py-1 text-sm text-gray-900 focus:outline-none focus:border-[#F8B803]" />
+                                </td>
+                                <td class="py-3 text-center">
+                                    <input v-model.number="sup.quality" type="number" min="1" max="10" class="w-16 text-center bg-white border border-gray-200 rounded-lg py-1 text-sm text-gray-900 focus:outline-none focus:border-[#F8B803]" />
+                                </td>
+                                <td class="py-3 text-center">
+                                    <input v-model.number="sup.delivery" type="number" min="1" max="10" class="w-16 text-center bg-white border border-gray-200 rounded-lg py-1 text-sm text-gray-900 focus:outline-none focus:border-[#F8B803]" />
+                                </td>
+                                <td class="py-3 text-center">
+                                    <input v-model.number="sup.service" type="number" min="1" max="10" class="w-16 text-center bg-white border border-gray-200 rounded-lg py-1 text-sm text-gray-900 focus:outline-none focus:border-[#F8B803]" />
+                                </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </div>
-            
-            <div class="mt-6 flex justify-end">
+
+            <!-- Footer -->
+            <div class="flex justify-end gap-3 pt-2 border-t border-gray-100">
                 <SpecularButton
-                    variant="brand"
+                    variant="secondary"
                     size="md"
                     :radius="10"
                     @click="showAhpModal = false"
                 >
-                    Close Evaluation
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    variant="brand"
+                    size="md"
+                    :radius="10"
+                    :disabled="savingAhp"
+                    @click="saveAhp"
+                >
+                    {{ savingAhp ? 'Saving...' : 'Apply & Save Rankings' }}
+                </SpecularButton>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Confirmation Modal -->
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div class="w-11 h-11 rounded-full bg-amber-50 text-[#F8B803] flex items-center justify-center mb-4 border border-amber-100">
+                <CheckCircle2 class="w-6 h-6" />
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
+            <p class="text-gray-600 text-sm mb-4 leading-relaxed">
+                {{ confirmOptions.description }}
+            </p>
+
+            <div v-if="confirmOptions.details && confirmOptions.details.length > 0" class="bg-gray-50 border border-gray-100 rounded-xl p-3.5 mb-5 space-y-2 text-xs">
+                <div v-for="(item, idx) in confirmOptions.details" :key="idx" class="flex justify-between items-center py-0.5 border-b border-gray-100 last:border-b-0">
+                    <span class="text-gray-500 font-medium">{{ item.label }}</span>
+                    <span class="font-semibold text-gray-900 text-right">{{ item.value }}</span>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3">
+                <SpecularButton
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showConfirmModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    type="button"
+                    variant="brand"
+                    size="md"
+                    :radius="10"
+                    @click="handleConfirmedAction"
+                    :disabled="form.processing"
+                >
+                    <Check class="w-4 h-4 mr-1.5" />
+                    <span>{{ confirmOptions.confirmText || 'Confirm & Save' }}</span>
                 </SpecularButton>
             </div>
         </div>

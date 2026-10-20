@@ -75,11 +75,7 @@ import PublicLayout from '@/layouts/PublicLayout.vue';
                                 Vision
                             </h2>
                             <p class="text-lg leading-relaxed text-gray-600">
-                                Our mission is to offer a good quality and fair
-                                price materials. As well as establishing an
-                                efficient relationship of teamwork with our
-                                business partners. To serve with a character and
-                                a purpose that brings honor to God.
+                                To become a premier, trusted distributor and supplier in the field of electrical materials and supplies, conducting honest dealing with all stakeholders while expanding our reach nationwide.
                             </p>
                         </div>
                     </SpotlightCard>
@@ -103,11 +99,7 @@ import PublicLayout from '@/layouts/PublicLayout.vue';
                                 Mission
                             </h2>
                             <p class="text-lg leading-relaxed text-gray-600">
-                                To become a well-known distributor and supplier
-                                in a field of office and Electrical materials,
-                                and honest dealing with all people while growing
-                                from a small start-up business to a huge
-                                provider.
+                                To offer superior quality electrical materials at fair and competitive prices, establishing lasting partnerships with contractors and engineers, and serving with character and purpose.
                             </p>
                         </div>
                     </SpotlightCard>

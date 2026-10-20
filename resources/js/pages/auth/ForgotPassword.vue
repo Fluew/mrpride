@@ -11,8 +11,8 @@ import { email } from '@/routes/password';
 
 defineOptions({
     layout: {
-        title: 'Forgot password',
-        description: 'Enter your email to receive a password reset link',
+        title: 'Forgot Password',
+        description: 'Enter your email to receive a temporary login password',
     },
 });
 
@@ -22,11 +22,11 @@ defineProps<{
 </script>
 
 <template>
-    <Head title="Forgot password" />
+    <Head title="Forgot Password" />
 
     <div
         v-if="status"
-        class="mb-4 text-center text-sm font-medium text-green-600"
+        class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-800 shadow-xs"
     >
         {{ status }}
     </div>
@@ -48,12 +48,12 @@ defineProps<{
 
             <div class="my-6 flex items-center justify-start">
                 <Button
-                    class="w-full"
+                    class="w-full bg-[#4b5320] hover:bg-[#3b4219] text-white"
                     :disabled="processing"
-                    data-test="email-password-reset-link-button"
+                    data-test="email-temporary-password-button"
                 >
                     <Spinner v-if="processing" />
-                    Email password reset link
+                    Send Temporary Password
                 </Button>
             </div>
         </Form>

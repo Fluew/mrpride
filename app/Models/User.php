@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -17,8 +18,13 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property string $name
  * @property string $email
+ * @property string $role
  * @property Carbon|null $email_verified_at
  * @property string $password
+ * @property bool $must_change_password
+ * @property Carbon|null $password_changed_at
+ * @property array|null $password_history
+ * @property string|null $admin_recovery_key
  * @property string|null $two_factor_secret
  * @property string|null $two_factor_recovery_codes
  * @property Carbon|null $two_factor_confirmed_at
@@ -30,9 +36,30 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, Team> $ownedTeams
  * @property-read Collection<int, Membership> $teamMemberships
  * @property-read Collection<int, Team> $teams
+ * @property-read Collection<int, TrustedDevice> $trustedDevices
+ * @property-read Collection<int, AuditLog> $auditLogs
  */
-#[Fillable(['name', 'email', 'password', 'current_team_id'])]
-#[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
+#[Fillable([
+    'name',
+    'email',
+    'role',
+    'status',
+    'password',
+    'current_team_id',
+    'must_change_password',
+    'password_changed_at',
+    'last_login_at',
+    'password_history',
+    'admin_recovery_key',
+])]
+#[Hidden([
+    'password',
+    'password_history',
+    'admin_recovery_key',
+    'two_factor_secret',
+    'two_factor_recovery_codes',
+    'remember_token',
+])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -48,6 +75,110 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'must_change_password' => 'boolean',
+            'password_changed_at' => 'datetime',
+            'last_login_at' => 'datetime',
+            'password_history' => 'array',
         ];
+    }
+
+    /**
+     * Determine if user has the supreme Owner/Superadmin role.
+     */
+    public function isSuperAdmin(): bool
+    {
+        return in_array($this->role, ['superadmin', 'owner'], true);
+    }
+
+    /**
+     * Determine if user has administrator privileges (Owner/Superadmin or Admin).
+     */
+    public function isAdmin(): bool
+    {
+        return in_array($this->role, ['superadmin', 'owner', 'admin'], true);
+    }
+
+    /**
+     * Determine if user has strictly regular admin role.
+     */
+    public function isRegularAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
+    /**
+     * Determine if user has staff privileges.
+     */
+    public function isStaff(): bool
+    {
+        return $this->role === 'staff';
+    }
+
+    /**
+     * Determine if user is a standard customer.
+     */
+    public function isUser(): bool
+    {
+        return $this->role === 'user' || empty($this->role);
+    }
+
+    /**
+     * Determine if user is internal personnel (superadmin, admin, or staff).
+     */
+    public function isAdminOrStaff(): bool
+    {
+        return in_array($this->role, ['superadmin', 'owner', 'admin', 'staff'], true);
+    }
+
+    /**
+     * Check if user account is active.
+     */
+    public function isActive(): bool
+    {
+        return ($this->status ?? 'active') === 'active';
+    }
+
+    /**
+     * Determine if user has any of the given roles.
+     *
+     * @param  string|array<int, string>  $roles
+     */
+    public function hasRole(string|array $roles): bool
+    {
+        $rolesArray = is_array($roles) ? $roles : func_get_args();
+
+        return in_array($this->role, $rolesArray, true);
+    }
+
+    /**
+     * Check if the user's password has reached the 90-day expiration threshold.
+     */
+    public function isPasswordExpired(): bool
+    {
+        // Only enforced for admin and staff accounts
+        if (! $this->isAdminOrStaff()) {
+            return false;
+        }
+
+        if ($this->must_change_password) {
+            return true;
+        }
+
+        if (! $this->password_changed_at) {
+            return true;
+        }
+
+        // Expire after 90 days (3 months)
+        return $this->password_changed_at->diffInDays(now()) >= 90;
+    }
+
+    public function trustedDevices(): HasMany
+    {
+        return $this->hasMany(TrustedDevice::class);
+    }
+
+    public function auditLogs(): HasMany
+    {
+        return $this->hasMany(AuditLog::class);
     }
 }

@@ -44,7 +44,15 @@ interface StockMovement {
     reason?: string;
     remarks?: string;
     movement_date: string;
-    product?: { id: number; name: string; sku: string };
+    product?: { 
+        id: number; 
+        name: string; 
+        sku: string; 
+        category?: string; 
+        status?: string;
+        stock?: number;
+        reorder_level?: number;
+    };
     user?: { id: number; name: string };
     supplier?: { id: number; name: string };
 }
@@ -100,6 +108,7 @@ const props = defineProps<{
         search?: string;
         category?: string;
         status?: string;
+        view?: 'table' | 'history';
     };
 }>();
 
@@ -110,7 +119,7 @@ const teamSlug = computed(() => (page.props as any).currentTeam?.slug || (page.p
 const searchQuery = ref(props.filters?.search || '');
 const selectedCategory = ref(props.filters?.category || 'All Categories');
 const selectedStatus = ref(props.filters?.status || 'All');
-const activeView = ref<'table' | 'history'>('table');
+const activeView = ref<'table' | 'history'>(props.filters?.view || 'table');
 
 // Toast Notification
 const notification = ref<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -130,34 +139,99 @@ watch(() => page.props.flash, (flash: any) => {
 
 // Filter debounce navigation
 let searchTimeout: ReturnType<typeof setTimeout> | null = null;
+const triggerNavigation = () => {
+    if (searchTimeout) clearTimeout(searchTimeout);
+    router.get(
+        `/${teamSlug.value}/inventory`,
+        {
+            search: searchQuery.value || undefined,
+            category: selectedCategory.value !== 'All Categories' ? selectedCategory.value : undefined,
+            status: selectedStatus.value !== 'All' ? selectedStatus.value : undefined,
+            view: activeView.value !== 'table' ? activeView.value : undefined,
+        },
+        {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        }
+    );
+};
+
 const applyFilters = () => {
     if (searchTimeout) clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-        router.get(
-            `/${teamSlug.value}/inventory`,
-            {
-                search: searchQuery.value || undefined,
-                category: selectedCategory.value !== 'All Categories' ? selectedCategory.value : undefined,
-                status: selectedStatus.value !== 'All' ? selectedStatus.value : undefined,
-            },
-            {
-                preserveState: true,
-                preserveScroll: true,
-                replace: true,
-            }
-        );
-    }, 300);
+    searchTimeout = setTimeout(triggerNavigation, 300);
 };
 
 const filterByCategory = (cat: string) => {
     selectedCategory.value = cat;
-    applyFilters();
+    triggerNavigation();
 };
 
 const filterByStatus = (st: string) => {
     selectedStatus.value = st;
-    applyFilters();
+    triggerNavigation();
 };
+
+const changeView = (view: 'table' | 'history') => {
+    activeView.value = view;
+    triggerNavigation();
+};
+
+// Filtered movements based on active filters
+const filteredMovements = computed(() => {
+    let list = props.recent_movements || [];
+
+    if (selectedCategory.value && selectedCategory.value !== 'All Categories') {
+        list = list.filter(m => m.product?.category === selectedCategory.value);
+    }
+
+    if (selectedStatus.value && selectedStatus.value !== 'All') {
+        list = list.filter(m => {
+            const product = m.product;
+            if (!product) return false;
+            if (selectedStatus.value === 'Needs Reorder') {
+                const threshold = (product.reorder_level && product.reorder_level > 0) ? product.reorder_level : 10;
+                return (product.stock !== undefined && product.stock <= threshold) || product.status === 'Low Stock' || product.status === 'Out of Stock';
+            }
+            if (selectedStatus.value === 'Out of Stock') {
+                return (product.stock !== undefined && product.stock <= 0) || product.status === 'Out of Stock';
+            }
+            if (selectedStatus.value === 'Low Stock') {
+                const threshold = (product.reorder_level && product.reorder_level > 0) ? product.reorder_level : 10;
+                return (product.stock !== undefined && product.stock > 0 && product.stock <= threshold) || product.status === 'Low Stock';
+            }
+            if (selectedStatus.value === 'In Stock') {
+                const threshold = (product.reorder_level && product.reorder_level > 0) ? product.reorder_level : 10;
+                return (product.stock !== undefined && product.stock > threshold) || product.status === 'In Stock';
+            }
+            return product.status === selectedStatus.value;
+        });
+    }
+
+    if (searchQuery.value && searchQuery.value.trim() !== '') {
+        const query = searchQuery.value.toLowerCase().trim();
+        list = list.filter(m => 
+            m.product?.name?.toLowerCase().includes(query) ||
+            m.product?.sku?.toLowerCase().includes(query) ||
+            m.reference_number?.toLowerCase().includes(query) ||
+            m.reason?.toLowerCase().includes(query) ||
+            m.remarks?.toLowerCase().includes(query) ||
+            m.user?.name?.toLowerCase().includes(query)
+        );
+    }
+
+    return list;
+});
+
+// Sync filter changes when props change
+watch(() => props.filters, (newFilters) => {
+    if (newFilters) {
+        if (newFilters.status !== undefined) selectedStatus.value = newFilters.status || 'All';
+        if (newFilters.category !== undefined) selectedCategory.value = newFilters.category || 'All Categories';
+        if (newFilters.search !== undefined) searchQuery.value = newFilters.search || '';
+        if (newFilters.view !== undefined) activeView.value = newFilters.view || 'table';
+    }
+}, { deep: true });
 
 // Format currency
 const formatPrice = (val: string | number | undefined): string => {
@@ -178,9 +252,9 @@ const formatDate = (dateStr: string | undefined): string => {
 };
 
 const getStatusClass = (status: string) => {
-    if (status === 'In Stock') return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20';
-    if (status === 'Low Stock') return 'bg-amber-500/10 text-amber-600 border-amber-500/20';
-    return 'bg-rose-500/10 text-rose-600 border-rose-500/20';
+    if (status === 'Out of Stock') return 'bg-rose-50 text-rose-700 border-rose-200';
+    if (status === 'Low Stock') return 'bg-amber-50 text-amber-700 border-amber-200';
+    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
 };
 
 // ==========================================
@@ -195,6 +269,40 @@ const showStockInModal = ref(false);
 const showStockOutModal = ref(false);
 const showAdjustModal = ref(false);
 const showImportModal = ref(false);
+
+// Confirmation Modal State
+interface ConfirmActionOptions {
+    title: string;
+    description: string;
+    details?: Array<{ label: string; value: string | number }>;
+    confirmText?: string;
+    confirmVariant?: 'brand' | 'success' | 'brand-gold' | 'secondary' | 'destructive';
+    action: () => void;
+}
+
+const showConfirmModal = ref(false);
+const confirmOptions = ref<ConfirmActionOptions>({
+    title: 'Confirm Action',
+    description: 'Are you sure you want to proceed?',
+    details: [],
+    confirmText: 'Confirm & Save',
+    confirmVariant: 'brand',
+    action: () => {},
+});
+
+const openConfirmModal = (options: ConfirmActionOptions) => {
+    confirmOptions.value = {
+        confirmText: 'Confirm & Save',
+        confirmVariant: 'brand',
+        ...options,
+    };
+    showConfirmModal.value = true;
+};
+
+const handleConfirmedAction = () => {
+    showConfirmModal.value = false;
+    confirmOptions.value.action();
+};
 
 const selectedProduct = ref<Product | null>(null);
 const productHistoryLoading = ref(false);
@@ -305,6 +413,51 @@ const openEditModal = (product: Product) => {
     showAddEditModal.value = true;
 };
 
+const promptSaveProduct = () => {
+    formErrors.value = {};
+    if (!formProduct.value.name.trim()) {
+        formErrors.value.name = 'Product name is required.';
+        return;
+    }
+    if (!formProduct.value.sku.trim()) {
+        formErrors.value.sku = 'SKU is required.';
+        return;
+    }
+
+    if (isEditing.value) {
+        openConfirmModal({
+            title: 'Confirm Product Changes',
+            description: `Are you sure you want to save modifications to "${formProduct.value.name}"?`,
+            details: [
+                { label: 'SKU', value: formProduct.value.sku },
+                { label: 'Category', value: formProduct.value.category },
+                { label: 'Selling Price', value: formatPrice(formProduct.value.price) },
+                { label: 'Current Stock', value: `${formProduct.value.stock} ${formProduct.value.unit || 'pcs'}` },
+                { label: 'Reorder Level', value: `${formProduct.value.reorder_level} ${formProduct.value.unit || 'pcs'}` },
+            ],
+            confirmText: 'Save Changes',
+            confirmVariant: 'brand',
+            action: saveProduct,
+        });
+    } else {
+        openConfirmModal({
+            title: 'Confirm New Product',
+            description: `Are you sure you want to add this new product to the inventory catalog?`,
+            details: [
+                { label: 'Product Name', value: formProduct.value.name },
+                { label: 'SKU', value: formProduct.value.sku },
+                { label: 'Category', value: formProduct.value.category },
+                { label: 'Selling Price', value: formatPrice(formProduct.value.price) },
+                { label: 'Initial Stock', value: `${formProduct.value.stock} ${formProduct.value.unit || 'pcs'}` },
+                { label: 'Reorder Level', value: `${formProduct.value.reorder_level} ${formProduct.value.unit || 'pcs'}` },
+            ],
+            confirmText: 'Add Product',
+            confirmVariant: 'brand',
+            action: saveProduct,
+        });
+    }
+};
+
 const saveProduct = () => {
     isSubmitting.value = true;
     formErrors.value = {};
@@ -384,6 +537,38 @@ const openStockInModal = (product?: Product) => {
     showStockInModal.value = true;
 };
 
+const promptStockIn = () => {
+    formErrors.value = {};
+    if (!formStockIn.value.product_id) {
+        formErrors.value.product_id = 'Please select a product.';
+        return;
+    }
+    if (!formStockIn.value.quantity || formStockIn.value.quantity < 1) {
+        formErrors.value.quantity = 'Quantity must be at least 1.';
+        return;
+    }
+
+    const prod = props.products?.data?.find(p => p.id === formStockIn.value.product_id);
+    const supplier = props.suppliers?.find(s => s.id === formStockIn.value.supplier_id);
+    const currentStock = prod ? prod.stock : 0;
+    const newStock = currentStock + Number(formStockIn.value.quantity);
+
+    openConfirmModal({
+        title: 'Confirm Stock-In Receipt',
+        description: `Are you sure you want to record an incoming stock entry for this product?`,
+        details: [
+            { label: 'Product', value: prod ? `${prod.name} (${prod.sku})` : 'Selected Product' },
+            { label: 'Incoming Quantity', value: `+${formStockIn.value.quantity} ${prod?.unit || 'pcs'}` },
+            { label: 'Resulting Stock', value: `${newStock} ${prod?.unit || 'pcs'} (from ${currentStock})` },
+            { label: 'Reference / PO', value: formStockIn.value.reference_number || 'N/A' },
+            { label: 'Supplier', value: supplier?.name || 'Internal / Not Specified' },
+        ],
+        confirmText: 'Confirm Stock In',
+        confirmVariant: 'success',
+        action: submitStockIn,
+    });
+};
+
 const submitStockIn = () => {
     isSubmitting.value = true;
     formErrors.value = {};
@@ -416,6 +601,43 @@ const openStockOutModal = (product?: Product) => {
         remarks: '',
     };
     showStockOutModal.value = true;
+};
+
+const promptStockOut = () => {
+    formErrors.value = {};
+    if (!formStockOut.value.product_id) {
+        formErrors.value.product_id = 'Please select a product.';
+        return;
+    }
+    const prod = props.products?.data?.find(p => p.id === formStockOut.value.product_id);
+    if (!prod) return;
+
+    if (!formStockOut.value.quantity || formStockOut.value.quantity < 1) {
+        formErrors.value.quantity = 'Quantity must be at least 1.';
+        return;
+    }
+    if (formStockOut.value.quantity > prod.stock) {
+        formErrors.value.quantity = `Quantity exceeds available stock (${prod.stock} ${prod.unit || 'pcs'}).`;
+        return;
+    }
+
+    const currentStock = prod.stock;
+    const remainingStock = Math.max(0, currentStock - Number(formStockOut.value.quantity));
+
+    openConfirmModal({
+        title: 'Confirm Stock-Out Deduction',
+        description: `Are you sure you want to record this outgoing stock dispatch?`,
+        details: [
+            { label: 'Product', value: `${prod.name} (${prod.sku})` },
+            { label: 'Quantity to Deduct', value: `-${formStockOut.value.quantity} ${prod.unit || 'pcs'}` },
+            { label: 'Remaining Stock', value: `${remainingStock} ${prod.unit || 'pcs'} (from ${currentStock})` },
+            { label: 'Reference / SO', value: formStockOut.value.reference_number || 'N/A' },
+            { label: 'Reason / Purpose', value: formStockOut.value.reason || 'General Dispatch' },
+        ],
+        confirmText: 'Confirm Stock Out',
+        confirmVariant: 'brand-gold',
+        action: submitStockOut,
+    });
 };
 
 const submitStockOut = () => {
@@ -453,6 +675,36 @@ const openAdjustModal = (product?: Product) => {
         remarks: '',
     };
     showAdjustModal.value = true;
+};
+
+const promptAdjust = () => {
+    formErrors.value = {};
+    if (!formAdjust.value.product_id) {
+        formErrors.value.product_id = 'Please select a product.';
+        return;
+    }
+    const prod = props.products?.data?.find(p => p.id === formAdjust.value.product_id);
+    if (!prod) return;
+
+    const currentStock = prod.stock;
+    const physicalCount = Number(formAdjust.value.physical_count);
+    const variance = physicalCount - currentStock;
+    const varianceSign = variance >= 0 ? `+${variance}` : `${variance}`;
+
+    openConfirmModal({
+        title: 'Confirm Stock Count Adjustment',
+        description: `Are you sure you want to apply this physical count correction? This will be recorded in the audit history.`,
+        details: [
+            { label: 'Product', value: `${prod.name} (${prod.sku})` },
+            { label: 'System Stock Count', value: `${currentStock} ${prod.unit || 'pcs'}` },
+            { label: 'New Physical Count', value: `${physicalCount} ${prod.unit || 'pcs'}` },
+            { label: 'Stock Variance', value: `${varianceSign} ${prod.unit || 'pcs'}` },
+            { label: 'Adjustment Reason', value: formAdjust.value.reason },
+        ],
+        confirmText: 'Commit Adjustment',
+        confirmVariant: 'brand',
+        action: submitAdjust,
+    });
 };
 
 const submitAdjust = () => {
@@ -539,6 +791,27 @@ const processUploadedCsv = async (file: File) => {
     } finally {
         isValidatingCsv.value = false;
     }
+};
+
+const promptCsvImport = () => {
+    if (!importedFile.value || !csvValidationResult.value || csvValidationResult.value.valid_count === 0) {
+        showNotification('No valid rows available to import.', 'error');
+        return;
+    }
+
+    openConfirmModal({
+        title: 'Confirm Bulk CSV Import',
+        description: `Are you sure you want to import ${csvValidationResult.value.valid_count} products into your catalog?`,
+        details: [
+            { label: 'CSV File', value: importedFile.value.name },
+            { label: 'Import Strategy', value: importMode.value === 'replace' ? 'Replace & Overwrite Existing' : 'Append New Records' },
+            { label: 'Valid Records', value: `${csvValidationResult.value.valid_count} products` },
+            { label: 'Invalid / Skipped', value: `${csvValidationResult.value.invalid_count} row(s)` },
+        ],
+        confirmText: 'Execute Import',
+        confirmVariant: 'brand',
+        action: confirmCsvImport,
+    });
 };
 
 const confirmCsvImport = () => {
@@ -705,107 +978,100 @@ const exportLiveCsv = () => {
         <!-- Inventory Summary Cards -->
         <div class="grid grid-cols-2 sm:grid-cols-5 gap-3.5">
             <div @click="filterByStatus('All')" 
-                 :class="selectedStatus === 'All' ? 'ring-2 ring-[#4b5320] bg-gray-50/80' : 'bg-white hover:bg-gray-50/50'"
+                 :class="selectedStatus === 'All' ? 'ring-2 ring-gray-900 bg-gray-50/50' : 'bg-white hover:bg-gray-50/50'"
                  class="p-4 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-xs">
                 <div class="flex items-center justify-between text-xs text-gray-500 font-medium mb-1">
                     <span>Total Products</span>
                     <Package class="w-4 h-4 text-gray-400" />
                 </div>
-                <div class="text-2xl font-bold text-gray-900">{{ summary.total }}</div>
+                <div class="text-2xl font-semibold text-gray-900">{{ summary.total }}</div>
                 <div class="text-[11px] text-gray-400 mt-0.5">Active catalog items</div>
             </div>
 
-            <div @click="filterByStatus('In Stock')" 
-                 :class="selectedStatus === 'In Stock' ? 'ring-2 ring-emerald-500 bg-emerald-50/40' : 'bg-white hover:bg-emerald-50/20'"
-                 class="p-4 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-xs">
-                <div class="flex items-center justify-between text-xs text-emerald-700 font-medium mb-1">
-                    <span>In Stock</span>
-                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                </div>
-                <div class="text-2xl font-bold text-emerald-700">{{ summary.in_stock }}</div>
-                <div class="text-[11px] text-emerald-600/80 mt-0.5">Stock &gt; Reorder Level</div>
-            </div>
-
-            <div @click="filterByStatus('Low Stock')" 
-                 :class="selectedStatus === 'Low Stock' ? 'ring-2 ring-amber-500 bg-amber-50/40' : 'bg-white hover:bg-amber-50/20'"
-                 class="p-4 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-xs">
-                <div class="flex items-center justify-between text-xs text-amber-800 font-medium mb-1">
-                    <span>Low Stock</span>
-                    <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-                </div>
-                <div class="text-2xl font-bold text-amber-700">{{ summary.low_stock }}</div>
-                <div class="text-[11px] text-amber-600/80 mt-0.5">Stock &le; Reorder Level</div>
-            </div>
-
             <div @click="filterByStatus('Out of Stock')" 
-                 :class="selectedStatus === 'Out of Stock' ? 'ring-2 ring-rose-500 bg-rose-50/40' : 'bg-white hover:bg-rose-50/20'"
+                 :class="selectedStatus === 'Out of Stock' ? 'ring-2 ring-gray-900 bg-gray-50/50' : 'bg-white hover:bg-gray-50/50'"
                  class="p-4 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-xs">
-                <div class="flex items-center justify-between text-xs text-rose-700 font-medium mb-1">
+                <div class="flex items-center justify-between text-xs text-gray-500 font-medium mb-1">
                     <span>Out of Stock</span>
                     <span class="w-2 h-2 rounded-full bg-rose-500"></span>
                 </div>
-                <div class="text-2xl font-bold text-rose-700">{{ summary.out_of_stock }}</div>
-                <div class="text-[11px] text-rose-600/80 mt-0.5">0 items remaining</div>
+                <div class="text-2xl font-semibold text-gray-900">{{ summary.out_of_stock }}</div>
+                <div class="text-[11px] text-gray-400 mt-0.5">0 items remaining</div>
             </div>
 
-            <div class="p-4 rounded-xl border border-[#F8B803]/40 bg-[#F8B803]/10 col-span-2 sm:col-span-1 shadow-xs">
-                <div class="flex items-center justify-between text-xs text-[#4b5320] font-bold mb-1">
-                    <span>Needs Reorder</span>
-                    <AlertTriangle class="w-4 h-4 text-[#F8B803]" />
+            <div @click="filterByStatus('Low Stock')" 
+                 :class="selectedStatus === 'Low Stock' ? 'ring-2 ring-gray-900 bg-gray-50/50' : 'bg-white hover:bg-gray-50/50'"
+                 class="p-4 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-xs">
+                <div class="flex items-center justify-between text-xs text-gray-500 font-medium mb-1">
+                    <span>Low Stock</span>
+                    <span class="w-2 h-2 rounded-full bg-amber-500"></span>
                 </div>
-                <div class="text-2xl font-black text-[#4b5320]">{{ summary.requiring_reorder }}</div>
-                <div class="text-[11px] text-gray-600 mt-0.5">AHP DSS candidate items</div>
+                <div class="text-2xl font-semibold text-gray-900">{{ summary.low_stock }}</div>
+                <div class="text-[11px] text-gray-400 mt-0.5">At or below reorder level</div>
+            </div>
+
+            <div @click="filterByStatus('In Stock')" 
+                 :class="selectedStatus === 'In Stock' ? 'ring-2 ring-gray-900 bg-gray-50/50' : 'bg-white hover:bg-gray-50/50'"
+                 class="p-4 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-xs">
+                <div class="flex items-center justify-between text-xs text-gray-500 font-medium mb-1">
+                    <span>In Stock</span>
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                </div>
+                <div class="text-2xl font-semibold text-gray-900">{{ summary.in_stock }}</div>
+                <div class="text-[11px] text-gray-400 mt-0.5">Sufficient stock</div>
+            </div>
+
+            <div @click="filterByStatus('Needs Reorder')" 
+                 :class="selectedStatus === 'Needs Reorder' ? 'ring-2 ring-gray-900 bg-gray-50/50' : 'bg-white hover:bg-gray-50/50'"
+                 class="p-4 rounded-xl border border-gray-200 col-span-2 sm:col-span-1 transition-all cursor-pointer shadow-xs">
+                <div class="flex items-center justify-between text-xs text-gray-500 font-medium mb-1">
+                    <span>Needs Reorder</span>
+                    <AlertTriangle class="w-4 h-4 text-amber-500" />
+                </div>
+                <div class="text-2xl font-semibold text-gray-900">{{ summary.requiring_reorder }}</div>
+                <div class="text-[11px] text-gray-400 mt-0.5">Replenishment list</div>
             </div>
         </div>
 
-        <!-- View Switcher & Filters -->
-        <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
-            <!-- Search & Filters -->
-            <div class="flex flex-wrap items-center gap-3 flex-1">
-                <div class="relative flex-1 min-w-[220px] max-w-md">
-                    <Search class="w-4 h-4 text-gray-400 absolute left-3 top-3" />
-                    <input v-model="searchQuery" 
-                           @input="applyFilters"
-                           type="text" 
-                           placeholder="Search products by name, SKU, specs..." 
-                           class="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none shadow-xs transition-all" />
-                </div>
-
-                <div class="w-48">
-                    <select v-model="selectedCategory" 
-                            @change="applyFilters"
-                            class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none shadow-xs transition-all">
-                        <option value="All Categories">All Categories</option>
-                        <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
-                    </select>
-                </div>
-
-                <div class="w-40">
-                    <select v-model="selectedStatus" 
-                            @change="applyFilters"
-                            class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none shadow-xs transition-all">
-                        <option value="All">All Statuses</option>
-                        <option value="In Stock">In Stock</option>
-                        <option value="Low Stock">Low Stock</option>
-                        <option value="Out of Stock">Out of Stock</option>
-                    </select>
-                </div>
+        <!-- Search & Filter Controls -->
+        <div class="flex flex-wrap items-center gap-3">
+            <div class="relative flex-1 min-w-[220px] max-w-md">
+                <Search class="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+                <input v-model="searchQuery" 
+                       @input="applyFilters"
+                       type="text" 
+                       placeholder="Search products by name, SKU, specs..." 
+                       class="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 focus:outline-none shadow-xs transition-all" />
             </div>
 
-            <!-- View Toggle: Products Table vs History -->
-            <div class="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1 self-start sm:self-auto shrink-0">
-                <button @click="activeView = 'table'"
-                        :class="activeView === 'table' ? 'bg-white shadow-xs text-gray-900 font-semibold' : 'text-gray-600 hover:text-gray-900 font-medium'"
-                        class="px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1.5">
-                    <Package class="w-3.5 h-3.5 text-[#4b5320]" />
-                    <span>Product Catalog</span>
-                </button>
-                <button @click="activeView = 'history'"
-                        :class="activeView === 'history' ? 'bg-white shadow-xs text-gray-900 font-semibold' : 'text-gray-600 hover:text-gray-900 font-medium'"
-                        class="px-3 py-1.5 text-xs rounded-md transition-all flex items-center gap-1.5">
-                    <History class="w-3.5 h-3.5 text-[#F8B803]" />
-                    <span>Movement History ({{ recent_movements?.length || 0 }})</span>
-                </button>
+            <div class="w-48">
+                <select v-model="selectedCategory" 
+                        @change="filterByCategory(selectedCategory)"
+                        class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 focus:outline-none shadow-xs transition-all">
+                    <option value="All Categories">All Categories</option>
+                    <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+                </select>
+            </div>
+
+            <div class="w-44">
+                <select v-model="selectedStatus" 
+                        @change="filterByStatus(selectedStatus)"
+                        class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 focus:outline-none shadow-xs transition-all">
+                    <option value="All">All Statuses</option>
+                    <option value="Needs Reorder">Needs Reorder ({{ summary.requiring_reorder }})</option>
+                    <option value="Out of Stock">Out of Stock</option>
+                    <option value="Low Stock">Low Stock</option>
+                    <option value="In Stock">In Stock</option>
+                </select>
+            </div>
+
+            <div class="w-48">
+                <select v-model="activeView" 
+                        @change="changeView(activeView)"
+                        class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-900 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 focus:outline-none shadow-xs transition-all">
+                    <option value="table">Product Catalog</option>
+                    <option value="history">Movement History ({{ filteredMovements.length }})</option>
+                </select>
             </div>
         </div>
 
@@ -821,7 +1087,7 @@ const exportLiveCsv = () => {
                             <th class="pb-3 font-semibold">Product Name</th>
                             <th class="pb-3 font-semibold">Category</th>
                             <th class="pb-3 font-semibold">Unit Price</th>
-                            <th class="pb-3 font-semibold text-center">Stock / Unit</th>
+                            <th class="pb-3 font-semibold text-center">Stock</th>
                             <th class="pb-3 font-semibold">Reorder Level</th>
                             <th class="pb-3 font-semibold">Status</th>
                             <th class="pb-3 font-semibold text-right">Actions</th>
@@ -829,9 +1095,9 @@ const exportLiveCsv = () => {
                     </thead>
                     <tbody class="text-sm divide-y divide-gray-100">
                         <tr v-for="product in products.data" :key="product.id" class="hover:bg-gray-50/80 transition-colors group">
-                            <td class="py-3.5 text-gray-600 font-mono text-xs font-semibold">{{ product.sku }}</td>
+                            <td class="py-3.5 text-gray-500 font-mono text-xs">{{ product.sku }}</td>
                             <td class="py-3.5">
-                                <div class="font-semibold text-gray-900 hover:text-[#4b5320] cursor-pointer" @click="openViewModal(product)">
+                                <div class="font-medium text-gray-900 hover:text-[#4b5320] cursor-pointer" @click="openViewModal(product)">
                                     {{ product.name }}
                                 </div>
                                 <div v-if="product.supplier" class="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5">
@@ -844,25 +1110,16 @@ const exportLiveCsv = () => {
                                     {{ product.category }}
                                 </span>
                             </td>
-                            <td class="py-3.5 text-gray-900 font-semibold">{{ formatPrice(product.price) }}</td>
+                            <td class="py-3.5 text-gray-900 font-medium">{{ formatPrice(product.price) }}</td>
                             <td class="py-3.5 text-center">
-                                <span class="font-bold text-gray-900">{{ product.stock }}</span>
+                                <span class="font-semibold text-gray-900">{{ product.stock }}</span>
                                 <span class="text-xs text-gray-400 ml-1">({{ product.unit || 'pcs' }})</span>
                             </td>
-                            <td class="py-3.5 text-gray-600 font-medium">
-                                <span class="inline-flex items-center gap-1 text-xs">
-                                    {{ product.reorder_level || product.min_stock || 10 }} {{ product.unit || 'pcs' }}
-                                    <span v-if="product.stock <= (product.reorder_level || product.min_stock || 10)" 
-                                          class="text-[10px] text-amber-700 font-bold bg-amber-100/70 px-1.5 py-0.2 rounded" 
-                                          title="Replenishment Recommended">
-                                        Reorder
-                                    </span>
-                                </span>
+                            <td class="py-3.5 text-gray-600 text-xs">
+                                <span>{{ product.reorder_level || product.min_stock || 10 }} {{ product.unit || 'pcs' }}</span>
                             </td>
                             <td class="py-3.5">
-                                <span :class="getStatusClass(product.status)" class="px-2.5 py-0.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1">
-                                    <span class="w-1.5 h-1.5 rounded-full" 
-                                          :class="product.status === 'In Stock' ? 'bg-emerald-500' : product.status === 'Low Stock' ? 'bg-amber-500' : 'bg-rose-500'"></span>
+                                <span :class="getStatusClass(product.status)" class="px-2.5 py-0.5 rounded-full text-xs font-medium border inline-flex items-center">
                                     {{ product.status }}
                                 </span>
                             </td>
@@ -963,11 +1220,19 @@ const exportLiveCsv = () => {
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100">
-                        <tr v-for="m in recent_movements" :key="m.id" class="hover:bg-gray-50/60">
+                        <tr v-for="m in filteredMovements" :key="m.id" class="hover:bg-gray-50/60">
                             <td class="py-3 text-gray-500 whitespace-nowrap">{{ formatDate(m.movement_date) }}</td>
                             <td class="py-3">
                                 <div class="font-bold text-gray-900">{{ m.product?.name || 'N/A' }}</div>
-                                <div class="font-mono text-gray-500 text-[11px]">{{ m.product?.sku }}</div>
+                                <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                    <span class="font-mono text-gray-500 text-[11px]">{{ m.product?.sku }}</span>
+                                    <span v-if="m.product?.category" class="px-1.5 py-0.2 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                                        {{ m.product?.category }}
+                                    </span>
+                                    <span v-if="m.product?.status" :class="getStatusClass(m.product?.status)" class="px-1.5 py-0.2 rounded-full text-[10px] font-bold border">
+                                        {{ m.product?.status }}
+                                    </span>
+                                </div>
                             </td>
                             <td class="py-3">
                                 <span v-if="m.type === 'stock_in'" class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -997,9 +1262,9 @@ const exportLiveCsv = () => {
                                 <span class="text-[11px] text-gray-400 block">{{ m.remarks }}</span>
                             </td>
                         </tr>
-                        <tr v-if="recent_movements.length === 0">
+                        <tr v-if="filteredMovements.length === 0">
                             <td colspan="8" class="py-10 text-center text-gray-400">
-                                No stock movement records logged yet.
+                                {{ (props.recent_movements && props.recent_movements.length > 0) ? 'No stock movement records match the selected category and status filters.' : 'No stock movement records logged yet.' }}
                             </td>
                         </tr>
                     </tbody>
@@ -1174,7 +1439,7 @@ const exportLiveCsv = () => {
                 </button>
             </div>
 
-            <form @submit.prevent="saveProduct" class="space-y-4">
+            <form @submit.prevent="promptSaveProduct" class="space-y-4">
                 <div>
                     <label class="block text-gray-700 text-xs font-semibold uppercase mb-1">Product Name *</label>
                     <input v-model="formProduct.name" 
@@ -1333,7 +1598,7 @@ const exportLiveCsv = () => {
                 </button>
             </div>
 
-            <form @submit.prevent="submitStockIn" class="space-y-4 text-xs">
+            <form @submit.prevent="promptStockIn" class="space-y-4 text-xs">
                 <div>
                     <label class="block text-gray-700 font-semibold uppercase mb-1">Target Product *</label>
                     <select v-model="formStockIn.product_id" 
@@ -1434,7 +1699,7 @@ const exportLiveCsv = () => {
                 </button>
             </div>
 
-            <form @submit.prevent="submitStockOut" class="space-y-4 text-xs">
+            <form @submit.prevent="promptStockOut" class="space-y-4 text-xs">
                 <div>
                     <label class="block text-gray-700 font-semibold uppercase mb-1">Target Product *</label>
                     <select v-model="formStockOut.product_id" 
@@ -1548,7 +1813,7 @@ const exportLiveCsv = () => {
                 </button>
             </div>
 
-            <form @submit.prevent="submitAdjust" class="space-y-4 text-xs">
+            <form @submit.prevent="promptAdjust" class="space-y-4 text-xs">
                 <div>
                     <label class="block text-gray-700 font-semibold uppercase mb-1">Target Product *</label>
                     <select v-model="formAdjust.product_id" 
@@ -1806,7 +2071,7 @@ const exportLiveCsv = () => {
                     variant="brand"
                     size="md"
                     :radius="10"
-                    @click="confirmCsvImport"
+                    @click="promptCsvImport"
                     :disabled="!csvValidationResult || csvValidationResult.valid_count === 0 || isImportingCsv"
                 >
                     <Check class="w-4 h-4" />
@@ -1848,6 +2113,52 @@ const exportLiveCsv = () => {
                     :disabled="isSubmitting"
                 >
                     Confirm Removal
+                </SpecularButton>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- ACTION CONFIRMATION MODAL -->
+    <!-- ========================================================================= -->
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div class="w-11 h-11 rounded-full bg-amber-50 text-[#F8B803] flex items-center justify-center mb-4 border border-amber-100">
+                <CheckCircle2 class="w-6 h-6" />
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
+            <p class="text-gray-600 text-sm mb-4 leading-relaxed">
+                {{ confirmOptions.description }}
+            </p>
+
+            <!-- Details Callout -->
+            <div v-if="confirmOptions.details && confirmOptions.details.length > 0" class="bg-gray-50 border border-gray-100 rounded-xl p-3.5 mb-5 space-y-2 text-xs">
+                <div v-for="(item, idx) in confirmOptions.details" :key="idx" class="flex justify-between items-center py-0.5 border-b border-gray-100 last:border-b-0">
+                    <span class="text-gray-500 font-medium">{{ item.label }}</span>
+                    <span class="font-semibold text-gray-900 text-right">{{ item.value }}</span>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3">
+                <SpecularButton
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showConfirmModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    type="button"
+                    :variant="confirmOptions.confirmVariant || 'brand'"
+                    size="md"
+                    :radius="10"
+                    @click="handleConfirmedAction"
+                    :disabled="isSubmitting || isImportingCsv"
+                >
+                    <Check class="w-4 h-4 mr-1.5" />
+                    <span>{{ confirmOptions.confirmText || 'Confirm & Save' }}</span>
                 </SpecularButton>
             </div>
         </div>

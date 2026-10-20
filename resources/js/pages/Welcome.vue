@@ -9,71 +9,84 @@ import SpecularButton from '@/components/ui/SpecularButton.vue';
 
     <PublicLayout>
         <!-- Hero Section -->
-        <div class="relative bg-gray-50">
-            <!-- Banner Image -->
-            <div class="w-full h-[400px] md:h-[500px] relative">
-                <img src="/HOME_BACKGROUND.png" class="w-full h-full object-cover object-center" alt="MR-Pride Electrical Supplies" />
-                <div class="absolute inset-0 bg-black/20"></div>
-                <div class="absolute inset-0 bg-gradient-to-t from-gray-50 via-transparent to-transparent"></div>
+        <section aria-label="Hero Section" class="relative bg-gray-50 overflow-hidden">
+            <!-- Responsive Banner Image Container -->
+            <div class="hero-banner relative w-full overflow-hidden">
+                <img 
+                    src="/HOME_BACKGROUND.png" 
+                    class="hero-img w-full h-full object-cover select-none pointer-events-none" 
+                    alt="MR-Pride Electrical Supplies" 
+                    loading="eager"
+                    fetchpriority="high"
+                    decoding="async"
+                />
+                <!-- Subtle contrast overlay for readability -->
+                <div class="absolute inset-0 bg-black/15 sm:bg-black/20 pointer-events-none transition-opacity duration-300"></div>
+                <!-- Smooth gradient transition to background -->
+                <div class="absolute inset-0 bg-gradient-to-t from-gray-50 via-gray-50/20 to-transparent pointer-events-none"></div>
             </div>
 
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 -mt-32 pb-24">
-                <div class="text-center max-w-4xl mx-auto bg-white/80 backdrop-blur-xl p-8 md:p-12 rounded-3xl shadow-2xl border border-white/50">
-                    <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight mb-6">
-                        <span class="block text-gray-900 mb-2">Powering Your</span>
+            <!-- Content Card with Fluid Overlap and Adaptive Padding -->
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 -mt-12 sm:-mt-20 md:-mt-28 lg:-mt-32 pb-16 sm:pb-20 md:pb-24">
+                <div class="text-center max-w-4xl mx-auto bg-white/85 sm:bg-white/80 backdrop-blur-xl p-6 sm:p-8 md:p-12 rounded-2xl sm:rounded-3xl shadow-xl sm:shadow-2xl border border-white/60">
+                    <h1 class="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight mb-4 sm:mb-6">
+                        <span class="block text-gray-900 mb-1 sm:mb-2">Powering Your</span>
                         <span class="block bg-clip-text text-transparent bg-gradient-to-r from-[#F8B803] to-[#4b5320]">
                             Industrial Future
                         </span>
                     </h1>
                     
-                    <p class="mt-4 text-lg md:text-xl text-gray-600 leading-relaxed max-w-2xl mx-auto mb-10">
+                    <p class="mt-3 sm:mt-4 text-sm sm:text-base md:text-lg lg:text-xl text-gray-600 leading-relaxed max-w-2xl mx-auto mb-6 sm:mb-8 md:mb-10">
                         MR-Pride Electrical Supplies delivers high-performance electrical components, innovative project solutions, and unparalleled expertise for modern industrial infrastructure.
                     </p>
 
-                    <div class="flex flex-col sm:flex-row justify-center items-center gap-4">
+                    <div class="flex flex-col sm:flex-row justify-center items-center gap-3 sm:gap-4">
                         <SpecularButton 
                             href="/products"
                             variant="brand-gold"
                             size="lg"
-                            :radius="9999"
-                            class="w-full sm:w-auto px-8 py-4 font-bold text-black shadow-md cursor-pointer"
+                            class="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 font-bold rounded-full shadow-md cursor-pointer"
                         >
                             Browse Products
                         </SpecularButton>
                         
                         <SpecularButton 
                             href="/quotation"
-                            variant="secondary"
+                            variant="outline"
                             size="lg"
-                            :radius="9999"
-                            class="w-full sm:w-auto px-8 py-4 font-bold text-gray-900 shadow-sm cursor-pointer"
+                            class="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 font-bold text-gray-900 rounded-full shadow-sm cursor-pointer"
                         >
                             Request Quotation
                         </SpecularButton>
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
 
         <!-- About Us Section -->
-        <div class="py-24 bg-white relative z-10 border-t border-gray-100">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <section id="about" aria-labelledby="about-us-heading" class="py-24 bg-[#4b5320] text-white relative z-10 border-t border-[#3c421a] overflow-hidden">
+            <!-- Subtle ambient glow background decoration -->
+            <div class="absolute -top-24 -right-24 size-96 rounded-full bg-[#F8B803]/10 blur-3xl pointer-events-none"></div>
+            <div class="absolute -bottom-24 -left-24 size-96 rounded-full bg-black/20 blur-3xl pointer-events-none"></div>
+
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
                 <div class="text-center mb-16">
-                    <h2 class="text-3xl font-bold text-gray-900 mb-4">ABOUT US</h2>
-                    <div class="w-24 h-1 bg-gradient-to-r from-[#F8B803] to-[#4b5320] mx-auto rounded-full"></div>
+                    <span class="text-xs font-bold tracking-[0.2em] text-[#F8B803] uppercase">Our Story</span>
+                    <h2 id="about-us-heading" class="text-3xl sm:text-4xl font-extrabold text-white mt-2 mb-4 tracking-tight">ABOUT US</h2>
+                    <div class="w-24 h-1.5 bg-[#F8B803] mx-auto rounded-full shadow-sm"></div>
                 </div>
 
                 <div class="max-w-4xl mx-auto text-center">
-                    <p class="text-xl text-gray-700 leading-relaxed mb-8">
+                    <p class="text-xl sm:text-2xl text-white/95 font-medium leading-relaxed mb-10 drop-shadow-xs">
                         Established in 2020, MR-PRIDE is an electrical trading business that buys and sells electrical materials and equipment to customers such as contractors, engineers, and construction companies.
                     </p>
-                    <p class="text-lg text-gray-600 leading-relaxed bg-gray-50 p-8 md:p-12 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden">
-                        <span class="absolute top-0 left-0 w-2 h-full bg-gradient-to-b from-[#F8B803] to-[#4b5320]"></span>
-                        An establishment that offers list of quality products that will help to minimize your problems involving Electrical. This company is a fully Filipino Owned that is dedicated to support its clients, and future clients in their needs of any products in line, MR-Pride Electrical Supplies has devoted employees to provide products in good quality considering the words, “right in time”.
-                    </p>
+                    <div class="text-base sm:text-lg text-white/90 leading-relaxed bg-black/25 backdrop-blur-md p-8 md:p-12 rounded-3xl border border-white/20 shadow-2xl relative overflow-hidden text-left sm:text-center">
+                        <span class="absolute top-0 left-0 w-2 h-full bg-[#F8B803]"></span>
+                        An establishment that offers list of quality products that will help to minimize your problems involving Electrical. This company is a fully Filipino Owned that is dedicated to support its clients, and future clients in their needs of any products in line, MR-Pride Electrical Supplies has devoted employees to provide products in good quality considering the words, <span class="text-[#F8B803] font-bold">“right in time”</span>.
+                    </div>
                 </div>
             </div>
-        </div>
+        </section>
 
         <!-- Call to Action -->
         <div class="py-24 relative overflow-hidden bg-gray-50 border-t border-gray-200">
@@ -85,8 +98,7 @@ import SpecularButton from '@/components/ui/SpecularButton.vue';
                     href="/quotation"
                     variant="brand-gold"
                     size="lg"
-                    :radius="9999"
-                    class="inline-flex items-center justify-center px-8 py-4 text-lg font-bold text-black shadow-lg cursor-pointer"
+                    class="inline-flex items-center justify-center px-8 py-4 text-lg font-bold rounded-full shadow-lg cursor-pointer"
                 >
                     Get in Touch Today
                 </SpecularButton>
@@ -94,3 +106,69 @@ import SpecularButton from '@/components/ui/SpecularButton.vue';
         </div>
     </PublicLayout>
 </template>
+
+<style scoped>
+/* Responsive hero banner container scaling seamlessly with viewport width */
+.hero-banner {
+    width: 100%;
+    /* Fluid height scaling using clamp() from mobile up to large screens */
+    height: clamp(260px, 44vw, 640px);
+    min-height: 240px;
+    background-color: #f9fafb;
+}
+
+/* Hero image element with responsive focal points */
+.hero-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    /* Mobile-first focal point: focus on tools and branding */
+    object-position: 18% center;
+    transition: object-position 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: translateZ(0);
+    will-change: object-position;
+}
+
+/* Tablet portrait (640px - 1023px) */
+@media (min-width: 640px) {
+    .hero-img {
+        object-position: 28% center;
+    }
+}
+
+/* Tablet landscape & Laptop (1024px - 1439px) */
+@media (min-width: 1024px) {
+    .hero-img {
+        object-position: center center;
+    }
+}
+
+/* Desktop & Ultrawide (1440px+) */
+@media (min-width: 1440px) {
+    .hero-banner {
+        height: clamp(520px, 36vw, 680px);
+    }
+    .hero-img {
+        object-position: center center;
+    }
+}
+
+@media (min-width: 1920px) {
+    .hero-banner {
+        height: clamp(580px, 32vw, 760px);
+    }
+    .hero-img {
+        object-position: center 38%;
+    }
+}
+
+/* Mobile Portrait Mode */
+@media (max-width: 639px) and (orientation: portrait) {
+    .hero-banner {
+        height: clamp(260px, 42vh, 380px);
+    }
+    .hero-img {
+        object-position: 16% center;
+    }
+}
+</style>

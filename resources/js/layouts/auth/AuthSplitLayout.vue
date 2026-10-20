@@ -58,14 +58,7 @@ defineProps<{
 
             <!-- Hero Text -->
             <div class="relative z-20 mt-auto mb-12 max-w-lg">
-                <div
-                    class="mb-6 inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/20 px-3 py-1 text-sm font-bold text-white backdrop-blur-md"
-                >
-                    <span
-                        class="h-2 w-2 animate-pulse rounded-full bg-[#F8B803]"
-                    ></span>
-                    Admin Portal
-                </div>
+
                 <h2
                     class="mb-6 text-4xl leading-tight font-extrabold text-white drop-shadow-lg md:text-5xl"
                 >

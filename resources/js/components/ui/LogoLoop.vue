@@ -185,6 +185,13 @@ watch(
       :style="{
         background: `linear-gradient(to right, ${fadeOutColor} 0%, transparent 100%)`,
       }"
+      :class="['dark:hidden']"
+      aria-hidden="true"
+    />
+    <div
+      v-if="fadeOut"
+      class="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 sm:w-24 transition-opacity hidden dark:block"
+      style="background: linear-gradient(to right, hsl(0 0% 7%) 0%, transparent 100%);"
       aria-hidden="true"
     />
 
@@ -195,6 +202,13 @@ watch(
       :style="{
         background: `linear-gradient(to left, ${fadeOutColor} 0%, transparent 100%)`,
       }"
+      :class="['dark:hidden']"
+      aria-hidden="true"
+    />
+    <div
+      v-if="fadeOut"
+      class="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 sm:w-24 transition-opacity hidden dark:block"
+      style="background: linear-gradient(to left, hsl(0 0% 7%) 0%, transparent 100%);"
       aria-hidden="true"
     />
 
@@ -219,7 +233,7 @@ watch(
             class="logo-loop__item flex shrink-0 items-center justify-center transition-all duration-300"
             :class="[
               scaleOnHover ? 'hover:scale-110 active:scale-95' : '',
-              'opacity-80 grayscale-[20%] hover:opacity-100 hover:grayscale-0',
+              'opacity-85 grayscale-[15%] hover:opacity-100 hover:grayscale-0',
             ]"
             :style="{ height: `${logoHeight}px` }"
           >
@@ -229,12 +243,12 @@ watch(
               :alt="logo.alt"
               :title="logo.alt"
               loading="lazy"
-              class="h-full w-auto max-w-none object-contain pointer-events-none"
+              class="h-full w-auto max-w-none object-contain pointer-events-none rounded-lg p-1 dark:bg-white/10 dark:p-1.5 dark:backdrop-blur-xs"
               @load="onImageLoad"
             />
             <span
               v-else
-              class="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-100 rounded-lg whitespace-nowrap"
+              class="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-100 dark:text-gray-100 dark:bg-neutral-800 rounded-lg whitespace-nowrap"
             >
               {{ logo.alt }}
             </span>
@@ -255,7 +269,7 @@ watch(
             class="logo-loop__item flex shrink-0 items-center justify-center transition-all duration-300"
             :class="[
               scaleOnHover ? 'hover:scale-110 active:scale-95' : '',
-              'opacity-80 grayscale-[20%] hover:opacity-100 hover:grayscale-0',
+              'opacity-85 grayscale-[15%] hover:opacity-100 hover:grayscale-0',
             ]"
             :style="{ height: `${logoHeight}px` }"
           >

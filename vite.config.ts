@@ -5,6 +5,7 @@ import vue from '@vitejs/plugin-vue';
 import laravel from 'laravel-vite-plugin';
 import { bunny } from 'laravel-vite-plugin/fonts';
 import os from 'node:os';
+import path from 'node:path';
 import { defineConfig } from 'vite';
 
 function getLocalIp(): string {

@@ -23,6 +23,15 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
             SetTeamUrlDefaults::class,
+            \App\Http\Middleware\EnforceInactivityTimeout::class,
+        ]);
+
+        $middleware->alias([
+            'admin_or_staff' => \App\Http\Middleware\EnsureAdminOrStaff::class,
+            'role' => \App\Http\Middleware\EnsureRole::class,
+            'device_verified' => \App\Http\Middleware\EnsureDeviceVerified::class,
+            'password_valid' => \App\Http\Middleware\EnsurePasswordNotExpired::class,
+            'no_cache' => \App\Http\Middleware\NoHttpCache::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

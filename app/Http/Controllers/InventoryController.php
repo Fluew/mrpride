@@ -49,22 +49,46 @@ class InventoryController extends Controller
             $query->where('category', $category);
         }
 
+        $thresholdSql = 'COALESCE(NULLIF(reorder_level, 0), NULLIF(min_stock, 0), 10)';
+
         if ($status && $status !== 'All') {
-            $query->where('status', $status);
+            if ($status === 'Out of Stock') {
+                $query->where('stock', '<=', 0);
+            } elseif ($status === 'Low Stock') {
+                $query->where('stock', '>', 0)->whereRaw("stock <= {$thresholdSql}");
+            } elseif ($status === 'In Stock') {
+                $query->whereRaw("stock > {$thresholdSql}");
+            } elseif ($status === 'Needs Reorder') {
+                $query->whereRaw("stock <= {$thresholdSql}");
+            } else {
+                $query->where('status', $status);
+            }
         }
 
-        $products = $query->orderBy('name')->paginate(10)->withQueryString();
+        // Automatic Product Prioritization based on Stock Availability:
+        // 1. OUT OF STOCK (Highest Priority) - available quantity <= 0
+        // 2. LOW STOCK (Medium Priority)    - 0 < available quantity <= threshold
+        // 3. IN STOCK (Lowest Priority)     - available quantity > threshold
+        // Within same status group, sort alphabetically by name.
+        // Performed before pagination so high-priority items are not hidden on later pages.
+        $products = $query->orderByRaw("
+            CASE 
+                WHEN stock <= 0 THEN 1 
+                WHEN stock <= {$thresholdSql} THEN 2 
+                ELSE 3 
+            END ASC
+        ")->orderBy('name', 'asc')
+          ->paginate(10)
+          ->withQueryString();
 
-        // Calculate inventory summary counts using aggregates — avoids loading all products into memory
+        // Calculate inventory summary counts using dynamic stock thresholds
         $baseCountQuery = fn () => Product::where('team_id', $team->id)->where('is_active', true);
 
-        $totalItems         = $baseCountQuery()->count();
-        $inStockCount       = $baseCountQuery()->where('status', 'In Stock')->count();
-        $lowStockCount      = $baseCountQuery()->where('status', 'Low Stock')->count();
-        $outOfStockCount    = $baseCountQuery()->where('status', 'Out of Stock')->count();
-        $requiringReorderCount = $baseCountQuery()
-            ->whereColumn('stock', '<=', 'reorder_level')
-            ->count();
+        $totalItems            = $baseCountQuery()->count();
+        $outOfStockCount       = $baseCountQuery()->where('stock', '<=', 0)->count();
+        $lowStockCount         = $baseCountQuery()->where('stock', '>', 0)->whereRaw("stock <= {$thresholdSql}")->count();
+        $inStockCount          = $baseCountQuery()->whereRaw("stock > {$thresholdSql}")->count();
+        $requiringReorderCount = $baseCountQuery()->whereRaw("stock <= {$thresholdSql}")->count();
 
         // Categories list
         $categories = Product::where('team_id', $team->id)
@@ -84,12 +108,47 @@ class InventoryController extends Controller
             ->orderBy('name')
             ->get();
 
-        // Recent stock movements for audit
-        $recentMovements = StockMovement::where('team_id', $team->id)
-            ->with(['product:id,name,sku', 'user:id,name', 'supplier:id,name'])
-            ->latest('movement_date')
-            ->take(15)
-            ->get();
+        // Recent stock movements for audit (filtered by search, category, and status when supplied)
+        $movementsQuery = StockMovement::where('team_id', $team->id)
+            ->with(['product:id,name,sku,category,status,stock,reorder_level,min_stock', 'user:id,name', 'supplier:id,name'])
+            ->latest('movement_date');
+
+        if ($search) {
+            $movementsQuery->where(function ($q) use ($search) {
+                $q->where('reference_number', 'like', "%{$search}%")
+                    ->orWhere('reason', 'like', "%{$search}%")
+                    ->orWhere('remarks', 'like', "%{$search}%")
+                    ->orWhereHas('product', function ($pq) use ($search) {
+                        $pq->where('name', 'like', "%{$search}%")
+                            ->orWhere('sku', 'like', "%{$search}%")
+                            ->orWhere('description', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        if ($category && $category !== 'All Categories') {
+            $movementsQuery->whereHas('product', function ($q) use ($category) {
+                $q->where('category', $category);
+            });
+        }
+
+        if ($status && $status !== 'All') {
+            $movementsQuery->whereHas('product', function ($q) use ($status, $thresholdSql) {
+                if ($status === 'Out of Stock') {
+                    $q->where('stock', '<=', 0);
+                } elseif ($status === 'Low Stock') {
+                    $q->where('stock', '>', 0)->whereRaw("stock <= {$thresholdSql}");
+                } elseif ($status === 'In Stock') {
+                    $q->whereRaw("stock > {$thresholdSql}");
+                } elseif ($status === 'Needs Reorder') {
+                    $q->whereRaw("stock <= {$thresholdSql}");
+                } else {
+                    $q->where('status', $status);
+                }
+            });
+        }
+
+        $recentMovements = $movementsQuery->take(50)->get();
 
         return Inertia::render('Inventory/Index', [
             'products' => $products,
@@ -107,6 +166,7 @@ class InventoryController extends Controller
                 'search' => $search,
                 'category' => $category,
                 'status' => $status,
+                'view' => $request->input('view', 'table'),
             ],
         ]);
     }
@@ -690,10 +750,18 @@ class InventoryController extends Controller
         $team = $request->user()->currentTeam;
         $fileName = 'inventory_export_' . date('Y-m-d_His') . '.csv';
 
+        $thresholdSql = 'COALESCE(NULLIF(reorder_level, 0), NULLIF(min_stock, 0), 10)';
+
         $products = Product::where('team_id', $team->id)
             ->where('is_active', true)
             ->with('supplier:id,name')
-            ->orderBy('name')
+            ->orderByRaw("
+                CASE 
+                    WHEN stock <= 0 THEN 1 
+                    WHEN stock <= {$thresholdSql} THEN 2 
+                    ELSE 3 
+                END ASC
+            ")->orderBy('name', 'asc')
             ->get();
 
         $headers = [

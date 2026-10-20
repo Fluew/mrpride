@@ -7,13 +7,15 @@ import { cn } from "@/lib/utils"
 import { buttonVariants } from "."
 import SpecularButton from "@/components/ui/SpecularButton.vue"
 
-interface Props extends PrimitiveProps {
-  variant?: ButtonVariants["variant"]
-  size?: ButtonVariants["size"]
+interface Props extends /* @vue-ignore */ PrimitiveProps {
+  variant?: ButtonVariants["variant"] | any
+  size?: ButtonVariants["size"] | any
   class?: HTMLAttributes["class"]
   specular?: boolean
   disabled?: boolean
   type?: "button" | "submit" | "reset"
+  href?: string | any
+  radius?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -28,9 +30,11 @@ const props = withDefaults(defineProps<Props>(), {
     v-bind="$attrs"
     :as="as"
     :type="type"
+    :href="href"
     :disabled="disabled"
-    :variant="variant === 'destructive' ? 'destructive' : variant === 'secondary' ? 'secondary' : variant === 'outline' ? 'outline' : 'primary'"
-    :size="size === 'sm' ? 'sm' : size === 'lg' ? 'lg' : size === 'icon' ? 'icon' : size === 'icon-sm' ? 'icon-sm' : size === 'icon-lg' ? 'icon-lg' : 'default'"
+    :variant="variant"
+    :size="size"
+    :radius="radius"
     :class="cn(buttonVariants({ variant, size }), props.class)"
   >
     <slot />

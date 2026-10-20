@@ -6,6 +6,7 @@ use App\Actions\Teams\CreateTeam;
 use App\Concerns\PasswordValidationRules;
 use App\Concerns\ProfileValidationRules;
 use App\Models\User;
+use App\Services\AuditLogger;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -37,9 +38,18 @@ class CreateNewUser implements CreatesNewUsers
                 'name' => $input['name'],
                 'email' => $input['email'],
                 'password' => Hash::make($input['password']),
+                'role' => 'user',
+                'must_change_password' => false,
+                'password_changed_at' => now(),
             ]);
 
             $this->createTeam->handle($user, $user->name."'s Team", isPersonal: true);
+
+            AuditLogger::log(
+                'auth.user.registered',
+                "New user account registered: {$user->email}",
+                $user
+            );
 
             return $user;
         });

@@ -31,11 +31,13 @@ const currentTeam = computed(() => page.props.currentTeam as Team | null);
                 <DropdownMenuTrigger as-child>
                     <SidebarMenuButton
                         size="lg"
-                        class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground [&_.text-muted-foreground]:text-white/65"
+                        class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground [&_.text-muted-foreground]:text-white/65 transition-all duration-300 ease-in-out group-data-[collapsible=icon]:size-10 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:justify-center"
                         data-test="sidebar-menu-button"
                     >
                         <UserInfo :user="user" :team="currentTeam" />
-                        <ChevronsUpDown class="ml-auto size-4" />
+                        <ChevronsUpDown
+                            class="ml-auto size-4 shrink-0 transition-opacity duration-200 group-data-[collapsible=icon]:hidden"
+                        />
                     </SidebarMenuButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent

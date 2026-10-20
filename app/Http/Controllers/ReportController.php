@@ -1,0 +1,810 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Product;
+use App\Models\PurchaseRequest;
+use App\Models\Quotation;
+use App\Models\Sale;
+use App\Models\SaleItem;
+use App\Models\StockMovement;
+use App\Models\Supplier;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+
+class ReportController extends Controller
+{
+    /**
+     * Display the comprehensive Reports & Analytics dashboard.
+     */
+    public function index(Request $request): Response
+    {
+        $team = $request->user()->currentTeam;
+        abort_if(! $team, 403, 'No active team selected.');
+
+        // Date range filtering
+        $datePreset = $request->input('date_preset', 'all_time');
+        $today = Carbon::today();
+        $fromDate = null;
+        $toDate = $today->copy()->endOfDay();
+
+        switch ($datePreset) {
+            case 'today':
+                $fromDate = $today->copy()->startOfDay();
+                break;
+            case 'last_7_days':
+                $fromDate = $today->copy()->subDays(6)->startOfDay();
+                break;
+            case 'last_30_days':
+                $fromDate = $today->copy()->subDays(29)->startOfDay();
+                break;
+            case 'this_month':
+                $fromDate = $today->copy()->startOfMonth();
+                break;
+            case 'this_year':
+                $fromDate = $today->copy()->startOfYear();
+                break;
+            case 'custom':
+                if ($request->filled('from_date')) {
+                    $fromDate = Carbon::parse($request->input('from_date'))->startOfDay();
+                }
+                if ($request->filled('to_date')) {
+                    $toDate = Carbon::parse($request->input('to_date'))->endOfDay();
+                }
+                break;
+            case 'all_time':
+            default:
+                $datePreset = 'all_time';
+                $fromDate = null;
+                break;
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // 1. SECTION A: OVERALL BUSINESS PERFORMANCE OVERVIEW & KPIS
+        // ─────────────────────────────────────────────────────────────
+        $activeProductsQuery = Product::where('team_id', $team->id)->where('is_active', true);
+        $inventoryCount = $activeProductsQuery->count();
+
+        // Accurate Catalog Valuation: stock * COALESCE(cost_price, price)
+        $totalValuation = (float) Product::where('team_id', $team->id)
+            ->where('is_active', true)
+            ->selectRaw('SUM(stock * COALESCE(cost_price, price)) as total_val')
+            ->value('total_val') ?? 0.0;
+
+        // Differentiate Low Stock and Out of Stock
+        $outOfStockCount = Product::where('team_id', $team->id)
+            ->where('is_active', true)
+            ->where('stock', '<=', 0)
+            ->count();
+
+        $lowStockCount = Product::where('team_id', $team->id)
+            ->where('is_active', true)
+            ->whereRaw('stock <= COALESCE(reorder_level, min_stock, 10)')
+            ->count();
+
+        $inStockCount = max(0, $inventoryCount - $lowStockCount);
+
+        // Sales Metrics (filtered by date range)
+        $salesQuery = Sale::where('team_id', $team->id)->where('status', '!=', 'Cancelled');
+        if ($fromDate) {
+            $salesQuery->where('sale_date', '>=', $fromDate)->where('sale_date', '<=', $toDate);
+        }
+        $salesCount = $salesQuery->count();
+        $totalRevenue = (float) $salesQuery->sum('grand_total');
+
+        // Quotations Metrics (filtered by date range)
+        $quotesQuery = Quotation::where('team_id', $team->id);
+        if ($fromDate) {
+            $quotesQuery->where('quotation_date', '>=', $fromDate)->where('quotation_date', '<=', $toDate);
+        }
+        $quotationsCount = $quotesQuery->count();
+        $pendingQuotationsCount = (clone $quotesQuery)->where('status', 'Pending')->count();
+        $pendingQuotationsValue = (float) (clone $quotesQuery)->where('status', 'Pending')->sum('grand_total');
+        $approvedQuotationsCount = (clone $quotesQuery)->where('status', 'Approved')->count();
+        $convertedQuotationsCount = (clone $quotesQuery)->whereNotNull('converted_to_sale_id')->count();
+
+        // Procurement Metrics (filtered by date range)
+        $procurementQuery = PurchaseRequest::where('team_id', $team->id);
+        if ($fromDate) {
+            $procurementQuery->where('created_at', '>=', $fromDate)->where('created_at', '<=', $toDate);
+        }
+        $totalPurchasesCount = $procurementQuery->count();
+        $totalPurchasesEstimatedCost = (float) $procurementQuery->sum('estimated_cost');
+
+        // ─────────────────────────────────────────────────────────────
+        // 2. SECTION B: MODULE-SPECIFIC ANALYTICS DATA
+        // ─────────────────────────────────────────────────────────────
+
+        // A. Inventory Status Analytics
+        $allProducts = Product::where('team_id', $team->id)
+            ->where('is_active', true)
+            ->with('supplier:id,name')
+            ->orderBy('name')
+            ->get();
+
+        $inventoryByCategory = [];
+        $categoriesSet = [];
+        foreach ($allProducts as $p) {
+            $cat = $p->category ?: 'General';
+            $categoriesSet[$cat] = true;
+            if (! isset($inventoryByCategory[$cat])) {
+                $inventoryByCategory[$cat] = [
+                    'category' => $cat,
+                    'count' => 0,
+                    'stock' => 0,
+                    'valuation' => 0.0,
+                ];
+            }
+            $costBasis = $p->cost_price ?: $p->price;
+            $val = $p->stock * (float) $costBasis;
+            $inventoryByCategory[$cat]['count']++;
+            $inventoryByCategory[$cat]['stock'] += $p->stock;
+            $inventoryByCategory[$cat]['valuation'] += $val;
+        }
+
+        $topProductsByValuation = $allProducts->map(function ($p) {
+            $costBasis = $p->cost_price ?: $p->price;
+            $valuation = $p->stock * (float) $costBasis;
+
+            return [
+                'id' => $p->id,
+                'name' => $p->name,
+                'sku' => $p->sku,
+                'category' => $p->category ?: 'General',
+                'stock' => $p->stock,
+                'unit' => $p->unit ?: 'pcs',
+                'cost_price' => (float) $p->cost_price,
+                'price' => (float) $p->price,
+                'valuation' => round($valuation, 2),
+            ];
+        })->sortByDesc('valuation')->values()->take(8);
+
+        $inventoryTableItems = $allProducts->map(function ($p) {
+            $threshold = $p->reorder_level ?: ($p->min_stock ?: 10);
+            $costBasis = $p->cost_price ?: $p->price;
+            $valuation = $p->stock * (float) $costBasis;
+
+            $status = 'In Stock';
+            if ($p->stock <= 0) {
+                $status = 'Out of Stock';
+            } elseif ($p->stock <= $threshold) {
+                $status = 'Low Stock';
+            }
+
+            return [
+                'id' => $p->id,
+                'sku' => $p->sku,
+                'name' => $p->name,
+                'category' => $p->category ?: 'General',
+                'supplier_name' => $p->supplier?->name ?? 'Unassigned',
+                'current_stock' => $p->stock,
+                'reorder_threshold' => $threshold,
+                'unit' => $p->unit ?: 'pcs',
+                'cost_price' => (float) $p->cost_price,
+                'price' => (float) $p->price,
+                'total_valuation' => round($valuation, 2),
+                'stock_status' => $status,
+            ];
+        });
+
+        // B. Low Stock Alert Analytics & Prioritization
+        $lowStockProducts = $allProducts->filter(function ($p) {
+            $threshold = $p->reorder_level ?: ($p->min_stock ?: 10);
+
+            return $p->stock <= $threshold;
+        });
+
+        $lowStockByCategory = [];
+        foreach ($lowStockProducts as $p) {
+            $cat = $p->category ?: 'General';
+            $lowStockByCategory[$cat] = ($lowStockByCategory[$cat] ?? 0) + 1;
+        }
+
+        $lowStockTableItems = $lowStockProducts->map(function ($p) {
+            $threshold = $p->reorder_level ?: ($p->min_stock ?: 10);
+            $shortage = max(0, $threshold - $p->stock);
+            $suggestedReorder = max($p->reorder_quantity ?: 50, ($threshold * 2) - $p->stock);
+
+            $urgency = 'Low Stock';
+            $sortRank = 2;
+            if ($p->stock <= 0) {
+                $urgency = 'Out of Stock';
+                $sortRank = 1;
+            } elseif ($p->stock <= $threshold / 2) {
+                $urgency = 'Critical Low';
+                $sortRank = 1.5;
+            }
+
+            return [
+                'id' => $p->id,
+                'sku' => $p->sku,
+                'name' => $p->name,
+                'category' => $p->category ?: 'General',
+                'stock' => $p->stock,
+                'reorder_level' => $threshold,
+                'shortage' => $shortage,
+                'suggested_reorder' => $suggestedReorder,
+                'supplier_name' => $p->supplier?->name ?? 'Unassigned',
+                'urgency' => $urgency,
+                'sort_rank' => $sortRank,
+                'price' => (float) $p->price,
+            ];
+        })->sortBy('sort_rank')->values();
+
+        // C. Quotations & Sales Analytics
+        // Monthly sales trend over the past 6 months (or custom range)
+        $trendPeriods = [];
+        $tCursor = ($fromDate ?: $today->copy()->subMonths(5))->copy()->startOfMonth();
+        $tEnd = $toDate->copy()->startOfMonth();
+        while ($tCursor->lte($tEnd)) {
+            $trendPeriods[] = $tCursor->copy();
+            $tCursor->addMonth();
+        }
+        if (count($trendPeriods) > 12) {
+            $trendPeriods = array_slice($trendPeriods, -12);
+        }
+
+        $salesMovements = Sale::where('team_id', $team->id)
+            ->where('status', '!=', 'Cancelled')
+            ->where('sale_date', '>=', $trendPeriods[0]->copy()->startOfMonth())
+            ->where('sale_date', '<=', $trendPeriods[count($trendPeriods) - 1]->copy()->endOfMonth())
+            ->selectRaw("DATE_FORMAT(sale_date, '%Y-%m') as ym, SUM(grand_total) as monthly_rev, COUNT(*) as count")
+            ->groupBy('ym')
+            ->get()
+            ->keyBy('ym');
+
+        $salesTrendLabels = [];
+        $salesTrendData = [];
+        foreach ($trendPeriods as $tp) {
+            $ym = $tp->format('Y-m');
+            $salesTrendLabels[] = $tp->format('M Y');
+            $salesTrendData[] = (float) ($salesMovements[$ym]->monthly_rev ?? 0.0);
+        }
+
+        // Quotation Status breakdown
+        $quotationStatusCounts = Quotation::where('team_id', $team->id)
+            ->selectRaw('status, COUNT(*) as count')
+            ->groupBy('status')
+            ->pluck('count', 'status')
+            ->toArray();
+
+        // Top Selling Products from SaleItem
+        $topSellingItems = SaleItem::whereHas('sale', function ($q) use ($team, $fromDate, $toDate) {
+            $q->where('team_id', $team->id)->where('status', '!=', 'Cancelled');
+            if ($fromDate) {
+                $q->where('sale_date', '>=', $fromDate)->where('sale_date', '<=', $toDate);
+            }
+        })
+            ->selectRaw('product_name, sku, SUM(quantity) as total_qty, SUM(subtotal) as total_amount')
+            ->groupBy('product_name', 'sku')
+            ->orderByDesc('total_qty')
+            ->limit(7)
+            ->get()
+            ->map(fn ($item) => [
+                'name' => $item->product_name,
+                'sku' => $item->sku,
+                'quantity' => (int) $item->total_qty,
+                'amount' => (float) $item->total_amount,
+            ]);
+
+        // Conversion calculation
+        $conversionRate = $quotationsCount > 0 ? round(($convertedQuotationsCount / $quotationsCount) * 100, 1) : 0.0;
+
+        // Sales table list
+        $salesTableItems = Sale::where('team_id', $team->id)
+            ->when($fromDate, fn ($q) => $q->where('sale_date', '>=', $fromDate)->where('sale_date', '<=', $toDate))
+            ->latest('sale_date')
+            ->limit(100)
+            ->get()
+            ->map(fn ($s) => [
+                'id' => $s->id,
+                'invoice_number' => $s->invoice_number,
+                'client_name' => $s->client_name,
+                'sale_date' => $s->sale_date?->format('Y-m-d') ?? 'N/A',
+                'subtotal' => (float) $s->subtotal,
+                'tax_amount' => (float) $s->tax_amount,
+                'grand_total' => (float) $s->grand_total,
+                'payment_method' => $s->payment_method ?? 'Cash',
+                'status' => $s->status,
+            ]);
+
+        // Quotations table list
+        $quotationsTableItems = Quotation::where('team_id', $team->id)
+            ->when($fromDate, fn ($q) => $q->where('quotation_date', '>=', $fromDate)->where('quotation_date', '<=', $toDate))
+            ->latest('quotation_date')
+            ->limit(100)
+            ->get()
+            ->map(fn ($q) => [
+                'id' => $q->id,
+                'quotation_number' => $q->quotation_number,
+                'client_name' => $q->client_name,
+                'quotation_date' => $q->quotation_date?->format('Y-m-d') ?? 'N/A',
+                'valid_until' => $q->valid_until?->format('Y-m-d') ?? 'N/A',
+                'grand_total' => (float) $q->grand_total,
+                'status' => $q->status instanceof \App\Enums\QuotationStatus ? $q->status->value : (string) $q->status,
+                'is_converted' => ! empty($q->converted_to_sale_id),
+            ]);
+
+        // D. Demand Forecast Analysis (Historical vs 3-Mo SMA)
+        $forecastMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        $curYear = (int) $today->year;
+        $monthlyMovements = StockMovement::where('team_id', $team->id)
+            ->whereIn('type', ['sale', 'out'])
+            ->whereYear('movement_date', $curYear)
+            ->selectRaw('MONTH(movement_date) as m, SUM(ABS(quantity)) as total_qty')
+            ->groupBy('m')
+            ->pluck('total_qty', 'm');
+
+        $historicalDemand = [];
+        for ($m = 1; $m <= 12; $m++) {
+            $historicalDemand[] = (int) ($monthlyMovements[$m] ?? 0);
+        }
+
+        // If no records, provide baseline seasonal pattern
+        if (array_sum($historicalDemand) === 0) {
+            foreach ($forecastMonths as $idx => $mName) {
+                $seasonal = sin(($idx + 1) * (pi() / 6)) * 30;
+                $historicalDemand[$idx] = (int) max(15, round(120 + $seasonal));
+            }
+        }
+
+        $smaForecast = array_fill(0, 12, null);
+        for ($i = 3; $i < 12; $i++) {
+            $smaForecast[$i] = (int) round(($historicalDemand[$i - 1] + $historicalDemand[$i - 2] + $historicalDemand[$i - 3]) / 3 * 1.08);
+        }
+
+        // E. Procurement & Purchasing Analytics
+        $procurementStatusCounts = PurchaseRequest::where('team_id', $team->id)
+            ->selectRaw('status, COUNT(*) as count, SUM(estimated_cost) as total_cost')
+            ->groupBy('status')
+            ->get()
+            ->keyBy('status');
+
+        $procurementTableItems = PurchaseRequest::where('team_id', $team->id)
+            ->when($fromDate, fn ($q) => $q->where('created_at', '>=', $fromDate)->where('created_at', '<=', $toDate))
+            ->with(['product:id,name,sku', 'supplier:id,name', 'requestedBy:id,name'])
+            ->latest('id')
+            ->limit(100)
+            ->get()
+            ->map(fn ($pr) => [
+                'id' => $pr->id,
+                'request_number' => $pr->request_number,
+                'product_name' => $pr->product?->name ?? 'Unknown Item',
+                'sku' => $pr->product?->sku ?? 'N/A',
+                'supplier_name' => $pr->supplier?->name ?? 'N/A',
+                'requested_by' => $pr->requestedBy?->name ?? 'Staff',
+                'quantity' => $pr->quantity,
+                'estimated_cost' => (float) $pr->estimated_cost,
+                'status' => $pr->status,
+                'date' => $pr->requested_at?->format('Y-m-d') ?? $pr->created_at->format('Y-m-d'),
+            ]);
+
+        // F. Supplier AHP Prioritization Analytics
+        $suppliers = Supplier::where('team_id', $team->id)
+            ->orderByDesc('ahp_score')
+            ->get();
+
+        $ahpRankingItems = $suppliers->map(function ($s, $idx) {
+            $metrics = $s->metrics ?? ['price' => 7, 'quality' => 7, 'delivery' => 7, 'service' => 7];
+
+            return [
+                'rank' => $idx + 1,
+                'id' => $s->id,
+                'name' => $s->name,
+                'contact_person' => $s->contact_person ?? 'N/A',
+                'email' => $s->email ?? 'N/A',
+                'phone' => $s->phone ?? 'N/A',
+                'ahp_score' => (float) ($s->ahp_score ?? 0.0),
+                'metrics' => $metrics,
+                'status' => $s->status,
+            ];
+        });
+
+        return Inertia::render('Reports/Index', [
+            // Standard / Preserved Metrics
+            'metrics' => [
+                'inventoryCount' => $inventoryCount,
+                'totalValuation' => $totalValuation,
+                'lowStockCount' => $lowStockCount,
+                'outOfStockCount' => $outOfStockCount,
+                'inStockCount' => $inStockCount,
+                'quotationsCount' => $quotationsCount,
+                'salesCount' => $salesCount,
+                'totalRevenue' => $totalRevenue,
+                'pendingQuotationsCount' => $pendingQuotationsCount,
+                'pendingQuotationsValue' => $pendingQuotationsValue,
+                'approvedQuotationsCount' => $approvedQuotationsCount,
+                'totalPurchasesCount' => $totalPurchasesCount,
+                'totalPurchasesEstimatedCost' => $totalPurchasesEstimatedCost,
+                'valuationBasisNote' => 'Valuation based on actual recorded cost price (with selling price fallback) × available stock.',
+            ],
+
+            // Active Date Filter Info
+            'dateFilter' => [
+                'preset' => $datePreset,
+                'fromDate' => $fromDate ? $fromDate->format('Y-m-d') : null,
+                'toDate' => $toDate ? $toDate->format('Y-m-d') : null,
+            ],
+
+            // Available Categories & Products
+            'categories' => array_keys($categoriesSet),
+
+            // Module Analytics Packages
+            'inventoryAnalytics' => [
+                'statusDistribution' => [
+                    'in_stock' => $inStockCount,
+                    'low_stock' => max(0, $lowStockCount - $outOfStockCount),
+                    'out_of_stock' => $outOfStockCount,
+                ],
+                'byCategory' => array_values($inventoryByCategory),
+                'topProductsByValuation' => $topProductsByValuation,
+                'items' => $inventoryTableItems,
+            ],
+
+            'lowStockAnalytics' => [
+                'byCategory' => $lowStockByCategory,
+                'severity' => $lowStockTableItems->take(8)->values(),
+                'items' => $lowStockTableItems,
+            ],
+
+            'quotationsSalesAnalytics' => [
+                'salesTrend' => [
+                    'labels' => $salesTrendLabels,
+                    'data' => $salesTrendData,
+                ],
+                'quotationStatusDistribution' => $quotationStatusCounts,
+                'topSellingProducts' => $topSellingItems,
+                'conversion' => [
+                    'total' => $quotationsCount,
+                    'approved' => $approvedQuotationsCount,
+                    'converted' => $convertedQuotationsCount,
+                    'rate' => $conversionRate,
+                ],
+                'salesList' => $salesTableItems,
+                'quotationsList' => $quotationsTableItems,
+            ],
+
+            'forecastAnalytics' => [
+                'labels' => $forecastMonths,
+                'historical' => $historicalDemand,
+                'forecast' => $smaForecast,
+                'year' => $curYear,
+            ],
+
+            'procurementAnalytics' => [
+                'statusDistribution' => [
+                    'Requested' => (int) ($procurementStatusCounts['Requested']->count ?? 0),
+                    'Ordered' => (int) ($procurementStatusCounts['Ordered']->count ?? 0),
+                    'Delivered' => (int) ($procurementStatusCounts['Delivered']->count ?? 0),
+                    'Cancelled' => (int) ($procurementStatusCounts['Cancelled']->count ?? 0),
+                ],
+                'totalEstimatedCost' => $totalPurchasesEstimatedCost,
+                'requestsList' => $procurementTableItems,
+            ],
+
+            'ahpAnalytics' => [
+                'topSuppliers' => $ahpRankingItems->take(6)->values(),
+                'suppliersList' => $ahpRankingItems,
+            ],
+        ]);
+    }
+
+    /**
+     * Export Inventory Status to CSV (supports category and status filters).
+     */
+    public function exportInventory(Request $request): StreamedResponse
+    {
+        $team = $request->user()->currentTeam;
+        abort_if(! $team, 403);
+
+        $category = $request->input('category');
+        $status = $request->input('status');
+
+        $query = Product::where('team_id', $team->id)->where('is_active', true)->with('supplier:id,name');
+
+        if ($category && $category !== 'All') {
+            $query->where('category', $category);
+        }
+
+        $products = $query->get();
+
+        if ($status && $status !== 'All') {
+            $products = $products->filter(function ($p) use ($status) {
+                $thresh = $p->reorder_level ?: ($p->min_stock ?: 10);
+                if ($status === 'Out of Stock') {
+                    return $p->stock <= 0;
+                }
+                if ($status === 'Low Stock') {
+                    return $p->stock > 0 && $p->stock <= $thresh;
+                }
+                if ($status === 'In Stock') {
+                    return $p->stock > $thresh;
+                }
+
+                return true;
+            });
+        }
+
+        $fileName = 'inventory_status_' . date('Y-m-d') . '.csv';
+
+        return $this->streamCsv($fileName, ['SKU', 'Product Name', 'Category', 'Unit', 'Price (PHP)', 'Cost Price (PHP)', 'Current Stock', 'Total Valuation (PHP)', 'Supplier', 'Status'], function ($file) use ($products) {
+            foreach ($products as $p) {
+                $costBasis = $p->cost_price ?: $p->price;
+                $val = $p->stock * (float) $costBasis;
+                $thresh = $p->reorder_level ?: ($p->min_stock ?: 10);
+                $st = $p->stock <= 0 ? 'Out of Stock' : ($p->stock <= $thresh ? 'Low Stock' : 'In Stock');
+
+                fputcsv($file, [
+                    $p->sku,
+                    $p->name,
+                    $p->category ?: 'General',
+                    $p->unit ?? 'pcs',
+                    number_format($p->price, 2),
+                    number_format($p->cost_price ?? 0, 2),
+                    $p->stock,
+                    number_format($val, 2),
+                    $p->supplier?->name ?? 'Unassigned',
+                    $st,
+                ]);
+            }
+        });
+    }
+
+    /**
+     * Export Low Stock Alert to CSV (supports category filter).
+     */
+    public function exportLowStock(Request $request): StreamedResponse
+    {
+        $team = $request->user()->currentTeam;
+        abort_if(! $team, 403);
+
+        $category = $request->input('category');
+
+        $query = Product::where('team_id', $team->id)
+            ->where('is_active', true)
+            ->whereRaw('stock <= COALESCE(reorder_level, min_stock, 10)')
+            ->with('supplier:id,name');
+
+        if ($category && $category !== 'All') {
+            $query->where('category', $category);
+        }
+
+        $products = $query->get()->sortBy(fn ($p) => $p->stock <= 0 ? 0 : $p->stock);
+
+        $fileName = 'low_stock_audit_' . date('Y-m-d') . '.csv';
+
+        return $this->streamCsv($fileName, ['SKU', 'Product Name', 'Category', 'Current Stock', 'Reorder Level', 'Stock Shortage', 'Suggested Reorder', 'Primary Supplier', 'Urgency Status'], function ($file) use ($products) {
+            foreach ($products as $p) {
+                $lvl = $p->reorder_level ?: ($p->min_stock ?: 10);
+                $shortage = max(0, $lvl - $p->stock);
+                $suggested = max($p->reorder_quantity ?: 50, ($lvl * 2) - $p->stock);
+                $urgency = $p->stock <= 0 ? 'CRITICAL - Out of Stock' : ($p->stock <= $lvl / 2 ? 'URGENT' : 'LOW STOCK');
+
+                fputcsv($file, [
+                    $p->sku,
+                    $p->name,
+                    $p->category ?: 'General',
+                    $p->stock,
+                    $lvl,
+                    $shortage,
+                    $suggested,
+                    $p->supplier?->name ?? 'Unassigned',
+                    $urgency,
+                ]);
+            }
+        });
+    }
+
+    /**
+     * Export Quotations and Sales to CSV.
+     */
+    public function exportQuotationsSales(Request $request): StreamedResponse
+    {
+        $team = $request->user()->currentTeam;
+        abort_if(! $team, 403);
+
+        $exportType = $request->input('type', 'sales'); // 'sales', 'quotations', or 'both'
+
+        if ($exportType === 'quotations') {
+            $fileName = 'quotations_report_' . date('Y-m-d') . '.csv';
+            $quotes = Quotation::where('team_id', $team->id)->latest('quotation_date')->get();
+
+            return $this->streamCsv($fileName, ['Quotation Number', 'Client Name', 'Date', 'Valid Until', 'Subtotal (PHP)', 'Tax (PHP)', 'Grand Total (PHP)', 'Status', 'Converted to Sale'], function ($file) use ($quotes) {
+                foreach ($quotes as $q) {
+                    fputcsv($file, [
+                        $q->quotation_number,
+                        $q->client_name,
+                        $q->quotation_date?->format('Y-m-d') ?? 'N/A',
+                        $q->valid_until?->format('Y-m-d') ?? 'N/A',
+                        number_format($q->subtotal, 2),
+                        number_format($q->tax_amount, 2),
+                        number_format($q->grand_total, 2),
+                        $q->status instanceof \App\Enums\QuotationStatus ? $q->status->value : (string) $q->status,
+                        $q->converted_to_sale_id ? 'Yes' : 'No',
+                    ]);
+                }
+            });
+        }
+
+        $fileName = 'sales_report_' . date('Y-m-d') . '.csv';
+        $sales = Sale::where('team_id', $team->id)->latest('sale_date')->get();
+
+        return $this->streamCsv($fileName, ['Invoice Number', 'Client Name', 'Sale Date', 'Subtotal (PHP)', 'Tax (PHP)', 'Grand Total (PHP)', 'Payment Method', 'Status'], function ($file) use ($sales) {
+            foreach ($sales as $s) {
+                fputcsv($file, [
+                    $s->invoice_number,
+                    $s->client_name,
+                    $s->sale_date?->format('Y-m-d H:i') ?? 'N/A',
+                    number_format($s->subtotal, 2),
+                    number_format($s->tax_amount, 2),
+                    number_format($s->grand_total, 2),
+                    $s->payment_method ?? 'Cash',
+                    $s->status,
+                ]);
+            }
+        });
+    }
+
+    /**
+     * Export Forecast Demand to CSV.
+     */
+    public function exportForecast(Request $request): StreamedResponse
+    {
+        $team = $request->user()->currentTeam;
+        abort_if(! $team, 403);
+
+        $year = (int) $request->input('year', date('Y'));
+        $fileName = "forecast_analysis_{$year}_" . date('Y-m-d') . '.csv';
+
+        $labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        $movements = StockMovement::where('team_id', $team->id)
+            ->whereIn('type', ['sale', 'out'])
+            ->whereYear('movement_date', $year)
+            ->selectRaw('MONTH(movement_date) as month, SUM(ABS(quantity)) as total_qty')
+            ->groupBy('month')
+            ->pluck('total_qty', 'month');
+
+        return $this->streamCsv($fileName, ['Month', 'Recorded Demand (Units)', 'Moving Average Forecast (Units)'], function ($file) use ($labels, $movements) {
+            $history = [];
+            for ($m = 1; $m <= 12; $m++) {
+                $history[] = (int) ($movements[$m] ?? 0);
+            }
+
+            foreach ($labels as $idx => $mLabel) {
+                $val = $history[$idx];
+                $forecastVal = $idx >= 3 ? round(($history[$idx - 1] + $history[$idx - 2] + $history[$idx - 3]) / 3 * 1.08) : 'N/A';
+                fputcsv($file, [$mLabel, $val, $forecastVal]);
+            }
+        });
+    }
+
+    /**
+     * Export Procurement / Purchase Requests to CSV.
+     */
+    public function exportProcurement(Request $request): StreamedResponse
+    {
+        $team = $request->user()->currentTeam;
+        abort_if(! $team, 403);
+
+        $fileName = 'procurement_report_' . date('Y-m-d') . '.csv';
+        $requests = PurchaseRequest::where('team_id', $team->id)
+            ->with(['product:id,name,sku', 'supplier:id,name', 'requestedBy:id,name'])
+            ->latest('id')
+            ->get();
+
+        return $this->streamCsv($fileName, ['Request Number', 'Product SKU', 'Product Name', 'Supplier', 'Quantity', 'Estimated Cost (PHP)', 'Requested By', 'Status', 'Date'], function ($file) use ($requests) {
+            foreach ($requests as $r) {
+                fputcsv($file, [
+                    $r->request_number,
+                    $r->product?->sku ?? 'N/A',
+                    $r->product?->name ?? 'N/A',
+                    $r->supplier?->name ?? 'N/A',
+                    $r->quantity,
+                    number_format($r->estimated_cost, 2),
+                    $r->requestedBy?->name ?? 'N/A',
+                    $r->status,
+                    $r->requested_at?->format('Y-m-d') ?? $r->created_at->format('Y-m-d'),
+                ]);
+            }
+        });
+    }
+
+    /**
+     * Export Supplier AHP Rankings to CSV.
+     */
+    public function exportAhp(Request $request): StreamedResponse
+    {
+        $team = $request->user()->currentTeam;
+        abort_if(! $team, 403);
+
+        $fileName = 'supplier_ahp_report_' . date('Y-m-d') . '.csv';
+        $suppliers = Supplier::where('team_id', $team->id)
+            ->orderByDesc('ahp_score')
+            ->get();
+
+        return $this->streamCsv($fileName, ['Rank', 'Supplier Name', 'Contact Person', 'Email', 'Phone', 'AHP Composite Score', 'Price Rating', 'Quality Rating', 'Delivery Rating', 'Service Rating', 'Status'], function ($file) use ($suppliers) {
+            foreach ($suppliers as $idx => $s) {
+                $m = $s->metrics ?? [];
+                fputcsv($file, [
+                    $idx + 1,
+                    $s->name,
+                    $s->contact_person ?? 'N/A',
+                    $s->email ?? 'N/A',
+                    $s->phone ?? 'N/A',
+                    number_format($s->ahp_score ?? 0, 3),
+                    $m['price'] ?? 'N/A',
+                    $m['quality'] ?? 'N/A',
+                    $m['delivery'] ?? 'N/A',
+                    $m['service'] ?? 'N/A',
+                    $s->status,
+                ]);
+            }
+        });
+    }
+
+    /**
+     * Export All Master Data (All Products + Suppliers + Summary).
+     */
+    public function exportAll(Request $request): StreamedResponse
+    {
+        $team = $request->user()->currentTeam;
+        abort_if(! $team, 403);
+
+        $fileName = 'all_master_data_' . date('Y-m-d') . '.csv';
+        $products = Product::where('team_id', $team->id)->with('supplier:id,name')->get();
+
+        return $this->streamCsv($fileName, ['Type', 'SKU/Code', 'Name', 'Category/Role', 'Stock/Contact', 'Unit/Email', 'Price', 'Status'], function ($file) use ($products, $team) {
+            foreach ($products as $p) {
+                fputcsv($file, [
+                    'Product',
+                    $p->sku,
+                    $p->name,
+                    $p->category ?: 'General',
+                    $p->stock,
+                    $p->unit ?? 'pcs',
+                    number_format($p->price, 2),
+                    $p->status,
+                ]);
+            }
+
+            foreach ($team->suppliers as $s) {
+                fputcsv($file, [
+                    'Supplier',
+                    'SUP-' . $s->id,
+                    $s->name,
+                    $s->contact_person ?? 'N/A',
+                    $s->phone ?? 'N/A',
+                    $s->email ?? 'N/A',
+                    $s->ahp_score ? number_format($s->ahp_score, 3) : '0.000',
+                    $s->status,
+                ]);
+            }
+        });
+    }
+
+    /**
+     * Helper to stream a CSV download.
+     */
+    private function streamCsv(string $fileName, array $headersList, callable $callback): StreamedResponse
+    {
+        $headers = [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
+            'Pragma' => 'no-cache',
+            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+            'Expires' => '0',
+        ];
+
+        return response()->stream(function () use ($headersList, $callback) {
+            $file = fopen('php://output', 'w');
+            // Add UTF-8 BOM for Microsoft Excel auto-encoding
+            fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
+            fputcsv($file, $headersList);
+            $callback($file);
+            fclose($file);
+        }, 200, $headers);
+    }
+}

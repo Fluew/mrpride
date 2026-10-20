@@ -5,15 +5,22 @@ namespace App\Providers;
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Http\Responses\LoginResponse;
+use App\Http\Responses\LogoutResponse;
 use App\Http\Responses\RegisterResponse;
 use App\Models\TeamInvitation;
+use App\Services\AuditLogger;
+use Illuminate\Auth\Events\Failed;
+use Illuminate\Auth\Events\Logout;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
+use Laravel\Fortify\Contracts\LogoutResponse as LogoutResponseContract;
 use Laravel\Fortify\Contracts\RegisterResponse as RegisterResponseContract;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
@@ -26,6 +33,7 @@ class FortifyServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(LoginResponseContract::class, LoginResponse::class);
+        $this->app->singleton(LogoutResponseContract::class, LogoutResponse::class);
         $this->app->singleton(RegisterResponseContract::class, RegisterResponse::class);
     }
 
@@ -37,6 +45,7 @@ class FortifyServiceProvider extends ServiceProvider
         $this->configureActions();
         $this->configureViews();
         $this->configureRateLimiting();
+        $this->configureSecurityListeners();
     }
 
     /**
@@ -71,7 +80,6 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::registerView(fn (Request $request) => Inertia::render('auth/Register', [
             'teamInvitation' => $this->teamInvitation($request),
         ]));
-
     }
 
     /**
@@ -79,13 +87,60 @@ class FortifyServiceProvider extends ServiceProvider
      */
     private function configureRateLimiting(): void
     {
-
         RateLimiter::for('login', function (Request $request) {
-            $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());
+            $email = (string) $request->input(Fortify::username());
+            $throttleKey = Str::transliterate(Str::lower($email).'|'.$request->ip());
 
-            return Limit::perMinute(5)->by($throttleKey);
+            return [
+                Limit::perMinute(5)->by($throttleKey),
+                Limit::perMinute(20)->by($request->ip()),
+            ];
         });
 
+        RateLimiter::for('two-factor', function (Request $request) {
+            return Limit::perMinute(5)->by($request->session()->get('login.id'));
+        });
+    }
+
+    /**
+     * Configure audit logging listeners for authentication events.
+     */
+    private function configureSecurityListeners(): void
+    {
+        Event::listen(Failed::class, function (Failed $event) {
+            AuditLogger::security(
+                'auth.login.failed',
+                'Failed login attempt for email: ' . ($event->credentials['email'] ?? 'unknown'),
+                $event->user,
+                'warning',
+                ['email' => $event->credentials['email'] ?? null],
+                'failure'
+            );
+        });
+
+        Event::listen(Logout::class, function (Logout $event) {
+            if ($event->user) {
+                AuditLogger::security(
+                    'auth.logout',
+                    "User {$event->user->email} logged out.",
+                    $event->user,
+                    'info',
+                    null,
+                    'success'
+                );
+            }
+        });
+
+        Event::listen(PasswordReset::class, function (PasswordReset $event) {
+            AuditLogger::security(
+                'auth.password.reset',
+                "Password reset completed for {$event->user->email}.",
+                $event->user,
+                'info',
+                null,
+                'success'
+            );
+        });
     }
 
     /**
