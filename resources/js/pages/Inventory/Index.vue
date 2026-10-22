@@ -257,6 +257,8 @@ const getStatusClass = (status: string) => {
     return 'bg-emerald-50 text-emerald-700 border-emerald-200';
 };
 
+const hasNumVal = (v: unknown): boolean => v !== null && v !== undefined && v !== '';
+
 // ==========================================
 // MODALS STATE
 // ==========================================
@@ -1514,7 +1516,7 @@ const exportLiveCsv = () => {
                                class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
                         <label for="prod_cost_price"
                                class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
-                               :class="formProduct.cost_price !== null && formProduct.cost_price !== undefined && formProduct.cost_price !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                               :class="hasNumVal(formProduct.cost_price) ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
                             Cost Price (₱)
                         </label>
                     </div>
@@ -1531,7 +1533,7 @@ const exportLiveCsv = () => {
                                required />
                         <label for="prod_price"
                                class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
-                               :class="formProduct.price !== null && formProduct.price !== undefined && formProduct.price !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                               :class="hasNumVal(formProduct.price) ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
                             Selling Price (₱)
                         </label>
                         <span v-if="formErrors.price" class="text-rose-600 text-xs mt-1 block">{{ formErrors.price }}</span>
@@ -1550,7 +1552,7 @@ const exportLiveCsv = () => {
                                required />
                         <label for="prod_stock"
                                class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
-                               :class="formProduct.stock !== null && formProduct.stock !== undefined && formProduct.stock !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                               :class="hasNumVal(formProduct.stock) ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
                             Initial Stock
                         </label>
                         <span v-if="formErrors.stock" class="text-rose-600 text-xs mt-1 block">{{ formErrors.stock }}</span>
@@ -1567,7 +1569,7 @@ const exportLiveCsv = () => {
                                required />
                         <label for="prod_reorder_level"
                                class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
-                               :class="formProduct.reorder_level !== null && formProduct.reorder_level !== undefined && formProduct.reorder_level !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                               :class="hasNumVal(formProduct.reorder_level) ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
                             Reorder Level
                         </label>
                         <span class="text-[10px] text-gray-400 mt-1 block">Trigger Low Stock status</span>
@@ -1583,7 +1585,7 @@ const exportLiveCsv = () => {
                                class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
                         <label for="prod_reorder_quantity"
                                class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
-                               :class="formProduct.reorder_quantity !== null && formProduct.reorder_quantity !== undefined && formProduct.reorder_quantity !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                               :class="hasNumVal(formProduct.reorder_quantity) ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
                             Reorder Quantity
                         </label>
                         <span class="text-[10px] text-gray-400 mt-1 block">Suggested order batch</span>
@@ -1695,7 +1697,7 @@ const exportLiveCsv = () => {
                                required />
                         <label for="stockin_qty"
                                class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
-                               :class="formStockIn.quantity !== null && formStockIn.quantity !== undefined && formStockIn.quantity !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                               :class="hasNumVal(formStockIn.quantity) ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
                             Incoming Quantity
                         </label>
                         <span v-if="formErrors.quantity" class="text-rose-600 text-xs mt-1 block">{{ formErrors.quantity }}</span>
@@ -1838,7 +1840,7 @@ const exportLiveCsv = () => {
                                required />
                         <label for="stockout_qty"
                                class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
-                               :class="formStockOut.quantity !== null && formStockOut.quantity !== undefined && formStockOut.quantity !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                               :class="hasNumVal(formStockOut.quantity) ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
                             Deduction Quantity
                         </label>
                         <span v-if="formErrors.quantity" class="text-rose-600 text-xs mt-1 block">{{ formErrors.quantity }}</span>
@@ -1978,7 +1980,7 @@ const exportLiveCsv = () => {
                                required />
                         <label for="adjust_physical_count"
                                class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
-                               :class="formAdjust.physical_count !== null && formAdjust.physical_count !== undefined && formAdjust.physical_count !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                               :class="hasNumVal(formAdjust.physical_count) ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
                             Actual Physical Count
                         </label>
                         <span v-if="formErrors.physical_count" class="text-rose-600 text-xs mt-1 block">{{ formErrors.physical_count }}</span>

@@ -538,7 +538,7 @@ const standardChartOptions = {
     plugins: {
         legend: {
             position: 'top' as const,
-            labels: { boxWidth: 12, usePointStyle: true, font: { size: 11, weight: '600' as const } },
+            labels: { boxWidth: 12, usePointStyle: true, font: { size: 11, weight: 600 } },
         },
     },
 };

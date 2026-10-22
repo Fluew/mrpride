@@ -218,7 +218,7 @@ const filteredCategories = computed(() => {
             );
 
             const partnerMatches = getCategoryPartners(cat.code).filter((p) =>
-                p.name.toLowerCase().includes(q),
+                p.name?.toLowerCase().includes(q),
             );
 
             const hasMatches =

@@ -385,7 +385,7 @@ const promptSaveQuotation = () => {
     }
 
     const itemCount = form.value.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-    const totalAmount = formTotal.value;
+    const totalAmount = formGrandTotal.value;
 
     openConfirmModal({
         title: isEditing.value ? 'Confirm Quotation Update' : 'Confirm New Quotation',
@@ -395,7 +395,7 @@ const promptSaveQuotation = () => {
         details: [
             { label: 'Client / Company', value: form.value.client_name },
             { label: 'Line Items', value: `${form.value.items.length} items (${itemCount} total units)` },
-            { label: 'Total Valuation', value: formatPrice(totalAmount) },
+            { label: 'Total Valuation', value: formatCurrency(totalAmount) },
             { label: 'Validity Date', value: form.value.valid_until },
         ],
         confirmText: isEditing.value ? 'Save Changes' : 'Create Quotation',

@@ -320,7 +320,7 @@ const chartOptions = {
             position: 'top' as const,
             labels: {
                 color: '#374151',
-                font: { weight: '600' as const, size: 12 },
+                font: { weight: 600, size: 12 },
                 boxWidth: 16,
                 padding: 18,
                 usePointStyle: true,

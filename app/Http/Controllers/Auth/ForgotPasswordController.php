@@ -11,6 +11,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 
@@ -79,6 +80,22 @@ class ForgotPasswordController extends Controller
                 $sendResult['success'] ? 'success' : 'warning',
                 $request
             );
+
+            if (! $sendResult['success']) {
+                if (app()->isLocal()) {
+                    Log::info("[DEV ONLY] Password reset OTP for {$user->email}: {$otp}");
+
+                    $statusMessage = "OTP generated for testing. Note: Resend test sandbox only delivers to the Resend account owner (assassinscreedjhon@gmail.com). For local testing, your OTP code is: {$otp}";
+
+                    return back()->with('status', $statusMessage)
+                        ->with('email', $email)
+                        ->with('otp_sent', true);
+                }
+
+                return back()->withErrors([
+                    'email' => 'Unable to send OTP email at this time. Please try again later or contact support.',
+                ])->with('email', $email);
+            }
 
             $statusMessage = "A 6-digit verification code (OTP) has been sent to {$email}. Please check your inbox and enter the code below.";
 
@@ -226,7 +243,7 @@ class ForgotPasswordController extends Controller
         // Update password and mark change completed
         $user->password = Hash::make($validated['password']);
         $user->must_change_password = false;
-        $user->password_changed_at = now();
+        $user->password_changed_at = \Illuminate\Support\Carbon::now();
         $user->save();
 
         // Invalidate all active sessions for this account to enforce 1-device policy & security

@@ -65,6 +65,10 @@ function handleMouseLeave() {
     }, 280);
 }
 
+function cancelLeaveTimeout() {
+    if (leaveTimeout) clearTimeout(leaveTimeout);
+}
+
 function toggleTab(tab: 'email' | 'support') {
     if (activeTab.value === tab && isPinned.value) {
         closePanel();
@@ -176,9 +180,7 @@ onUnmounted(() => {
                         aria-modal="false"
                         aria-label="Consultation Email"
                         class="flyout-card pointer-events-auto fixed inset-x-4 bottom-6 z-50 mx-auto max-h-[82vh] w-auto max-w-sm overflow-y-auto rounded-3xl border border-gray-200/90 bg-white/98 p-5 text-gray-900 shadow-2xl ring-1 ring-black/5 backdrop-blur-2xl md:absolute md:top-1/2 md:right-full md:bottom-auto md:left-auto md:mr-3.5 md:max-h-[calc(100vh-4rem)] md:w-[320px] md:max-w-none dark:border-neutral-800 dark:bg-[#121212]/98 dark:text-gray-100"
-                        @mouseenter="
-                            if (leaveTimeout) clearTimeout(leaveTimeout);
-                        "
+                        @mouseenter="cancelLeaveTimeout"
                     >
                         <div
                             class="mb-3.5 flex items-center justify-between border-b border-gray-100 pb-2.5 dark:border-neutral-800"
@@ -264,9 +266,7 @@ onUnmounted(() => {
                         aria-modal="false"
                         aria-label="Get Support"
                         class="flyout-card pointer-events-auto fixed inset-x-4 bottom-6 z-50 mx-auto max-h-[82vh] w-auto max-w-sm overflow-y-auto rounded-3xl border border-gray-200/90 bg-white/98 p-5 text-gray-900 shadow-2xl ring-1 ring-black/5 backdrop-blur-2xl md:absolute md:top-1/2 md:right-full md:bottom-auto md:left-auto md:mr-3.5 md:max-h-[calc(100vh-4rem)] md:w-[320px] md:max-w-none dark:border-neutral-800 dark:bg-[#121212]/98 dark:text-gray-100"
-                        @mouseenter="
-                            if (leaveTimeout) clearTimeout(leaveTimeout);
-                        "
+                        @mouseenter="cancelLeaveTimeout"
                     >
                         <div
                             class="mb-3.5 flex items-center justify-between border-b border-gray-100 pb-2.5 dark:border-neutral-800"

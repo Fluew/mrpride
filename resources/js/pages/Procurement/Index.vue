@@ -445,7 +445,7 @@ const confirmDelete = () => {
                            class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
                     <label for="req_quantity"
                            class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
-                           :class="form.quantity !== null && form.quantity !== undefined && form.quantity !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                           :class="form.quantity !== null && form.quantity !== undefined && (form.quantity as unknown) !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
                         Order Quantity
                     </label>
                     <span v-if="form.errors.quantity" class="text-xs text-red-500 mt-1 block">{{ form.errors.quantity }}</span>

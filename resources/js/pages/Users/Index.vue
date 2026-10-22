@@ -469,7 +469,7 @@ const promptEnrollDevice = () => {
         return;
     }
 
-    const targetUser = props.users.find(u => u.id === Number(enrollForm.user_id));
+    const targetUser = props.users?.find(u => u.id === Number(enrollForm.user_id));
     const deviceLabel = enrollForm.device_name.trim() || `${targetUser?.name || 'Member'}'s Device`;
 
     openConfirmModal({

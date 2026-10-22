@@ -5,6 +5,7 @@ namespace App\Services;
 use GuzzleHttp\Client as GuzzleClient;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Resend\Client as ResendClient;
 use Resend\Transporters\HttpTransporter;
 use Resend\ValueObjects\ApiKey;
@@ -20,9 +21,9 @@ class ResendService
 
     public function __construct()
     {
-        $this->apiKey = (string) (config('services.resend.key') ?? env('RESEND_API_KEY', ''));
-        $this->fromName = (string) (config('services.resend.name') ?? env('RESEND_FROM_NAME', 'mrp-electrodesk-dev'));
-        $this->fromEmail = (string) (config('services.resend.from_email') ?? env('RESEND_FROM_EMAIL', 'onboarding@resend.dev'));
+        $this->apiKey = (string) config('services.resend.key', '');
+        $this->fromName = (string) config('services.resend.name', 'mrp-electrodesk-dev');
+        $this->fromEmail = (string) config('services.resend.from_email', 'onboarding@resend.dev');
 
         $certPath = storage_path('certs/cacert.pem');
         $this->caCertPath = file_exists($certPath) ? $certPath : null;
@@ -113,7 +114,27 @@ class ResendService
                 }
 
                 $errorBody = $response->body();
-                Log::error("Resend HTTP request failed: {$response->status()} - {$errorBody}");
+                Log::warning("Resend HTTP request failed ({$response->status()}): {$errorBody}");
+
+                // Attempt Laravel native Mail fallback if configured (e.g. SMTP)
+                try {
+                    $defaultMailer = config('mail.default', 'log');
+                    if ($defaultMailer && $defaultMailer !== 'log') {
+                        Mail::html($html, function ($message) use ($toEmail, $subject) {
+                            $message->to($toEmail)->subject($subject);
+                        });
+
+                        Log::info("OTP email successfully dispatched via Laravel Mail ({$defaultMailer}) to {$toEmail}");
+
+                        return [
+                            'success' => true,
+                            'id' => 'mail-' . uniqid(),
+                            'error' => null,
+                        ];
+                    }
+                } catch (\Throwable $mailError) {
+                    Log::error("Laravel Mail fallback failed: " . $mailError->getMessage());
+                }
 
                 return [
                     'success' => false,
