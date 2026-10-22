@@ -83,19 +83,32 @@ class User extends Authenticatable
     }
 
     /**
-     * Determine if user has the supreme Owner/Superadmin role.
+     * All recognized staff roles mapped to their module name.
+     */
+    public const STAFF_ROLES = [
+        'staff_inventory' => 'Inventory',
+        'staff_quotations' => 'Quotations',
+        'staff_procurement' => 'Procurement',
+        'staff_sales' => 'Sales',
+        'staff_forecast' => 'Demand Forecasting',
+        'staff_suppliers' => 'Suppliers',
+        'staff_reports' => 'Reports & Analytics',
+    ];
+
+    /**
+     * Determine if user has administrator privileges (replaces superadmin).
      */
     public function isSuperAdmin(): bool
     {
-        return in_array($this->role, ['superadmin', 'owner'], true);
+        return $this->isAdmin();
     }
 
     /**
-     * Determine if user has administrator privileges (Owner/Superadmin or Admin).
+     * Determine if user has administrator privileges (Admin can access all modules).
      */
     public function isAdmin(): bool
     {
-        return in_array($this->role, ['superadmin', 'owner', 'admin'], true);
+        return in_array($this->role, ['admin', 'superadmin', 'owner'], true);
     }
 
     /**
@@ -103,15 +116,55 @@ class User extends Authenticatable
      */
     public function isRegularAdmin(): bool
     {
-        return $this->role === 'admin';
+        return $this->isAdmin();
     }
 
     /**
-     * Determine if user has staff privileges.
+     * Determine if user has staff privileges (1 module per staff role).
      */
     public function isStaff(): bool
     {
-        return $this->role === 'staff';
+        return str_starts_with($this->role, 'staff_') || $this->role === 'staff';
+    }
+
+    /**
+     * Get the route slug of the single module assigned to this staff member.
+     */
+    public function assignedModuleSlug(): string
+    {
+        if ($this->isAdmin()) {
+            return 'dashboard';
+        }
+
+        return match ($this->role) {
+            'staff_quotations' => 'quotations',
+            'staff_procurement' => 'procurement',
+            'staff_sales' => 'sales',
+            'staff_forecast' => 'forecast',
+            'staff_suppliers' => 'suppliers',
+            'staff_reports' => 'reports',
+            default => 'inventory',
+        };
+    }
+
+    /**
+     * Get human-friendly label for the role.
+     */
+    public function roleLabel(): string
+    {
+        if ($this->isAdmin()) {
+            return 'Administrator';
+        }
+
+        if (isset(self::STAFF_ROLES[$this->role])) {
+            return 'Staff (' . self::STAFF_ROLES[$this->role] . ')';
+        }
+
+        if ($this->role === 'staff') {
+            return 'Staff (Inventory)';
+        }
+
+        return 'User';
     }
 
     /**
@@ -123,11 +176,11 @@ class User extends Authenticatable
     }
 
     /**
-     * Determine if user is internal personnel (superadmin, admin, or staff).
+     * Determine if user is internal personnel (admin or staff).
      */
     public function isAdminOrStaff(): bool
     {
-        return in_array($this->role, ['superadmin', 'owner', 'admin', 'staff'], true);
+        return $this->isAdmin() || $this->isStaff();
     }
 
     /**

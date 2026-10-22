@@ -9,6 +9,7 @@ import {
     ShieldAlert,
     Trash2,
     CheckCircle2,
+    AlertTriangle,
     XCircle,
     KeyRound,
     Copy,
@@ -49,6 +50,55 @@ const copyRecoveryKey = () => {
     }
 };
 
+// Action Confirmation Modal State
+interface ConfirmActionOptions {
+    title: string;
+    description: string;
+    details?: Array<{ label: string; value: string | number }>;
+    confirmText?: string;
+    confirmVariant?: 'brand' | 'destructive' | 'secondary';
+    action: () => void;
+}
+
+const showConfirmModal = ref(false);
+const confirmOptions = ref<ConfirmActionOptions>({
+    title: 'Confirm Action',
+    description: 'Are you sure you want to proceed?',
+    details: [],
+    confirmText: 'Confirm & Proceed',
+    confirmVariant: 'brand',
+    action: () => {},
+});
+
+const openConfirmModal = (options: ConfirmActionOptions) => {
+    confirmOptions.value = {
+        confirmText: 'Confirm & Proceed',
+        confirmVariant: 'brand',
+        ...options,
+    };
+    showConfirmModal.value = true;
+};
+
+const handleConfirmedAction = () => {
+    showConfirmModal.value = false;
+    confirmOptions.value.action();
+};
+
+const promptApproveDevice = (device: DeviceItem) => {
+    openConfirmModal({
+        title: 'Confirm Device Approval',
+        description: `Authorize and approve access for "${device.device_name}"?`,
+        details: [
+            { label: 'Device Name', value: device.device_name },
+            { label: 'Account Holder', value: `${device.user.name} (${device.user.email})` },
+            { label: 'IP Address', value: device.ip_address || 'Not Recorded' },
+        ],
+        confirmText: 'Approve Device',
+        confirmVariant: 'brand',
+        action: () => approveDevice(device),
+    });
+};
+
 const approveDevice = (device: DeviceItem) => {
     const team = (page.props as any).currentTeam?.slug;
     router.post(`/${team}/security/devices/${device.id}/approve`, {}, {
@@ -56,22 +106,42 @@ const approveDevice = (device: DeviceItem) => {
     });
 };
 
-const revokeDevice = (device: DeviceItem) => {
-    if (confirm(`Revoke access for device "${device.device_name}"? Active sessions on this device will be immediately terminated.`)) {
-        const team = (page.props as any).currentTeam?.slug;
-        router.post(`/${team}/security/devices/${device.id}/revoke`, {}, {
-            preserveScroll: true,
-        });
-    }
+const promptRevokeDevice = (device: DeviceItem) => {
+    openConfirmModal({
+        title: 'Revoke Trusted Device',
+        description: `Are you sure you want to revoke access for "${device.device_name}"? Active sessions on this device will be immediately terminated.`,
+        details: [
+            { label: 'Device Name', value: device.device_name },
+            { label: 'Account Holder', value: device.user.name },
+        ],
+        confirmText: 'Revoke Access',
+        confirmVariant: 'destructive',
+        action: () => {
+            const team = (page.props as any).currentTeam?.slug;
+            router.post(`/${team}/security/devices/${device.id}/revoke`, {}, {
+                preserveScroll: true,
+            });
+        },
+    });
 };
 
-const deleteDevice = (device: DeviceItem) => {
-    if (confirm(`Remove device "${device.device_name}" from trusted device registry?`)) {
-        const team = (page.props as any).currentTeam?.slug;
-        router.delete(`/${team}/security/devices/${device.id}`, {
-            preserveScroll: true,
-        });
-    }
+const promptDeleteDevice = (device: DeviceItem) => {
+    openConfirmModal({
+        title: 'Remove Trusted Device',
+        description: `Permanently delete "${device.device_name}" from the trusted device registry?`,
+        details: [
+            { label: 'Device Name', value: device.device_name },
+            { label: 'Account Holder', value: device.user.name },
+        ],
+        confirmText: 'Delete Device',
+        confirmVariant: 'destructive',
+        action: () => {
+            const team = (page.props as any).currentTeam?.slug;
+            router.delete(`/${team}/security/devices/${device.id}`, {
+                preserveScroll: true,
+            });
+        },
+    });
 };
 </script>
 
@@ -204,7 +274,7 @@ const deleteDevice = (device: DeviceItem) => {
                                         <button
                                             v-if="isAdmin && d.status !== 'approved'"
                                             type="button"
-                                            @click="approveDevice(d)"
+                                            @click="promptApproveDevice(d)"
                                             class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 cursor-pointer"
                                         >
                                             <ShieldCheck class="size-3.5" /> Approve
@@ -213,7 +283,7 @@ const deleteDevice = (device: DeviceItem) => {
                                         <button
                                             v-if="d.status === 'approved'"
                                             type="button"
-                                            @click="revokeDevice(d)"
+                                            @click="promptRevokeDevice(d)"
                                             class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 cursor-pointer"
                                         >
                                             Revoke
@@ -221,7 +291,7 @@ const deleteDevice = (device: DeviceItem) => {
 
                                         <button
                                             type="button"
-                                            @click="deleteDevice(d)"
+                                            @click="promptDeleteDevice(d)"
                                             class="inline-flex items-center justify-center size-8 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
                                             title="Delete device"
                                         >
@@ -242,4 +312,55 @@ const deleteDevice = (device: DeviceItem) => {
             </div>
         </div>
     </AppSidebarLayout>
+
+    <!-- Action Confirmation Modal -->
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div
+                :class="[
+                    'w-11 h-11 rounded-full flex items-center justify-center mb-4 border',
+                    confirmOptions.confirmVariant === 'destructive'
+                        ? 'bg-red-50 text-red-600 border-red-100'
+                        : 'bg-amber-50 text-[#F8B803] border-amber-100'
+                ]"
+            >
+                <AlertTriangle v-if="confirmOptions.confirmVariant === 'destructive'" class="w-6 h-6" />
+                <CheckCircle2 v-else class="w-6 h-6" />
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
+            <p class="text-gray-600 text-sm mb-4 leading-relaxed">
+                {{ confirmOptions.description }}
+            </p>
+
+            <div v-if="confirmOptions.details && confirmOptions.details.length > 0" class="bg-gray-50 border border-gray-100 rounded-xl p-3.5 mb-5 space-y-2 text-xs">
+                <div v-for="(item, idx) in confirmOptions.details" :key="idx" class="flex justify-between items-center py-0.5 border-b border-gray-100 last:border-b-0">
+                    <span class="text-gray-500 font-medium">{{ item.label }}</span>
+                    <span class="font-semibold text-gray-900 text-right">{{ item.value }}</span>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3">
+                <SpecularButton
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showConfirmModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    type="button"
+                    :variant="confirmOptions.confirmVariant || 'brand'"
+                    size="md"
+                    :radius="10"
+                    @click="handleConfirmedAction"
+                >
+                    <Check v-if="confirmOptions.confirmVariant !== 'destructive'" class="w-4 h-4 mr-1.5 inline" />
+                    <Trash2 v-else class="w-4 h-4 mr-1.5 inline" />
+                    <span>{{ confirmOptions.confirmText || 'Confirm & Proceed' }}</span>
+                </SpecularButton>
+            </div>
+        </div>
+    </div>
 </template>

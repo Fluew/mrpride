@@ -4,9 +4,13 @@ import { ArrowRight, MapPin } from '@lucide/vue';
 import { computed } from 'vue';
 import { home } from '@/routes';
 import { index as company } from '@/routes/company';
+import { index as contact } from '@/routes/contact';
 import { index as products } from '@/routes/products';
 import { create as quotation } from '@/routes/quotations';
 import StaggeredMenu from '@/components/vue-bits/StaggeredMenu.vue';
+import CustomerLoadingScreen from '@/components/CustomerLoadingScreen.vue';
+import FloatingContactSidebar from '@/components/FloatingContactSidebar.vue';
+import CookieConsent from '@/components/CookieConsent.vue';
 
 const page = usePage();
 const currentPath = computed(() => page.url.split(/[?#]/)[0]);
@@ -14,15 +18,25 @@ const navigation = [
     { name: 'Home', href: home().url },
     { name: 'Products', href: products().url },
     { name: 'Company Info', href: company().url },
+    { name: 'Contact Us', href: contact().url },
 ];
 </script>
 <template>
     <div
-        class="public-site min-h-screen bg-gray-50 dark:bg-[#0a0a0a] font-sans text-gray-900 dark:text-gray-100 selection:bg-[#F8B803]/40"
+        class="public-site min-h-screen bg-gray-50 font-sans text-gray-900 selection:bg-[#F8B803]/40 dark:bg-[#0a0a0a] dark:text-gray-100"
     >
+        <!-- Full-screen Customer Loading Screen (starting, refreshing, route navigation) -->
+        <CustomerLoadingScreen />
+
+        <!-- Floating Contact & Support Sidebar (Fixed to Right Edge) -->
+        <FloatingContactSidebar />
+
+        <!-- Cookie Preferences & Privacy Popup -->
+        <CookieConsent />
+
         <a href="#main-content" class="skip-link">Skip to content</a>
         <header
-            class="fixed inset-x-0 top-0 z-50 border-b border-gray-200/80 dark:border-neutral-800 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl"
+            class="fixed inset-x-0 top-0 z-50 border-b border-gray-200/80 bg-white/95 backdrop-blur-xl dark:border-neutral-800 dark:bg-neutral-900/95"
         >
             <nav
                 aria-label="Main navigation"
@@ -40,10 +54,11 @@ const navigation = [
                             class="size-11 object-contain"
                         />
                         <span class="flex flex-col gap-1 leading-none"
-                            ><span class="text-lg font-extrabold tracking-tight text-gray-900 dark:text-white"
+                            ><span
+                                class="text-lg font-extrabold tracking-tight text-gray-900 dark:text-white"
                                 >MR-PRIDE</span
                             ><span
-                                class="text-[9px] font-semibold tracking-[0.16em] text-gray-500 dark:text-neutral-400 uppercase"
+                                class="text-[9px] font-semibold tracking-[0.16em] text-gray-500 uppercase dark:text-neutral-400"
                                 >Electrical Supplies</span
                             ></span
                         >
@@ -85,19 +100,31 @@ const navigation = [
         <main id="main-content" tabindex="-1" class="pt-20 focus:outline-none">
             <!-- Unauthorized Device Notification Banner -->
             <div
-                v-if="page.props.device_notice || (page.props.flash as any)?.device_notice"
-                class="bg-gradient-to-r from-amber-600 via-amber-700 to-[#4b5320] text-white px-6 py-4 shadow-lg flex items-center justify-center gap-3 text-sm font-semibold text-center border-b border-amber-400/30"
+                v-if="
+                    page.props.device_notice ||
+                    (page.props.flash as any)?.device_notice
+                "
+                class="flex items-center justify-center gap-3 border-b border-amber-400/30 bg-gradient-to-r from-amber-600 via-amber-700 to-[#4b5320] px-6 py-4 text-center text-sm font-semibold text-white shadow-lg"
             >
-                <span class="size-2.5 rounded-full bg-amber-300 animate-ping"></span>
-                <span>{{ page.props.device_notice || (page.props.flash as any)?.device_notice }}</span>
+                <span
+                    class="size-2.5 animate-ping rounded-full bg-amber-300"
+                ></span>
+                <span>{{
+                    page.props.device_notice ||
+                    (page.props.flash as any)?.device_notice
+                }}</span>
             </div>
             <slot />
         </main>
-        <footer class="border-t border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-950">
+        <footer
+            class="border-t border-gray-200 bg-white dark:border-neutral-800 dark:bg-neutral-950"
+        >
             <div class="mx-auto max-w-7xl px-4 pt-14 pb-7 sm:px-6 lg:px-8">
                 <div class="grid gap-10 pb-12 md:grid-cols-[2fr_1fr_1fr]">
                     <div>
-                        <p class="text-lg font-extrabold text-[#4b5320] dark:text-[#F8B803]">
+                        <p
+                            class="text-lg font-extrabold text-[#4b5320] dark:text-[#F8B803]"
+                        >
                             MR-PRIDE<span class="text-[#F8B803]">.</span>
                         </p>
                         <p
@@ -110,7 +137,7 @@ const navigation = [
                     </div>
                     <div>
                         <h2
-                            class="text-xs font-bold tracking-widest text-gray-500 dark:text-neutral-400 uppercase"
+                            class="text-xs font-bold tracking-widest text-gray-500 uppercase dark:text-neutral-400"
                         >
                             Explore
                         </h2>
@@ -118,14 +145,14 @@ const navigation = [
                             <li v-for="item in navigation" :key="item.name">
                                 <Link
                                     :href="item.href"
-                                    class="text-gray-700 dark:text-neutral-300 hover:text-[#4b5320] dark:hover:text-[#F8B803] hover:underline"
+                                    class="text-gray-700 hover:text-[#4b5320] hover:underline dark:text-neutral-300 dark:hover:text-[#F8B803]"
                                     >{{ item.name }}</Link
                                 >
                             </li>
                             <li>
                                 <Link
                                     :href="quotation()"
-                                    class="text-gray-700 dark:text-neutral-300 hover:text-[#4b5320] dark:hover:text-[#F8B803] hover:underline"
+                                    class="text-gray-700 hover:text-[#4b5320] hover:underline dark:text-neutral-300 dark:hover:text-[#F8B803]"
                                     >Request Quotation</Link
                                 >
                             </li>
@@ -133,7 +160,7 @@ const navigation = [
                     </div>
                     <div>
                         <h2
-                            class="text-xs font-bold tracking-widest text-gray-500 dark:text-neutral-400 uppercase"
+                            class="text-xs font-bold tracking-widest text-gray-500 uppercase dark:text-neutral-400"
                         >
                             Visit our office
                         </h2>
@@ -152,23 +179,35 @@ const navigation = [
             <div class="border-t border-[#3e451a] bg-[#4b5320] py-5 text-white">
                 <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                     <div
-                        class="flex flex-col gap-3 text-xs text-white/90 sm:flex-row sm:justify-between sm:items-center"
+                        class="flex flex-col gap-3 text-xs text-white/90 sm:flex-row sm:items-center sm:justify-between"
                     >
                         <p>
-                            &copy; {{ new Date().getFullYear() }} MR-Pride Electrical Supplies. All rights reserved.
+                            &copy; {{ new Date().getFullYear() }} MR-Pride
+                            Electrical Supplies. All rights reserved.
                         </p>
                         <div class="flex items-center gap-3">
-                            <span class="text-white/80">Hardware · Electrical · Industrial · Safety</span>
+                            <span class="text-white/80"
+                                >Hardware · Electrical · Industrial ·
+                                Safety</span
+                            >
                             <span class="text-white/40">·</span>
-                            <a 
-                                href="https://web.facebook.com/mrprideelectricalsupplies" 
+                            <a
+                                href="https://web.facebook.com/mrprideelectricalsupplies"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 class="inline-flex items-center gap-1.5 font-medium text-white transition-colors hover:text-[#F8B803]"
                                 title="Follow MR-Pride on Facebook"
                             >
-                                <svg class="size-3.5 fill-[#1877F2] bg-white rounded-full p-0.5" viewBox="0 0 24 24" aria-hidden="true">
-                                    <path fill-rule="evenodd" clip-rule="evenodd" d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" />
+                                <svg
+                                    class="size-3.5 rounded-full bg-white fill-[#1877F2] p-0.5"
+                                    viewBox="0 0 24 24"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        fill-rule="evenodd"
+                                        clip-rule="evenodd"
+                                        d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"
+                                    />
                                 </svg>
                                 <span>Facebook</span>
                             </a>

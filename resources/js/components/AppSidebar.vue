@@ -40,15 +40,8 @@ import type { NavItem } from '@/types';
 
 const page = usePage();
 const currentUser = computed(() => (page.props as any).auth?.user);
-const isSuperAdmin = computed(() => ['superadmin', 'owner'].includes(currentUser.value?.role));
 const isAdmin = computed(() => ['admin', 'superadmin', 'owner'].includes(currentUser.value?.role));
-const isStaff = computed(() => currentUser.value?.role === 'staff');
-
-const dashboardUrl = computed(() =>
-    page.props.currentTeam
-        ? dashboard(page.props.currentTeam.slug).url
-        : '/',
-);
+const userRole = computed(() => currentUser.value?.role || '');
 
 const operations = computed<NavItem[]>(() => {
     const team = page.props.currentTeam?.slug;
@@ -57,31 +50,54 @@ const operations = computed<NavItem[]>(() => {
         return [];
     }
 
-    // Staff accounts are strictly limited to 5 modules: Inventory, Quotations, Procurement, Sales, Demand Forecasting
-    if (isStaff.value) {
+    // ADMIN CAN ACCESS ALL MODULE
+    if (isAdmin.value) {
         return [
+            { title: 'Overview', href: dashboard(team), icon: LayoutGrid },
+            { title: 'User Management', href: users(team), icon: Users },
             { title: 'Inventory', href: inventory(team), icon: Package },
+            { title: 'Suppliers', href: suppliers(team), icon: Truck },
             { title: 'Quotations', href: quotations(team), icon: FileText },
             { title: 'Procurement', href: procurement(team), icon: ShoppingCart },
             { title: 'Sales', href: sales(team), icon: Banknote },
             { title: 'Demand Forecasting', href: forecast(team), icon: LineChart },
+            { title: 'Reports & Analytics', href: reports(team), icon: PieChart },
         ];
     }
 
-    // Admin & Superadmin Navigation
-    const items: NavItem[] = [
-        { title: 'Overview', href: dashboard(team), icon: LayoutGrid },
-        { title: 'User Management', href: users(team), icon: Users },
-        { title: 'Inventory', href: inventory(team), icon: Package },
-        { title: 'Suppliers', href: suppliers(team), icon: Truck },
-        { title: 'Quotations', href: quotations(team), icon: FileText },
-        { title: 'Procurement', href: procurement(team), icon: ShoppingCart },
-        { title: 'Sales', href: sales(team), icon: Banknote },
-        { title: 'Demand Forecasting', href: forecast(team), icon: LineChart },
-        { title: 'Reports & Analytics', href: reports(team), icon: PieChart },
-    ];
+    // 1 MODULE PER STAFF ONLY - ONLY THAT ROLE THEY ARE ASSIGNED WITH IS SHOWN TO THEM
+    const r = userRole.value;
+    if (r === 'staff_inventory' || r === 'staff') {
+        return [{ title: 'Inventory', href: inventory(team), icon: Package }];
+    }
+    if (r === 'staff_quotations') {
+        return [{ title: 'Quotations', href: quotations(team), icon: FileText }];
+    }
+    if (r === 'staff_procurement') {
+        return [{ title: 'Procurement', href: procurement(team), icon: ShoppingCart }];
+    }
+    if (r === 'staff_sales') {
+        return [{ title: 'Sales', href: sales(team), icon: Banknote }];
+    }
+    if (r === 'staff_forecast') {
+        return [{ title: 'Demand Forecasting', href: forecast(team), icon: LineChart }];
+    }
+    if (r === 'staff_suppliers') {
+        return [{ title: 'Suppliers', href: suppliers(team), icon: Truck }];
+    }
+    if (r === 'staff_reports') {
+        return [{ title: 'Reports & Analytics', href: reports(team), icon: PieChart }];
+    }
 
-    return items;
+    return [];
+});
+
+const dashboardUrl = computed(() => {
+    const team = page.props.currentTeam?.slug;
+    if (!team) return '/';
+    if (isAdmin.value) return dashboard(team).url;
+    if (operations.value.length > 0) return operations.value[0].href;
+    return '/';
 });
 </script>
 <template>

@@ -322,7 +322,38 @@ const openEditModal = (quote: Quotation) => {
 const formError = ref<string | null>(null);
 const isSubmitting = ref(false);
 
-const saveQuotation = () => {
+// Action Confirmation Modal State
+interface ConfirmActionOptions {
+    title: string;
+    description: string;
+    details?: Array<{ label: string; value: string | number }>;
+    confirmText?: string;
+    action: () => void;
+}
+
+const showConfirmModal = ref(false);
+const confirmOptions = ref<ConfirmActionOptions>({
+    title: 'Confirm Action',
+    description: 'Are you sure you want to proceed?',
+    details: [],
+    confirmText: 'Confirm & Save',
+    action: () => {},
+});
+
+const openConfirmModal = (options: ConfirmActionOptions) => {
+    confirmOptions.value = {
+        confirmText: 'Confirm & Save',
+        ...options,
+    };
+    showConfirmModal.value = true;
+};
+
+const handleConfirmedAction = () => {
+    showConfirmModal.value = false;
+    confirmOptions.value.action();
+};
+
+const promptSaveQuotation = () => {
     formError.value = null;
 
     if (!form.value.client_name.trim()) {
@@ -353,6 +384,26 @@ const saveQuotation = () => {
         }
     }
 
+    const itemCount = form.value.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    const totalAmount = formTotal.value;
+
+    openConfirmModal({
+        title: isEditing.value ? 'Confirm Quotation Update' : 'Confirm New Quotation',
+        description: isEditing.value
+            ? `Are you sure you want to save changes to quotation for "${form.value.client_name}"?`
+            : `Are you sure you want to generate a formal quotation for "${form.value.client_name}"?`,
+        details: [
+            { label: 'Client / Company', value: form.value.client_name },
+            { label: 'Line Items', value: `${form.value.items.length} items (${itemCount} total units)` },
+            { label: 'Total Valuation', value: formatPrice(totalAmount) },
+            { label: 'Validity Date', value: form.value.valid_until },
+        ],
+        confirmText: isEditing.value ? 'Save Changes' : 'Create Quotation',
+        action: saveQuotation,
+    });
+};
+
+const saveQuotation = () => {
     isSubmitting.value = true;
 
     if (isEditing.value && form.value.id) {
@@ -388,13 +439,37 @@ const openStatusModal = (quote: Quotation) => {
     showStatusModal.value = true;
 };
 
+const isUpdatingStatus = ref(false);
+
+const promptUpdateStatus = () => {
+    if (!activeQuotation.value) return;
+    openConfirmModal({
+        title: 'Confirm Status Change',
+        description: `Are you sure you want to change status of quotation ${activeQuotation.value.quotation_number} to "${targetStatus.value}"?`,
+        details: [
+            { label: 'Quotation #', value: activeQuotation.value.quotation_number },
+            { label: 'Client / Company', value: activeQuotation.value.client_name },
+            { label: 'Current Status', value: activeQuotation.value.status },
+            { label: 'New Target Status', value: targetStatus.value },
+        ],
+        confirmText: 'Update Status',
+        action: updateStatusSubmit,
+    });
+};
+
 const updateStatusSubmit = () => {
     if (!activeQuotation.value) return;
+    isUpdatingStatus.value = true;
     router.patch(`/${teamSlug.value}/quotations/${activeQuotation.value.id}/status`, {
         status: targetStatus.value
     }, {
+        preserveScroll: true,
         onSuccess: () => {
             showStatusModal.value = false;
+            isUpdatingStatus.value = false;
+        },
+        onError: () => {
+            isUpdatingStatus.value = false;
         }
     });
 };
@@ -787,52 +862,121 @@ const getStatusBadge = (status: string) => {
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <div>
-                            <label class="block text-gray-700 text-xs font-semibold mb-1">Company / Client Name *</label>
-                            <input v-model="form.client_name" type="text" placeholder="e.g. Alpha Builders Inc." class="w-full bg-white border border-gray-200 rounded-lg p-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-2xs" required />
+                        <!-- Company / Client Name -->
+                        <div class="relative">
+                            <input id="q_client_name"
+                                   v-model="form.client_name" 
+                                   type="text" 
+                                   placeholder=" " 
+                                   class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" 
+                                   required />
+                            <label for="q_client_name"
+                                   class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                                   :class="form.client_name ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                                Company / Client Name
+                            </label>
                         </div>
 
-                        <div>
-                            <label class="block text-gray-700 text-xs font-semibold mb-1">Contact Person</label>
-                            <input v-model="form.contact_person" type="text" placeholder="e.g. Engr. Roberto Mendoza" class="w-full bg-white border border-gray-200 rounded-lg p-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-2xs" />
+                        <!-- Contact Person -->
+                        <div class="relative">
+                            <input id="q_contact_person"
+                                   v-model="form.contact_person" 
+                                   type="text" 
+                                   placeholder=" " 
+                                   class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
+                            <label for="q_contact_person"
+                                   class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                                   :class="form.contact_person ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                                Contact Person
+                            </label>
                         </div>
 
-                        <div>
-                            <label class="block text-gray-700 text-xs font-semibold mb-1">Email Address</label>
-                            <input v-model="form.email" type="email" placeholder="client@example.com" class="w-full bg-white border border-gray-200 rounded-lg p-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-2xs" />
+                        <!-- Email Address -->
+                        <div class="relative">
+                            <input id="q_email"
+                                   v-model="form.email" 
+                                   type="email" 
+                                   placeholder=" " 
+                                   class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
+                            <label for="q_email"
+                                   class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                                   :class="form.email ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                                Email Address
+                            </label>
                         </div>
 
-                        <div>
-                            <label class="block text-gray-700 text-xs font-semibold mb-1">Contact / Phone Number</label>
-                            <input v-model="form.phone" type="text" placeholder="+63 917 123 4567" class="w-full bg-white border border-gray-200 rounded-lg p-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-2xs" />
+                        <!-- Contact / Phone Number -->
+                        <div class="relative">
+                            <input id="q_phone"
+                                   v-model="form.phone" 
+                                   type="text" 
+                                   placeholder=" " 
+                                   class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
+                            <label for="q_phone"
+                                   class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                                   :class="form.phone ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                                Contact / Phone Number
+                            </label>
                         </div>
 
-                        <div class="md:col-span-2">
-                            <label class="block text-gray-700 text-xs font-semibold mb-1">Project Site / Billing Address</label>
-                            <input v-model="form.address" type="text" placeholder="Unit / Street, City, Province" class="w-full bg-white border border-gray-200 rounded-lg p-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-2xs" />
+                        <!-- Project Site / Billing Address -->
+                        <div class="relative md:col-span-2">
+                            <input id="q_address"
+                                   v-model="form.address" 
+                                   type="text" 
+                                   placeholder=" " 
+                                   class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
+                            <label for="q_address"
+                                   class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                                   :class="form.address ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                                Project Site / Billing Address
+                            </label>
                         </div>
                     </div>
                 </div>
 
                 <!-- Section 2: Quotation Metadata -->
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                        <label class="block text-gray-700 text-xs font-semibold mb-1">Quotation Date *</label>
-                        <input v-model="form.quotation_date" type="date" class="w-full bg-white border border-gray-200 rounded-lg p-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-2xs" required />
+                    <!-- Quotation Date -->
+                    <div class="relative">
+                        <input id="q_date"
+                               v-model="form.quotation_date" 
+                               type="date" 
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" 
+                               required />
+                        <label for="q_date"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]">
+                            Quotation Date
+                        </label>
                     </div>
 
-                    <div>
-                        <label class="block text-gray-700 text-xs font-semibold mb-1">Valid Until / Expiration *</label>
-                        <input v-model="form.valid_until" type="date" :min="form.quotation_date" class="w-full bg-white border border-gray-200 rounded-lg p-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-2xs" required />
+                    <!-- Valid Until -->
+                    <div class="relative">
+                        <input id="q_valid_until"
+                               v-model="form.valid_until" 
+                               type="date" 
+                               :min="form.quotation_date" 
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" 
+                               required />
+                        <label for="q_valid_until"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]">
+                            Valid Until / Expiration
+                        </label>
                     </div>
 
-                    <div>
-                        <label class="block text-gray-700 text-xs font-semibold mb-1">Initial Status *</label>
-                        <select v-model="form.status" class="w-full bg-white border border-gray-200 rounded-lg p-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-2xs">
+                    <!-- Initial Status -->
+                    <div class="relative">
+                        <select id="q_status"
+                                v-model="form.status" 
+                                class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm">
                             <option value="Draft">Draft</option>
                             <option value="Pending">Pending</option>
                             <option value="Approved">Approved</option>
                         </select>
+                        <label for="q_status"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]">
+                            Initial Status
+                        </label>
                     </div>
                 </div>
 
@@ -931,14 +1075,30 @@ const getStatusBadge = (status: string) => {
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2 border-t border-gray-100">
                     <!-- Left: Notes & Terms -->
                     <div class="space-y-3">
-                        <div>
-                            <label class="block text-gray-700 text-xs font-semibold mb-1">Internal Notes / Scope Description</label>
-                            <textarea v-model="form.notes" rows="2" placeholder="e.g. Electrical panel upgrade for 2nd floor server rack..." class="w-full bg-white border border-gray-200 rounded-lg p-2 text-xs text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-2xs"></textarea>
+                        <div class="relative">
+                            <textarea id="q_notes"
+                                      v-model="form.notes" 
+                                      rows="2" 
+                                      placeholder=" " 
+                                      class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"></textarea>
+                            <label for="q_notes"
+                                   class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                                   :class="form.notes ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                                Internal Notes / Scope Description
+                            </label>
                         </div>
 
-                        <div>
-                            <label class="block text-gray-700 text-xs font-semibold mb-1">Terms & Conditions</label>
-                            <textarea v-model="form.terms_and_conditions" rows="3" class="w-full bg-white border border-gray-200 rounded-lg p-2 text-xs text-gray-600 focus:border-[#F8B803] focus:outline-none shadow-2xs"></textarea>
+                        <div class="relative">
+                            <textarea id="q_terms"
+                                      v-model="form.terms_and_conditions" 
+                                      rows="3" 
+                                      placeholder=" " 
+                                      class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-600 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"></textarea>
+                            <label for="q_terms"
+                                   class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                                   :class="form.terms_and_conditions ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                                Terms & Conditions
+                            </label>
                         </div>
                     </div>
 
@@ -997,7 +1157,7 @@ const getStatusBadge = (status: string) => {
                     variant="brand"
                     size="md"
                     :radius="10"
-                    @click="saveQuotation" 
+                    @click="promptSaveQuotation" 
                     :disabled="isSubmitting"
                 >
                     <Check class="w-4 h-4" />
@@ -1047,9 +1207,10 @@ const getStatusBadge = (status: string) => {
                     variant="brand"
                     size="md"
                     :radius="10"
-                    @click="updateStatusSubmit"
+                    :disabled="isUpdatingStatus"
+                    @click="promptUpdateStatus"
                 >
-                    Update Status
+                    {{ isUpdatingStatus ? 'Updating...' : 'Update Status' }}
                 </SpecularButton>
             </div>
         </div>
@@ -1296,6 +1457,49 @@ const getStatusBadge = (status: string) => {
                     @click="confirmDelete"
                 >
                     Delete
+                </SpecularButton>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Confirmation Modal -->
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div class="w-11 h-11 rounded-full bg-amber-50 text-[#F8B803] flex items-center justify-center mb-4 border border-amber-100">
+                <CheckCircle2 class="w-6 h-6" />
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
+            <p class="text-gray-600 text-sm mb-4 leading-relaxed">
+                {{ confirmOptions.description }}
+            </p>
+
+            <div v-if="confirmOptions.details && confirmOptions.details.length > 0" class="bg-gray-50 border border-gray-100 rounded-xl p-3.5 mb-5 space-y-2 text-xs">
+                <div v-for="(item, idx) in confirmOptions.details" :key="idx" class="flex justify-between items-center py-0.5 border-b border-gray-100 last:border-b-0">
+                    <span class="text-gray-500 font-medium">{{ item.label }}</span>
+                    <span class="font-semibold text-gray-900 text-right">{{ item.value }}</span>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3">
+                <SpecularButton
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showConfirmModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    type="button"
+                    variant="brand"
+                    size="md"
+                    :radius="10"
+                    @click="handleConfirmedAction"
+                    :disabled="isSubmitting"
+                >
+                    <Check class="w-4 h-4 mr-1.5 inline" />
+                    <span>{{ confirmOptions.confirmText || 'Confirm & Save' }}</span>
                 </SpecularButton>
             </div>
         </div>

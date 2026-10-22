@@ -166,32 +166,6 @@ onBeforeUnmount(() => {
               : undefined,
           }"
         >
-          <!-- Interactive Line Marker -->
-          <span
-            class="line-marker absolute left-0 top-1/2 -translate-y-1/2 transition-all duration-200 group-data-[collapsible=icon]:hidden pointer-events-none"
-            :class="[
-              isCurrentUrl(item.href)
-                ? 'w-1 h-6 rounded-r-md bg-gray-950'
-                : 'w-[3px] rounded-r-sm'
-            ]"
-            :style="{
-              height: !isCurrentUrl(item.href)
-                ? `${12 + (proximityScores[index] || 0) * 14}px`
-                : undefined,
-              backgroundColor: !isCurrentUrl(item.href)
-                ? (proximityScores[index] > 0.05
-                    ? accentColor
-                    : 'rgba(255, 255, 255, 0.25)')
-                : undefined,
-              boxShadow: !isCurrentUrl(item.href) && proximityScores[index] > 0.4
-                ? `0 0 8px ${accentColor}80`
-                : undefined,
-              opacity: !isCurrentUrl(item.href)
-                ? 0.3 + (proximityScores[index] || 0) * 0.7
-                : 1,
-            }"
-            aria-hidden="true"
-          />
 
           <!-- Item Index Numbering (e.g. 01, 02) -->
           <span

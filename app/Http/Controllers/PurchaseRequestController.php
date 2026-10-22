@@ -113,8 +113,9 @@ class PurchaseRequestController extends Controller
     /**
      * Update the status of a purchase request.
      */
-    public function updateStatus(Request $request, PurchaseRequest $purchaseRequest): RedirectResponse
+    public function updateStatus(Request $request, mixed $current_team = null, mixed $purchaseRequest = null): RedirectResponse
     {
+        $purchaseRequest = $this->resolvePurchaseRequest($purchaseRequest, $current_team);
         $team = $request->user()->currentTeam;
         abort_if(! $team || $purchaseRequest->team_id !== $team->id, 403);
 
@@ -140,8 +141,9 @@ class PurchaseRequestController extends Controller
     /**
      * Delete a purchase request (only if status is Requested).
      */
-    public function destroy(Request $request, PurchaseRequest $purchaseRequest): RedirectResponse
+    public function destroy(Request $request, mixed $current_team = null, mixed $purchaseRequest = null): RedirectResponse
     {
+        $purchaseRequest = $this->resolvePurchaseRequest($purchaseRequest, $current_team);
         $team = $request->user()->currentTeam;
         abort_if(! $team || $purchaseRequest->team_id !== $team->id, 403);
 
@@ -152,5 +154,29 @@ class PurchaseRequestController extends Controller
         $purchaseRequest->delete();
 
         return back()->with('success', 'Purchase request deleted.');
+    }
+
+    /**
+     * Resolve purchase request from route parameters.
+     */
+    protected function resolvePurchaseRequest(mixed $purchaseRequest, mixed $fallback = null): PurchaseRequest
+    {
+        if ($purchaseRequest instanceof PurchaseRequest) {
+            return $purchaseRequest;
+        }
+
+        if (is_numeric($purchaseRequest)) {
+            return PurchaseRequest::findOrFail((int) $purchaseRequest);
+        }
+
+        if ($fallback instanceof PurchaseRequest) {
+            return $fallback;
+        }
+
+        if (is_numeric($fallback)) {
+            return PurchaseRequest::findOrFail((int) $fallback);
+        }
+
+        abort(404, 'Purchase request not found.');
     }
 }

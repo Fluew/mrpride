@@ -36,6 +36,7 @@ const variantConfig = computed(() => {
   switch (props.variant) {
     case 'primary':
     case 'brand':
+    case 'default':
       return {
         tint: '#4b5320',
         tintOpacity: 1,

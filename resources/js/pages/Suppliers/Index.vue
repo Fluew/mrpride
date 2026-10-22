@@ -268,6 +268,21 @@ const calculatedRankings = computed(() => {
 });
 
 const savingAhp = ref(false);
+const promptSaveAhp = () => {
+    openConfirmModal({
+        title: 'Confirm AHP Criteria & Rankings',
+        description: 'Are you sure you want to save and apply the analytical hierarchy process (AHP) criteria weights and supplier performance evaluations?',
+        details: [
+            { label: 'Price Weight', value: `${ahpWeights.value.price}%` },
+            { label: 'Quality Weight', value: `${ahpWeights.value.quality}%` },
+            { label: 'Delivery Weight', value: `${ahpWeights.value.delivery}%` },
+            { label: 'Service Weight', value: `${ahpWeights.value.service}%` },
+        ],
+        confirmText: 'Save Rankings',
+        action: saveAhp,
+    });
+};
+
 const saveAhp = () => {
     savingAhp.value = true;
     router.post(
@@ -446,35 +461,110 @@ const saveAhp = () => {
             </div>
 
             <form @submit.prevent="promptSaveSupplier" class="space-y-4">
-                <div>
-                    <label class="block text-gray-700 text-xs font-semibold mb-1">Company Name *</label>
-                    <input v-model="form.name" type="text" required class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" placeholder="e.g. Acme Electrical Supplies" />
+                <div class="relative">
+                    <input
+                        id="supplier-name"
+                        v-model="form.name"
+                        type="text"
+                        required
+                        placeholder=" "
+                        class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                        :class="form.errors.name ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''"
+                    />
+                    <label
+                        for="supplier-name"
+                        class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                        :class="form.name ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''"
+                    >
+                        Company Name
+                    </label>
                     <span v-if="form.errors.name" class="text-xs text-red-500 mt-1 block">{{ form.errors.name }}</span>
                 </div>
-                <div>
-                    <label class="block text-gray-700 text-xs font-semibold mb-1">Contact Person</label>
-                    <input v-model="form.contact_person" type="text" class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" placeholder="e.g. John Doe" />
+
+                <div class="relative">
+                    <input
+                        id="supplier-contact"
+                        v-model="form.contact_person"
+                        type="text"
+                        placeholder=" "
+                        class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                    />
+                    <label
+                        for="supplier-contact"
+                        class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                        :class="form.contact_person ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''"
+                    >
+                        Contact Person
+                    </label>
                 </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-gray-700 text-xs font-semibold mb-1">Phone</label>
-                        <input v-model="form.phone" type="text" class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" placeholder="+63 912 345 6789" />
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="relative">
+                        <input
+                            id="supplier-phone"
+                            v-model="form.phone"
+                            type="text"
+                            placeholder=" "
+                            class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                        />
+                        <label
+                            for="supplier-phone"
+                            class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                            :class="form.phone ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''"
+                        >
+                            Phone
+                        </label>
                     </div>
-                    <div>
-                        <label class="block text-gray-700 text-xs font-semibold mb-1">Email</label>
-                        <input v-model="form.email" type="email" class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" placeholder="sales@acme.com" />
+                    <div class="relative">
+                        <input
+                            id="supplier-email"
+                            v-model="form.email"
+                            type="email"
+                            placeholder=" "
+                            class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                        />
+                        <label
+                            for="supplier-email"
+                            class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                            :class="form.email ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''"
+                        >
+                            Email
+                        </label>
                     </div>
                 </div>
-                <div>
-                    <label class="block text-gray-700 text-xs font-semibold mb-1">Address / Notes</label>
-                    <textarea v-model="form.address" rows="2" class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" placeholder="Office location or warehouse details..."></textarea>
+
+                <div class="relative">
+                    <textarea
+                        id="supplier-address"
+                        v-model="form.address"
+                        rows="2"
+                        placeholder=" "
+                        class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                    ></textarea>
+                    <label
+                        for="supplier-address"
+                        class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                        :class="form.address ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''"
+                    >
+                        Address / Notes
+                    </label>
                 </div>
-                <div>
-                    <label class="block text-gray-700 text-xs font-semibold mb-1">Status</label>
-                    <select v-model="form.status" class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm">
+
+                <div class="relative">
+                    <select
+                        id="supplier-status"
+                        v-model="form.status"
+                        class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                    >
                         <option value="Active">Active</option>
                         <option value="Inactive">Inactive</option>
                     </select>
+                    <label
+                        for="supplier-status"
+                        class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]"
+                    >
+                        Status
+                    </label>
                 </div>
 
                 <div class="flex justify-end gap-3 mt-6 pt-2 border-t border-gray-100">
@@ -635,7 +725,7 @@ const saveAhp = () => {
                     size="md"
                     :radius="10"
                     :disabled="savingAhp"
-                    @click="saveAhp"
+                    @click="promptSaveAhp"
                 >
                     {{ savingAhp ? 'Saving...' : 'Apply & Save Rankings' }}
                 </SpecularButton>

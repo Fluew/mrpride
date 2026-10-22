@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { Head, router, usePage } from '@inertiajs/vue3';
+import { ref } from 'vue';
 import AppSidebarLayout from '@/layouts/app/AppSidebarLayout.vue';
+import SpecularButton from '@/components/ui/SpecularButton.vue';
 import {
     Activity,
     Laptop,
     Trash2,
     ShieldAlert,
     LogOut,
+    AlertTriangle,
+    CheckCircle2,
+    Check,
 } from '@lucide/vue';
 
 interface SessionItem {
@@ -30,22 +35,76 @@ const props = defineProps<{
 
 const page = usePage();
 
-const revokeSession = (sessionId: string) => {
-    if (confirm('Revoke this session? The device will be signed out immediately.')) {
-        const team = (page.props as any).currentTeam?.slug;
-        router.delete(`/${team}/security/sessions/${sessionId}`, {
-            preserveScroll: true,
-        });
-    }
+// Action Confirmation Modal State
+interface ConfirmActionOptions {
+    title: string;
+    description: string;
+    details?: Array<{ label: string; value: string | number }>;
+    confirmText?: string;
+    confirmVariant?: 'brand' | 'destructive' | 'secondary';
+    action: () => void;
+}
+
+const showConfirmModal = ref(false);
+const confirmOptions = ref<ConfirmActionOptions>({
+    title: 'Confirm Action',
+    description: 'Are you sure you want to proceed?',
+    details: [],
+    confirmText: 'Confirm & Proceed',
+    confirmVariant: 'destructive',
+    action: () => {},
+});
+
+const openConfirmModal = (options: ConfirmActionOptions) => {
+    confirmOptions.value = {
+        confirmText: 'Confirm & Proceed',
+        confirmVariant: 'destructive',
+        ...options,
+    };
+    showConfirmModal.value = true;
 };
 
-const revokeOtherSessions = () => {
-    if (confirm('Terminate all active sessions on other devices? You will remain signed in on this workstation.')) {
-        const team = (page.props as any).currentTeam?.slug;
-        router.post(`/${team}/security/sessions/revoke-others`, {}, {
-            preserveScroll: true,
-        });
-    }
+const handleConfirmedAction = () => {
+    showConfirmModal.value = false;
+    confirmOptions.value.action();
+};
+
+const promptRevokeSession = (session: SessionItem) => {
+    openConfirmModal({
+        title: 'Revoke Active Session',
+        description: `Are you sure you want to terminate this session? The device will be signed out immediately.`,
+        details: [
+            { label: 'Device', value: session.device_name },
+            { label: 'Account Holder', value: session.user.name },
+            { label: 'IP Address', value: session.ip_address },
+        ],
+        confirmText: 'Revoke Session',
+        confirmVariant: 'destructive',
+        action: () => {
+            const team = (page.props as any).currentTeam?.slug;
+            router.delete(`/${team}/security/sessions/${session.id}`, {
+                preserveScroll: true,
+            });
+        },
+    });
+};
+
+const promptRevokeOtherSessions = () => {
+    openConfirmModal({
+        title: 'Revoke All Other Sessions',
+        description: 'Terminate all active sessions across other workstations and devices? You will remain signed in on this current browser.',
+        details: [
+            { label: 'Scope', value: 'All devices except this workstation' },
+        ],
+        confirmText: 'Terminate Other Sessions',
+        confirmVariant: 'destructive',
+        action: () => {
+            const team = (page.props as any).currentTeam?.slug;
+            router.post(`/${team}/security/sessions/revoke-others`, {}, {
+                preserveScroll: true,
+            });
+        },
+    });
 };
 </script>
 
@@ -67,7 +126,7 @@ const revokeOtherSessions = () => {
 
                 <button
                     type="button"
-                    @click="revokeOtherSessions"
+                    @click="promptRevokeOtherSessions"
                     class="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-semibold text-red-700 hover:bg-red-100 shadow-xs cursor-pointer transition-colors"
                 >
                     <LogOut class="size-4" />
@@ -127,7 +186,7 @@ const revokeOtherSessions = () => {
                                     <button
                                         v-if="!s.is_current"
                                         type="button"
-                                        @click="revokeSession(s.id)"
+                                        @click="promptRevokeSession(s)"
                                         class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 cursor-pointer"
                                     >
                                         <Trash2 class="size-3.5" /> Revoke
@@ -149,4 +208,55 @@ const revokeOtherSessions = () => {
             </div>
         </div>
     </AppSidebarLayout>
+
+    <!-- Action Confirmation Modal -->
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div
+                :class="[
+                    'w-11 h-11 rounded-full flex items-center justify-center mb-4 border',
+                    confirmOptions.confirmVariant === 'destructive'
+                        ? 'bg-red-50 text-red-600 border-red-100'
+                        : 'bg-amber-50 text-[#F8B803] border-amber-100'
+                ]"
+            >
+                <AlertTriangle v-if="confirmOptions.confirmVariant === 'destructive'" class="w-6 h-6" />
+                <CheckCircle2 v-else class="w-6 h-6" />
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
+            <p class="text-gray-600 text-sm mb-4 leading-relaxed">
+                {{ confirmOptions.description }}
+            </p>
+
+            <div v-if="confirmOptions.details && confirmOptions.details.length > 0" class="bg-gray-50 border border-gray-100 rounded-xl p-3.5 mb-5 space-y-2 text-xs">
+                <div v-for="(item, idx) in confirmOptions.details" :key="idx" class="flex justify-between items-center py-0.5 border-b border-gray-100 last:border-b-0">
+                    <span class="text-gray-500 font-medium">{{ item.label }}</span>
+                    <span class="font-semibold text-gray-900 text-right">{{ item.value }}</span>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3">
+                <SpecularButton
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showConfirmModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    type="button"
+                    :variant="confirmOptions.confirmVariant || 'destructive'"
+                    size="md"
+                    :radius="10"
+                    @click="handleConfirmedAction"
+                >
+                    <Check v-if="confirmOptions.confirmVariant !== 'destructive'" class="w-4 h-4 mr-1.5 inline" />
+                    <Trash2 v-else class="w-4 h-4 mr-1.5 inline" />
+                    <span>{{ confirmOptions.confirmText || 'Confirm & Proceed' }}</span>
+                </SpecularButton>
+            </div>
+        </div>
+    </div>
 </template>

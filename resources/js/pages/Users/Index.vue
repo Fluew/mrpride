@@ -15,6 +15,7 @@ import {
     Trash2,
     Pencil,
     Check,
+    CheckCircle2,
     X,
     Mail,
     Calendar,
@@ -293,7 +294,93 @@ const openMetadataModal = (log: LogItem) => {
     showMetadataModal.value = true;
 };
 
-// Form Submissions
+// Action Confirmation Modal State
+interface ConfirmActionOptions {
+    title: string;
+    description: string;
+    details?: Array<{ label: string; value: string | number }>;
+    confirmText?: string;
+    confirmVariant?: 'brand' | 'destructive' | 'secondary';
+    action: () => void;
+}
+
+const showConfirmModal = ref(false);
+const confirmOptions = ref<ConfirmActionOptions>({
+    title: 'Confirm Action',
+    description: 'Are you sure you want to proceed?',
+    details: [],
+    confirmText: 'Confirm & Proceed',
+    confirmVariant: 'brand',
+    action: () => {},
+});
+
+const openConfirmModal = (options: ConfirmActionOptions) => {
+    confirmOptions.value = {
+        confirmText: 'Confirm & Proceed',
+        confirmVariant: 'brand',
+        ...options,
+    };
+    showConfirmModal.value = true;
+};
+
+const handleConfirmedAction = () => {
+    showConfirmModal.value = false;
+    confirmOptions.value.action();
+};
+
+// Form Submissions & Prompts
+const promptCreateUser = () => {
+    addForm.clearErrors();
+    let hasError = false;
+    if (!addForm.first_name.trim()) {
+        addForm.setError('first_name', 'First name is required.');
+        hasError = true;
+    }
+    if (!addForm.last_name.trim()) {
+        addForm.setError('last_name', 'Last name is required.');
+        hasError = true;
+    }
+    if (!addForm.email.trim()) {
+        addForm.setError('email', 'Email address is required.');
+        hasError = true;
+    }
+    if (hasError) return;
+
+    const fn = addForm.first_name.trim();
+    const cleanFn = fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase().replace(/[^a-z0-9]/g, '');
+    const initialPassword = `${cleanFn || '(Firstname)'}1234`;
+    const formatRole = (r: string) => {
+        const map: Record<string, string> = {
+            admin: 'Administrator (All Modules)',
+            staff_inventory: 'Staff - Inventory',
+            staff_quotations: 'Staff - Quotations',
+            staff_procurement: 'Staff - Procurement',
+            staff_sales: 'Staff - Sales',
+            staff_forecast: 'Staff - Demand Forecasting',
+            staff_suppliers: 'Staff - Suppliers',
+            staff_reports: 'Staff - Reports & Analytics',
+            staff: 'Staff - Inventory',
+            user: 'Regular Customer',
+        };
+        return map[r] || r;
+    };
+    const roleLabel = formatRole(addForm.role);
+
+    openConfirmModal({
+        title: 'Confirm New User Account',
+        description: `Are you sure you want to create a new user account for "${fn} ${addForm.last_name.trim()}"?`,
+        details: [
+            { label: 'Full Name', value: `${fn} ${addForm.last_name.trim()}` },
+            { label: 'Email Address', value: addForm.email.trim() },
+            { label: 'Assigned Role', value: roleLabel },
+            { label: 'First-Login Password', value: initialPassword },
+        ],
+        confirmText: 'Create Account',
+        confirmVariant: 'brand',
+        action: submitAdd,
+    });
+};
+
 const submitAdd = () => {
     addForm.post(`/${teamSlug.value}/users`, {
         preserveScroll: true,
@@ -301,6 +388,44 @@ const submitAdd = () => {
             showAddModal.value = false;
             addForm.reset();
         },
+    });
+};
+
+const promptEditUser = () => {
+    editForm.clearErrors();
+    if (!editForm.name.trim()) {
+        editForm.setError('name', 'Full name is required.');
+        return;
+    }
+
+    const formatRole = (r: string) => {
+        const map: Record<string, string> = {
+            admin: 'Administrator (All Modules)',
+            staff_inventory: 'Staff - Inventory',
+            staff_quotations: 'Staff - Quotations',
+            staff_procurement: 'Staff - Procurement',
+            staff_sales: 'Staff - Sales',
+            staff_forecast: 'Staff - Demand Forecasting',
+            staff_suppliers: 'Staff - Suppliers',
+            staff_reports: 'Staff - Reports & Analytics',
+            staff: 'Staff - Inventory',
+            user: 'Regular Customer',
+        };
+        return map[r] || r;
+    };
+    const roleLabel = formatRole(editForm.role);
+
+    openConfirmModal({
+        title: 'Confirm Account Changes',
+        description: `Are you sure you want to save modifications to "${editForm.name}"?`,
+        details: [
+            { label: 'Account Name', value: editForm.name },
+            { label: 'Assigned Role', value: roleLabel },
+            { label: 'Session Policy', value: 'Active sessions will be refreshed upon role update' },
+        ],
+        confirmText: 'Save Changes',
+        confirmVariant: 'brand',
+        action: submitEdit,
     });
 };
 
@@ -334,6 +459,30 @@ const confirmDelete = () => {
             showDeleteModal.value = false;
             selectedUser.value = null;
         },
+    });
+};
+
+const promptEnrollDevice = () => {
+    enrollForm.clearErrors();
+    if (!enrollForm.user_id) {
+        enrollForm.setError('user_id', 'Please select a user account.');
+        return;
+    }
+
+    const targetUser = props.users.find(u => u.id === Number(enrollForm.user_id));
+    const deviceLabel = enrollForm.device_name.trim() || `${targetUser?.name || 'Member'}'s Device`;
+
+    openConfirmModal({
+        title: 'Confirm Device Enrollment',
+        description: `Are you sure you want to enroll this device for "${targetUser?.name || 'the selected account'}"?`,
+        details: [
+            { label: 'Account Holder', value: targetUser?.name || 'Selected User' },
+            { label: 'Device Identifier', value: deviceLabel },
+            { label: 'Enrollment Mode', value: enrollForm.direct_approve ? 'Immediate Direct Approval' : 'One-Time Invitation Link (24 Hours)' },
+        ],
+        confirmText: 'Authorize & Enroll',
+        confirmVariant: 'brand',
+        action: submitEnroll,
     });
 };
 
@@ -380,26 +529,66 @@ const confirmRevokeDevice = () => {
     });
 };
 
+const promptApproveDevice = (device: TrustedDeviceItem) => {
+    openConfirmModal({
+        title: 'Confirm Device Approval',
+        description: `Authorize and approve access for "${device.device_name}"?`,
+        details: [
+            { label: 'Device Name', value: device.device_name },
+            { label: 'Account', value: `${device.user.name} (${device.user.email})` },
+            { label: 'IP Address', value: device.ip_address || 'Not Recorded' },
+            { label: 'Hardware UUID', value: device.device_uuid },
+        ],
+        confirmText: 'Approve Device',
+        confirmVariant: 'brand',
+        action: () => approveDevice(device),
+    });
+};
+
 const approveDevice = (device: TrustedDeviceItem) => {
     router.post(`/${teamSlug.value}/users/devices/${device.id}/approve`, {}, {
         preserveScroll: true,
     });
 };
 
+const promptDeleteDevice = (device: TrustedDeviceItem) => {
+    openConfirmModal({
+        title: 'Remove Device Record',
+        description: `Permanently delete the trusted device entry for "${device.device_name}"?`,
+        details: [
+            { label: 'Device Name', value: device.device_name },
+            { label: 'Account', value: device.user.name },
+            { label: 'Hardware UUID', value: device.device_uuid },
+        ],
+        confirmText: 'Delete Record',
+        confirmVariant: 'destructive',
+        action: () => deleteDevice(device),
+    });
+};
+
 const deleteDevice = (device: TrustedDeviceItem) => {
-    if (confirm(`Remove device record for '${device.device_name}'?`)) {
-        router.delete(`/${teamSlug.value}/users/devices/${device.id}`, {
-            preserveScroll: true,
-        });
-    }
+    router.delete(`/${teamSlug.value}/users/devices/${device.id}`, {
+        preserveScroll: true,
+    });
+};
+
+const promptRegenerateRecoveryKey = () => {
+    openConfirmModal({
+        title: 'Regenerate Emergency Admin Recovery Key',
+        description: 'Are you sure you want to generate a new emergency admin recovery key? Your current key will become invalid immediately.',
+        details: [
+            { label: 'Security Warning', value: 'Prior recovery keys cannot be used after regeneration' },
+        ],
+        confirmText: 'Regenerate Key',
+        confirmVariant: 'brand',
+        action: regenerateRecoveryKey,
+    });
 };
 
 const regenerateRecoveryKey = () => {
-    if (confirm('Regenerate emergency admin recovery key? Your old recovery key will become invalid.')) {
-        router.post(`/${teamSlug.value}/users/recovery-key/regenerate`, {}, {
-            preserveScroll: true,
-        });
-    }
+    router.post(`/${teamSlug.value}/users/recovery-key/regenerate`, {}, {
+        preserveScroll: true,
+    });
 };
 </script>
 
@@ -412,10 +601,7 @@ const regenerateRecoveryKey = () => {
             <div>
                 <div class="flex items-center gap-2">
                     <h1 class="text-3xl font-bold text-gray-900 tracking-tight">User Management</h1>
-                    <span v-if="isSuperAdmin" class="bg-purple-100 text-purple-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-purple-200 uppercase tracking-wide">
-                        Owner / Superadmin
-                    </span>
-                    <span v-else class="bg-amber-100 text-amber-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-amber-200 uppercase tracking-wide">
+                    <span class="bg-amber-100 text-amber-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-amber-200 uppercase tracking-wide">
                         Administrator
                     </span>
                 </div>
@@ -438,7 +624,7 @@ const regenerateRecoveryKey = () => {
                 </SpecularButton>
 
                 <SpecularButton
-                    v-if="activeTab === 'devices' && isSuperAdmin"
+                    v-if="activeTab === 'devices'"
                     variant="brand"
                     size="md"
                     :radius="10"
@@ -497,7 +683,7 @@ const regenerateRecoveryKey = () => {
             </div>
         </div>
 
-        <!-- Navigation Tabs -->
+        <!-- Navigation Tabs (Admin Full Access) -->
         <div class="border-b border-gray-200 mb-5">
             <nav class="flex space-x-2 -mb-px overflow-x-auto">
                 <button
@@ -513,60 +699,57 @@ const regenerateRecoveryKey = () => {
                     User Accounts
                 </button>
 
-                <!-- Superadmin Only Tabs -->
-                <template v-if="isSuperAdmin">
-                    <button
-                        @click="switchTab('sessions')"
-                        :class="[
-                            activeTab === 'sessions'
-                                ? 'border-[#F8B803] text-[#92400e] bg-amber-50/50 font-bold'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium',
-                            'whitespace-nowrap py-3 px-4 border-b-2 text-sm flex items-center gap-2 rounded-t-xl transition-all'
-                        ]"
-                    >
-                        <Activity class="w-4 h-4" />
-                        Active Sessions
-                    </button>
+                <button
+                    @click="switchTab('sessions')"
+                    :class="[
+                        activeTab === 'sessions'
+                            ? 'border-[#F8B803] text-[#92400e] bg-amber-50/50 font-bold'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium',
+                        'whitespace-nowrap py-3 px-4 border-b-2 text-sm flex items-center gap-2 rounded-t-xl transition-all'
+                    ]"
+                >
+                    <Activity class="w-4 h-4" />
+                    Active Sessions
+                </button>
 
-                    <button
-                        @click="switchTab('devices')"
-                        :class="[
-                            activeTab === 'devices'
-                                ? 'border-[#F8B803] text-[#92400e] bg-amber-50/50 font-bold'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium',
-                            'whitespace-nowrap py-3 px-4 border-b-2 text-sm flex items-center gap-2 rounded-t-xl transition-all'
-                        ]"
-                    >
-                        <Laptop class="w-4 h-4" />
-                        Trusted Devices
-                    </button>
+                <button
+                    @click="switchTab('devices')"
+                    :class="[
+                        activeTab === 'devices'
+                            ? 'border-[#F8B803] text-[#92400e] bg-amber-50/50 font-bold'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium',
+                        'whitespace-nowrap py-3 px-4 border-b-2 text-sm flex items-center gap-2 rounded-t-xl transition-all'
+                    ]"
+                >
+                    <Laptop class="w-4 h-4" />
+                    Trusted Devices
+                </button>
 
-                    <button
-                        @click="switchTab('audit')"
-                        :class="[
-                            activeTab === 'audit'
-                                ? 'border-[#F8B803] text-[#92400e] bg-amber-50/50 font-bold'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium',
-                            'whitespace-nowrap py-3 px-4 border-b-2 text-sm flex items-center gap-2 rounded-t-xl transition-all'
-                        ]"
-                    >
-                        <FileText class="w-4 h-4" />
-                        Audit Trail
-                    </button>
+                <button
+                    @click="switchTab('audit')"
+                    :class="[
+                        activeTab === 'audit'
+                            ? 'border-[#F8B803] text-[#92400e] bg-amber-50/50 font-bold'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium',
+                        'whitespace-nowrap py-3 px-4 border-b-2 text-sm flex items-center gap-2 rounded-t-xl transition-all'
+                    ]"
+                >
+                    <FileText class="w-4 h-4" />
+                    Audit Trail
+                </button>
 
-                    <button
-                        @click="switchTab('security')"
-                        :class="[
-                            activeTab === 'security'
-                                ? 'border-[#F8B803] text-[#92400e] bg-amber-50/50 font-bold'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium',
-                            'whitespace-nowrap py-3 px-4 border-b-2 text-sm flex items-center gap-2 rounded-t-xl transition-all'
-                        ]"
-                    >
-                        <ShieldAlert class="w-4 h-4" />
-                        Security Logs
-                    </button>
-                </template>
+                <button
+                    @click="switchTab('security')"
+                    :class="[
+                        activeTab === 'security'
+                            ? 'border-[#F8B803] text-[#92400e] bg-amber-50/50 font-bold'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium',
+                        'whitespace-nowrap py-3 px-4 border-b-2 text-sm flex items-center gap-2 rounded-t-xl transition-all'
+                    ]"
+                >
+                    <ShieldAlert class="w-4 h-4" />
+                    Security Logs
+                </button>
             </nav>
         </div>
 
@@ -840,9 +1023,27 @@ const regenerateRecoveryKey = () => {
         </div>
 
         <!-- ========================================== -->
-        <!-- TAB 3: TRUSTED DEVICES (Superadmin only)   -->
+        <!-- TAB 3: TRUSTED DEVICES (1 Account, 1 Device Policy) -->
         <!-- ========================================== -->
-        <div v-else-if="activeTab === 'devices' && isSuperAdmin">
+        <div v-else-if="activeTab === 'devices'">
+            <!-- Policy Banner: 1 Account, 1 Device -->
+            <div class="mb-5 rounded-2xl border border-blue-200 bg-blue-50/80 p-4 shadow-xs flex items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-xs">
+                        <ShieldCheck class="size-5" />
+                    </div>
+                    <div>
+                        <h4 class="text-xs font-bold text-blue-950 uppercase tracking-wider">1 Account, 1 Device Policy Enforced</h4>
+                        <p class="text-xs text-blue-800 mt-0.5">
+                            Each administrator and staff account is strictly limited to <strong>1 authorized device</strong>. Enrolling or approving a new device automatically replaces and revokes any prior device.
+                        </p>
+                    </div>
+                </div>
+                <span class="bg-blue-100 text-blue-800 text-[11px] font-bold px-2.5 py-1 rounded-full border border-blue-300 uppercase tracking-wide shrink-0">
+                    Active Policy
+                </span>
+            </div>
+
             <!-- Top Card: Emergency Recovery Key -->
             <div class="mb-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
@@ -867,7 +1068,7 @@ const regenerateRecoveryKey = () => {
                         <Copy class="size-4" />
                     </button>
                     <button
-                        @click="regenerateRecoveryKey"
+                        @click="promptRegenerateRecoveryKey"
                         class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
                     >
                         <RefreshCw class="size-3.5" />
@@ -965,7 +1166,7 @@ const regenerateRecoveryKey = () => {
                                         <!-- Approve pending -->
                                         <button
                                             v-if="d.raw_status === 'pending'"
-                                            @click="approveDevice(d)"
+                                            @click="promptApproveDevice(d)"
                                             class="text-xs font-semibold text-emerald-700 hover:bg-emerald-50 px-2.5 py-1 border border-emerald-200 rounded-lg transition-colors"
                                         >
                                             Approve
@@ -982,7 +1183,7 @@ const regenerateRecoveryKey = () => {
 
                                         <!-- Delete record -->
                                         <button
-                                            @click="deleteDevice(d)"
+                                            @click="promptDeleteDevice(d)"
                                             class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                             title="Delete Device"
                                         >
@@ -998,9 +1199,9 @@ const regenerateRecoveryKey = () => {
         </div>
 
         <!-- ========================================== -->
-        <!-- TAB 4: AUDIT TRAIL (Superadmin only)       -->
+        <!-- TAB 4: AUDIT TRAIL (Admin accessible)      -->
         <!-- ========================================== -->
-        <div v-else-if="activeTab === 'audit' && isSuperAdmin">
+        <div v-else-if="activeTab === 'audit'">
             <!-- Filter Bar -->
             <div class="flex flex-col sm:flex-row gap-3 mb-4">
                 <div class="relative flex-1">
@@ -1113,9 +1314,9 @@ const regenerateRecoveryKey = () => {
         </div>
 
         <!-- ========================================== -->
-        <!-- TAB 5: SECURITY LOGS (Superadmin only)     -->
+        <!-- TAB 5: SECURITY LOGS (Admin accessible)    -->
         <!-- ========================================== -->
-        <div v-else-if="activeTab === 'security' && isSuperAdmin">
+        <div v-else-if="activeTab === 'security'">
             <!-- Filter Bar -->
             <div class="flex flex-col sm:flex-row gap-3 mb-4">
                 <div class="relative flex-1">
@@ -1256,41 +1457,65 @@ const regenerateRecoveryKey = () => {
                 <button @click="showAddModal = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
 
-            <form @submit.prevent="submitAdd" class="space-y-4">
+            <form @submit.prevent="promptCreateUser" class="space-y-4">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-gray-700 text-xs font-semibold mb-1">First Name *</label>
+                    <div class="relative">
                         <input
+                            id="add-first-name"
                             v-model="addForm.first_name"
                             type="text"
                             required
-                            class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm"
-                            placeholder="e.g. John"
+                            placeholder=" "
+                            class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                            :class="addForm.errors.first_name ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''"
                         />
+                        <label
+                            for="add-first-name"
+                            class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                            :class="addForm.first_name ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''"
+                        >
+                            First Name
+                        </label>
                         <span v-if="addForm.errors.first_name" class="text-xs text-red-500 mt-1 block">{{ addForm.errors.first_name }}</span>
                     </div>
-                    <div>
-                        <label class="block text-gray-700 text-xs font-semibold mb-1">Last Name *</label>
+                    <div class="relative">
                         <input
+                            id="add-last-name"
                             v-model="addForm.last_name"
                             type="text"
                             required
-                            class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm"
-                            placeholder="e.g. Doe"
+                            placeholder=" "
+                            class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                            :class="addForm.errors.last_name ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''"
                         />
+                        <label
+                            for="add-last-name"
+                            class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                            :class="addForm.last_name ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''"
+                        >
+                            Last Name
+                        </label>
                         <span v-if="addForm.errors.last_name" class="text-xs text-red-500 mt-1 block">{{ addForm.errors.last_name }}</span>
                     </div>
                 </div>
 
-                <div>
-                    <label class="block text-gray-700 text-xs font-semibold mb-1">Email Address *</label>
+                <div class="relative">
                     <input
+                        id="add-email"
                         v-model="addForm.email"
                         type="email"
                         required
-                        class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm"
-                        placeholder="john@example.com"
+                        placeholder=" "
+                        class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                        :class="addForm.errors.email ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''"
                     />
+                    <label
+                        for="add-email"
+                        class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                        :class="addForm.email ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''"
+                    >
+                        Email Address
+                    </label>
                     <span v-if="addForm.errors.email" class="text-xs text-red-500 mt-1 block">{{ addForm.errors.email }}</span>
                 </div>
 
@@ -1309,13 +1534,28 @@ const regenerateRecoveryKey = () => {
                     </div>
                 </div>
 
-                <div>
-                    <label class="block text-gray-700 text-xs font-semibold mb-1">Assigned Role *</label>
-                    <select v-model="addForm.role" class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm">
-                        <option value="staff">Staff (Inventory, Quotation, Procurement, Sales, Forecast)</option>
-                        <option value="admin">Administrator</option>
-                        <option v-if="isSuperAdmin" value="superadmin">Owner / Superadmin</option>
+                <div class="relative">
+                    <select
+                        id="add-role"
+                        v-model="addForm.role"
+                        class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                    >
+                        <option value="admin">Administrator (All Modules)</option>
+                        <option value="staff_inventory">Staff - Inventory</option>
+                        <option value="staff_quotations">Staff - Quotations</option>
+                        <option value="staff_procurement">Staff - Procurement</option>
+                        <option value="staff_sales">Staff - Sales</option>
+                        <option value="staff_forecast">Staff - Demand Forecasting</option>
+                        <option value="staff_suppliers">Staff - Suppliers</option>
+                        <option value="staff_reports">Staff - Reports & Analytics</option>
+                        <option value="user">Regular Customer</option>
                     </select>
+                    <label
+                        for="add-role"
+                        class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]"
+                    >
+                        Assigned Role
+                    </label>
                     <span v-if="addForm.errors.role" class="text-xs text-red-500 mt-1 block">{{ addForm.errors.role }}</span>
                 </div>
 
@@ -1339,24 +1579,53 @@ const regenerateRecoveryKey = () => {
                 <button @click="showEditModal = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
 
-            <form @submit.prevent="submitEdit" class="space-y-4">
-                <div>
-                    <label class="block text-gray-700 text-xs font-semibold mb-1">Full Name *</label>
-                    <input v-model="editForm.name" type="text" required class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" />
+            <form @submit.prevent="promptEditUser" class="space-y-4">
+                <div class="relative">
+                    <input
+                        id="edit-name"
+                        v-model="editForm.name"
+                        type="text"
+                        required
+                        placeholder=" "
+                        class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                        :class="editForm.errors.name ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''"
+                    />
+                    <label
+                        for="edit-name"
+                        class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                        :class="editForm.name ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''"
+                    >
+                        Full Name
+                    </label>
                     <span v-if="editForm.errors.name" class="text-xs text-red-500 mt-1 block">{{ editForm.errors.name }}</span>
                 </div>
-                <div>
-                    <label class="block text-gray-700 text-xs font-semibold mb-1">Role *</label>
-                    <select v-model="editForm.role" class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm">
-                        <option value="staff">Staff (Inventory, Quotation, Procurement, Sales, Forecast)</option>
-                        <option value="admin">Administrator</option>
-                        <option v-if="isSuperAdmin" value="superadmin">Owner / Superadmin</option>
+                <div class="relative">
+                    <select
+                        id="edit-role"
+                        v-model="editForm.role"
+                        class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                    >
+                        <option value="admin">Administrator (All Modules)</option>
+                        <option value="staff_inventory">Staff - Inventory</option>
+                        <option value="staff_quotations">Staff - Quotations</option>
+                        <option value="staff_procurement">Staff - Procurement</option>
+                        <option value="staff_sales">Staff - Sales</option>
+                        <option value="staff_forecast">Staff - Demand Forecasting</option>
+                        <option value="staff_suppliers">Staff - Suppliers</option>
+                        <option value="staff_reports">Staff - Reports & Analytics</option>
+                        <option value="user">Regular Customer</option>
                     </select>
-                    <p class="text-[11px] text-gray-500 mt-1">
-                        Changing a member's role invalidates their active sessions to enforce permissions immediately.
-                    </p>
-                    <span v-if="editForm.errors.role" class="text-xs text-red-500 mt-1 block">{{ editForm.errors.role }}</span>
+                    <label
+                        for="edit-role"
+                        class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]"
+                    >
+                        Role
+                    </label>
                 </div>
+                <p class="text-[11px] text-gray-500 mt-1">
+                    Changing a member's role invalidates their active sessions to enforce permissions immediately.
+                </p>
+                <span v-if="editForm.errors.role" class="text-xs text-red-500 mt-1 block">{{ editForm.errors.role }}</span>
 
                 <div class="flex justify-end gap-3 mt-6 pt-2 border-t border-gray-100">
                     <SpecularButton type="button" variant="secondary" size="md" :radius="10" @click="showEditModal = false">
@@ -1426,20 +1695,42 @@ const regenerateRecoveryKey = () => {
                 <button @click="showEnrollModal = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
 
-            <form @submit.prevent="submitEnroll" class="space-y-4">
-                <div>
-                    <label class="block text-gray-700 text-xs font-semibold mb-1">Select Admin or Staff Account *</label>
-                    <select v-model="enrollForm.user_id" required class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm">
+            <form @submit.prevent="promptEnrollDevice" class="space-y-4">
+                <div class="relative">
+                    <select
+                        id="enroll-user"
+                        v-model="enrollForm.user_id"
+                        required
+                        class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                    >
                         <option value="" disabled>Choose account...</option>
                         <option v-for="u in users" :key="u.id" :value="u.id">
                             {{ u.name }} ({{ u.email }}) — {{ u.role }}
                         </option>
                     </select>
+                    <label
+                        for="enroll-user"
+                        class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]"
+                    >
+                        Select Admin or Staff Account
+                    </label>
                     <span v-if="enrollForm.errors.user_id" class="text-xs text-red-500 mt-1 block">{{ enrollForm.errors.user_id }}</span>
                 </div>
-                <div>
-                    <label class="block text-gray-700 text-xs font-semibold mb-1">Device Label / Description</label>
-                    <input v-model="enrollForm.device_name" type="text" class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" placeholder="e.g. Work MacBook, Office PC" />
+                <div class="relative">
+                    <input
+                        id="enroll-device-name"
+                        v-model="enrollForm.device_name"
+                        type="text"
+                        placeholder=" "
+                        class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                    />
+                    <label
+                        for="enroll-device-name"
+                        class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                        :class="enrollForm.device_name ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''"
+                    >
+                        Device Label / Description
+                    </label>
                 </div>
 
                 <label class="flex items-start gap-2.5 text-xs text-gray-700 cursor-pointer pt-1">
@@ -1455,6 +1746,17 @@ const regenerateRecoveryKey = () => {
                 <p v-if="!enrollForm.direct_approve" class="text-xs text-gray-500">
                     A single-use, 24-hour verification invitation link will be created. The user must open it on the physical device being registered.
                 </p>
+
+                <!-- 1-device policy reminder -->
+                <div class="rounded-xl border border-blue-200 bg-blue-50/70 p-3 text-xs text-blue-900 flex items-start gap-2">
+                    <ShieldCheck class="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <div>
+                        <span class="font-bold text-blue-950">1 Account, 1 Device Policy:</span>
+                        <p class="text-[11px] text-blue-800 mt-0.5">
+                            Enrolling or approving a new device replaces any previously registered device for this account.
+                        </p>
+                    </div>
+                </div>
 
                 <div class="flex justify-end gap-3 mt-6 pt-2 border-t border-gray-100">
                     <SpecularButton type="button" variant="secondary" size="md" :radius="10" @click="showEnrollModal = false">
@@ -1540,6 +1842,58 @@ const regenerateRecoveryKey = () => {
             <div class="flex justify-end mt-4">
                 <SpecularButton variant="secondary" size="sm" :radius="8" @click="showMetadataModal = false">
                     Close
+                </SpecularButton>
+            </div>
+        </div>
+    </div>
+
+    <!-- Universal Action Confirmation Modal -->
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div
+                :class="[
+                    'w-11 h-11 rounded-full flex items-center justify-center mb-4 border',
+                    confirmOptions.confirmVariant === 'destructive'
+                        ? 'bg-red-50 text-red-600 border-red-100'
+                        : 'bg-amber-50 text-[#F8B803] border-amber-100'
+                ]"
+            >
+                <AlertTriangle v-if="confirmOptions.confirmVariant === 'destructive'" class="w-6 h-6" />
+                <CheckCircle2 v-else class="w-6 h-6" />
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
+            <p class="text-gray-600 text-sm mb-4 leading-relaxed">
+                {{ confirmOptions.description }}
+            </p>
+
+            <div v-if="confirmOptions.details && confirmOptions.details.length > 0" class="bg-gray-50 border border-gray-100 rounded-xl p-3.5 mb-5 space-y-2 text-xs">
+                <div v-for="(item, idx) in confirmOptions.details" :key="idx" class="flex justify-between items-center py-0.5 border-b border-gray-100 last:border-b-0">
+                    <span class="text-gray-500 font-medium">{{ item.label }}</span>
+                    <span class="font-semibold text-gray-900 text-right">{{ item.value }}</span>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3">
+                <SpecularButton
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showConfirmModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    type="button"
+                    :variant="confirmOptions.confirmVariant || 'brand'"
+                    size="md"
+                    :radius="10"
+                    @click="handleConfirmedAction"
+                    :disabled="addForm.processing || editForm.processing || enrollForm.processing"
+                >
+                    <Check v-if="confirmOptions.confirmVariant !== 'destructive'" class="w-4 h-4 mr-1.5 inline" />
+                    <Trash2 v-else class="w-4 h-4 mr-1.5 inline" />
+                    <span>{{ confirmOptions.confirmText || 'Confirm & Proceed' }}</span>
                 </SpecularButton>
             </div>
         </div>

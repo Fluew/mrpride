@@ -218,10 +218,11 @@ class QuotationController extends Controller
     /**
      * Update the specified quotation.
      */
-    public function update(Request $request, Quotation $quotation): RedirectResponse
+    public function update(Request $request, mixed $current_team = null, mixed $quotation = null): RedirectResponse
     {
-        $team = $this->getTeam($request);
-        abort_if(! $team || $quotation->team_id !== $team->id, 403);
+        $quotation = $this->resolveQuotation($quotation, $current_team);
+        $team = $this->getTeam($request, $current_team);
+        abort_if(! $team || $quotation->team_id !== $team->id, 403, 'Unauthorized quotation access.');
 
         $validated = $request->validate([
             'client_name' => ['required', 'string', 'max:255'],
@@ -305,29 +306,35 @@ class QuotationController extends Controller
     /**
      * Update quotation status.
      */
-    public function updateStatus(Request $request, Quotation $quotation): RedirectResponse
+    public function updateStatus(Request $request, mixed $current_team = null, mixed $quotation = null): RedirectResponse
     {
-        $team = $this->getTeam($request);
-        abort_if(! $team || $quotation->team_id !== $team->id, 403);
+        $quotation = $this->resolveQuotation($quotation, $current_team);
+        $team = $this->getTeam($request, $current_team);
+        abort_if(! $team || $quotation->team_id !== $team->id, 403, 'Unauthorized quotation access.');
 
         $validated = $request->validate([
             'status' => ['required', Rule::enum(QuotationStatus::class)],
         ]);
 
+        $status = $validated['status'] instanceof QuotationStatus
+            ? $validated['status']
+            : QuotationStatus::from($validated['status']);
+
         $quotation->update([
-            'status' => $validated['status'],
+            'status' => $status,
         ]);
 
-        return back()->with('success', "Status updated to {$validated['status']}.");
+        return back()->with('success', "Status updated to {$status->value}.");
     }
 
     /**
      * Convert an approved quotation to a sales transaction.
      */
-    public function convertToSale(Request $request, Quotation $quotation): RedirectResponse
+    public function convertToSale(Request $request, mixed $current_team = null, mixed $quotation = null): RedirectResponse
     {
-        $team = $this->getTeam($request);
-        abort_if(! $team || $quotation->team_id !== $team->id, 403);
+        $quotation = $this->resolveQuotation($quotation, $current_team);
+        $team = $this->getTeam($request, $current_team);
+        abort_if(! $team || $quotation->team_id !== $team->id, 403, 'Unauthorized quotation access.');
 
         if ($quotation->status !== QuotationStatus::Approved) {
             return back()->withErrors(['error' => 'Only Approved quotations can be converted to sales transactions.']);
@@ -412,10 +419,11 @@ class QuotationController extends Controller
     /**
      * Delete the specified quotation.
      */
-    public function destroy(Request $request, Quotation $quotation): RedirectResponse
+    public function destroy(Request $request, mixed $current_team = null, mixed $quotation = null): RedirectResponse
     {
-        $team = $this->getTeam($request);
-        abort_if(! $team || $quotation->team_id !== $team->id, 403);
+        $quotation = $this->resolveQuotation($quotation, $current_team);
+        $team = $this->getTeam($request, $current_team);
+        abort_if(! $team || $quotation->team_id !== $team->id, 403, 'Unauthorized quotation access.');
 
         $quotation->delete();
 
@@ -423,18 +431,56 @@ class QuotationController extends Controller
     }
 
     /**
-     * Helper to retrieve team from request.
+     * Helper to retrieve team from request or route parameter.
      */
-    protected function getTeam(Request $request): ?Team
+    protected function getTeam(Request $request, mixed $teamParam = null): ?Team
     {
-        $team = $request->route('current_team') ?? $request->route('team');
+        if ($teamParam instanceof Team) {
+            return $teamParam;
+        }
+
+        if (is_string($teamParam) && !empty($teamParam)) {
+            $found = Team::where('slug', $teamParam)->first();
+            if ($found) {
+                return $found;
+            }
+        }
+
+        $team = $request->route('current_team') ?? $request->route('team') ?? $teamParam;
         if (is_string($team)) {
-            return Team::where('slug', $team)->first();
+            $found = Team::where('slug', $team)->first();
+            if ($found) {
+                return $found;
+            }
         }
         if ($team instanceof Team) {
             return $team;
         }
         return $request->user()?->currentTeam;
+    }
+
+    /**
+     * Resolve quotation from route parameters.
+     */
+    protected function resolveQuotation(mixed $quotation, mixed $fallback = null): Quotation
+    {
+        if ($quotation instanceof Quotation) {
+            return $quotation;
+        }
+
+        if (is_numeric($quotation)) {
+            return Quotation::findOrFail((int) $quotation);
+        }
+
+        if ($fallback instanceof Quotation) {
+            return $fallback;
+        }
+
+        if (is_numeric($fallback)) {
+            return Quotation::findOrFail((int) $fallback);
+        }
+
+        abort(404, 'Quotation not found.');
     }
 
     /**

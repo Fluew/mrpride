@@ -33,14 +33,22 @@ class EnsureRole
             ]);
         }
 
-        // Check permissions:
-        // - Direct role match
-        // - 'admin' requested and user is superadmin or admin
-        // - 'superadmin' requested and user is superadmin
+        // Admin can access ALL modules unconditionally
+        if ($user->isAdmin()) {
+            return $next($request);
+        }
+
+        // For staff or other roles, check against requested roles
         $isAuthorized = in_array($user->role, $roles, true);
 
-        if (! $isAuthorized && in_array('admin', $roles, true) && $user->isAdmin()) {
-            $isAuthorized = true;
+        // Also check if any module-level shorthand was passed (e.g. 'inventory' matches 'staff_inventory')
+        if (! $isAuthorized) {
+            foreach ($roles as $requiredRole) {
+                if ($user->role === 'staff_' . $requiredRole || ($user->role === 'staff' && $requiredRole === 'inventory')) {
+                    $isAuthorized = true;
+                    break;
+                }
+            }
         }
 
         if (! $isAuthorized) {

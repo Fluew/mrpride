@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\Route;
 Route::inertia('/', 'Welcome')->name('home');
 Route::inertia('/products', 'Products/Index')->name('products.index');
 Route::inertia('/company', 'Company/Index')->name('company.index');
+Route::inertia('/contact-us', 'Contact/Index')->name('contact.index');
 Route::get('/quotation', [PublicQuotationController::class, 'create'])->name('quotations.create');
 Route::post('/quotation', [PublicQuotationController::class, 'store'])->middleware('throttle:10,1')->name('quotations.store');
 
@@ -33,10 +34,22 @@ Route::middleware(['auth'])->group(function () {
     Route::put('/password/change', [ChangePasswordController::class, 'update'])->middleware('throttle:6,1')->name('password.change.update');
 });
 
-// Forgot password: send temporary password
-Route::post('/forgot-password', [ForgotPasswordController::class, 'sendTemporaryPassword'])
+// Forgot password OTP flow via Resend
+Route::post('/forgot-password', [ForgotPasswordController::class, 'sendOtp'])
     ->middleware(['guest', 'throttle:6,1'])
     ->name('password.email');
+
+Route::post('/forgot-password/check-otp', [ForgotPasswordController::class, 'checkOtp'])
+    ->middleware(['guest', 'throttle:10,1'])
+    ->name('password.check-otp');
+
+Route::post('/forgot-password/verify-otp', [ForgotPasswordController::class, 'verifyOtpAndResetPassword'])
+    ->middleware(['guest', 'throttle:6,1'])
+    ->name('password.verify-otp');
+
+Route::post('/forgot-password/resend-otp', [ForgotPasswordController::class, 'resendOtp'])
+    ->middleware(['guest', 'throttle:4,1'])
+    ->name('password.resend-otp');
 
 // Public device authorization links (single-use email link and superadmin enrollment invitation)
 Route::get('/device/access/{token}', [DeviceVerificationController::class, 'authorizeDevice'])->name('device.access');
@@ -118,7 +131,10 @@ Route::get('/dashboard', function (\Illuminate\Http\Request $request) {
     $team = $user->currentTeam ?: $user->teams()->first() ?: \App\Models\Team::first();
     if ($team) {
         $user->switchTeam($team);
-        return redirect("/{$team->slug}/dashboard");
+        if ($user->isAdmin()) {
+            return redirect("/{$team->slug}/dashboard");
+        }
+        return redirect("/{$team->slug}/" . $user->assignedModuleSlug());
     }
 
     return redirect('/');
@@ -136,43 +152,55 @@ Route::prefix('{current_team}')
         'no_cache',
     ])
     ->group(function () {
-        Route::get('dashboard', DashboardController::class)->name('dashboard');
+        // Workspace Overview (Admin default, Staff redirected to their assigned module)
+        Route::get('dashboard', function (\Illuminate\Http\Request $request) {
+            $user = $request->user();
+            if ($user && $user->isStaff()) {
+                $teamSlug = $request->route('current_team') ?: ($user->currentTeam?->slug ?? 'mr-pride');
+                return redirect("/{$teamSlug}/" . $user->assignedModuleSlug());
+            }
+            return app(DashboardController::class)($request);
+        })->name('dashboard');
 
-        // Centralized User Management & Security Administration Module (Admin & Superadmin)
-        Route::get('users', [UserController::class, 'index'])->middleware('role:admin')->name('users.index');
-        Route::post('users', [UserController::class, 'store'])->middleware('role:admin')->name('users.store');
-        Route::put('users/{user}', [UserController::class, 'update'])->middleware('role:admin')->name('users.update');
-        Route::patch('users/{user}/status', [UserController::class, 'toggleStatus'])->middleware('role:superadmin')->name('users.status');
-        Route::delete('users/{user}', [UserController::class, 'destroy'])->middleware('role:admin')->name('users.destroy');
+        // Centralized User Management & Security Administration Module (Admin full access)
+        Route::middleware('role:admin')->group(function () {
+            Route::get('users', [UserController::class, 'index'])->name('users.index');
+            Route::post('users', [UserController::class, 'store'])->name('users.store');
+            Route::put('users/{user}', [UserController::class, 'update'])->name('users.update');
+            Route::patch('users/{user}/status', [UserController::class, 'toggleStatus'])->name('users.status');
+            Route::delete('users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
 
-        // Centralized Security Actions inside User Management (Superadmin only)
-        Route::delete('users/sessions/{sessionId}', [UserController::class, 'revokeSession'])->middleware('role:superadmin')->name('users.sessions.destroy');
-        Route::post('users/{user}/sessions/revoke', [UserController::class, 'revokeUserSessions'])->middleware('role:superadmin')->name('users.sessions.revoke-user');
-        Route::post('users/devices/enroll', [UserController::class, 'enrollDevice'])->middleware('role:superadmin')->name('users.devices.enroll');
-        Route::post('users/devices/{device}/approve', [UserController::class, 'approveDevice'])->middleware('role:superadmin')->name('users.devices.approve');
-        Route::post('users/devices/{device}/revoke', [UserController::class, 'revokeDevice'])->middleware('role:superadmin')->name('users.devices.revoke');
-        Route::delete('users/devices/{device}', [UserController::class, 'destroyDevice'])->middleware('role:superadmin')->name('users.devices.destroy');
-        Route::post('users/recovery-key/regenerate', [UserController::class, 'regenerateRecoveryKey'])->middleware('role:superadmin')->name('users.recovery-key.regenerate');
+            // Centralized Security Actions inside User Management (Admin accessible)
+            Route::delete('users/sessions/{sessionId}', [UserController::class, 'revokeSession'])->name('users.sessions.destroy');
+            Route::post('users/{user}/sessions/revoke', [UserController::class, 'revokeUserSessions'])->name('users.sessions.revoke-user');
+            Route::post('users/devices/enroll', [UserController::class, 'enrollDevice'])->name('users.devices.enroll');
+            Route::post('users/devices/{device}/approve', [UserController::class, 'approveDevice'])->name('users.devices.approve');
+            Route::post('users/devices/{device}/revoke', [UserController::class, 'revokeDevice'])->name('users.devices.revoke');
+            Route::delete('users/devices/{device}', [UserController::class, 'destroyDevice'])->name('users.devices.destroy');
+            Route::post('users/recovery-key/regenerate', [UserController::class, 'regenerateRecoveryKey'])->name('users.recovery-key.regenerate');
+        });
 
         // Backwards-compatible security redirects to centralized tabs
         Route::redirect('security/devices', 'users?tab=devices');
         Route::redirect('security/sessions', 'users?tab=sessions');
         Route::redirect('security/audit-logs', 'users?tab=audit');
 
-        // Inventory Management Module (Staff & Admin accessible)
-        Route::get('inventory', [InventoryController::class, 'index'])->name('inventory.index');
-        Route::post('inventory/products', [InventoryController::class, 'store'])->name('inventory.products.store');
-        Route::put('inventory/products/{product}', [InventoryController::class, 'update'])->name('inventory.products.update');
-        Route::delete('inventory/products/{product}', [InventoryController::class, 'destroy'])->name('inventory.products.destroy');
-        Route::post('inventory/stock-in', [InventoryController::class, 'stockIn'])->name('inventory.stock-in');
-        Route::post('inventory/stock-out', [InventoryController::class, 'stockOut'])->name('inventory.stock-out');
-        Route::post('inventory/adjust', [InventoryController::class, 'adjustStock'])->name('inventory.adjust');
-        Route::get('inventory/history', [InventoryController::class, 'history'])->name('inventory.history');
-        Route::post('inventory/import-csv', [InventoryController::class, 'importCsv'])->name('inventory.import-csv');
-        Route::get('inventory/export-csv', [InventoryController::class, 'exportCsv'])->name('inventory.export-csv');
+        // Inventory Management Module (Admin and Inventory Staff)
+        Route::middleware('role:admin,staff_inventory,staff')->group(function () {
+            Route::get('inventory', [InventoryController::class, 'index'])->name('inventory.index');
+            Route::post('inventory/products', [InventoryController::class, 'store'])->name('inventory.products.store');
+            Route::put('inventory/products/{product}', [InventoryController::class, 'update'])->name('inventory.products.update');
+            Route::delete('inventory/products/{product}', [InventoryController::class, 'destroy'])->name('inventory.products.destroy');
+            Route::post('inventory/stock-in', [InventoryController::class, 'stockIn'])->name('inventory.stock-in');
+            Route::post('inventory/stock-out', [InventoryController::class, 'stockOut'])->name('inventory.stock-out');
+            Route::post('inventory/adjust', [InventoryController::class, 'adjustStock'])->name('inventory.adjust');
+            Route::get('inventory/history', [InventoryController::class, 'history'])->name('inventory.history');
+            Route::post('inventory/import-csv', [InventoryController::class, 'importCsv'])->name('inventory.import-csv');
+            Route::get('inventory/export-csv', [InventoryController::class, 'exportCsv'])->name('inventory.export-csv');
+        });
 
-        // Suppliers & AHP Evaluation Module (Admin only - Staff restricted)
-        Route::middleware('role:admin')->group(function () {
+        // Suppliers & AHP Evaluation Module (Admin and Suppliers Staff)
+        Route::middleware('role:admin,staff_suppliers')->group(function () {
             Route::get('suppliers', [SupplierController::class, 'index'])->name('suppliers.index');
             Route::post('suppliers', [SupplierController::class, 'store'])->name('suppliers.store');
             Route::put('suppliers/{supplier}', [SupplierController::class, 'update'])->name('suppliers.update');
@@ -180,31 +208,39 @@ Route::prefix('{current_team}')
             Route::post('suppliers/ahp', [SupplierController::class, 'runAhp'])->name('suppliers.ahp');
         });
 
-        // Quotation Management Module (Staff & Admin accessible)
-        Route::get('quotations', [QuotationController::class, 'index'])->name('admin.quotations.index');
-        Route::post('quotations', [QuotationController::class, 'store'])->name('admin.quotations.store');
-        Route::put('quotations/{quotation}', [QuotationController::class, 'update'])->name('admin.quotations.update');
-        Route::patch('quotations/{quotation}/status', [QuotationController::class, 'updateStatus'])->name('admin.quotations.updateStatus');
-        Route::post('quotations/{quotation}/convert-to-sale', [QuotationController::class, 'convertToSale'])->name('admin.quotations.convertToSale');
-        Route::delete('quotations/{quotation}', [QuotationController::class, 'destroy'])->name('admin.quotations.destroy');
+        // Quotation Management Module (Admin and Quotations Staff)
+        Route::middleware('role:admin,staff_quotations')->group(function () {
+            Route::get('quotations', [QuotationController::class, 'index'])->name('admin.quotations.index');
+            Route::post('quotations', [QuotationController::class, 'store'])->name('admin.quotations.store');
+            Route::put('quotations/{quotation}', [QuotationController::class, 'update'])->name('admin.quotations.update');
+            Route::patch('quotations/{quotation}/status', [QuotationController::class, 'updateStatus'])->name('admin.quotations.updateStatus');
+            Route::post('quotations/{quotation}/convert-to-sale', [QuotationController::class, 'convertToSale'])->name('admin.quotations.convertToSale');
+            Route::delete('quotations/{quotation}', [QuotationController::class, 'destroy'])->name('admin.quotations.destroy');
+        });
 
-        // Procurement Module (Staff & Admin accessible)
-        Route::get('procurement', [PurchaseRequestController::class, 'index'])->name('procurement.index');
-        Route::post('procurement', [PurchaseRequestController::class, 'store'])->name('procurement.store');
-        Route::patch('procurement/{purchaseRequest}/status', [PurchaseRequestController::class, 'updateStatus'])->name('procurement.updateStatus');
-        Route::delete('procurement/{purchaseRequest}', [PurchaseRequestController::class, 'destroy'])->name('procurement.destroy');
+        // Procurement Module (Admin and Procurement Staff)
+        Route::middleware('role:admin,staff_procurement')->group(function () {
+            Route::get('procurement', [PurchaseRequestController::class, 'index'])->name('procurement.index');
+            Route::post('procurement', [PurchaseRequestController::class, 'store'])->name('procurement.store');
+            Route::patch('procurement/{purchaseRequest}/status', [PurchaseRequestController::class, 'updateStatus'])->name('procurement.updateStatus');
+            Route::delete('procurement/{purchaseRequest}', [PurchaseRequestController::class, 'destroy'])->name('procurement.destroy');
+        });
 
-        // Sales & POS Module (Staff & Admin accessible)
-        Route::get('sales', [SaleController::class, 'index'])->name('sales.index');
-        Route::post('sales', [SaleController::class, 'store'])->name('sales.store');
-        Route::get('sales/{sale}', [SaleController::class, 'show'])->name('sales.show');
+        // Sales & POS Module (Admin and Sales Staff)
+        Route::middleware('role:admin,staff_sales')->group(function () {
+            Route::get('sales', [SaleController::class, 'index'])->name('sales.index');
+            Route::post('sales', [SaleController::class, 'store'])->name('sales.store');
+            Route::get('sales/{sale}', [SaleController::class, 'show'])->name('sales.show');
+        });
 
-        // Demand Forecasting Module (Staff & Admin accessible)
-        Route::get('forecast', [ForecastController::class, 'index'])->name('forecast.index');
-        Route::get('forecast/export-csv', [ForecastController::class, 'exportCsv'])->name('forecast.export-csv');
+        // Demand Forecasting Module (Admin and Demand Forecasting Staff)
+        Route::middleware('role:admin,staff_forecast')->group(function () {
+            Route::get('forecast', [ForecastController::class, 'index'])->name('forecast.index');
+            Route::get('forecast/export-csv', [ForecastController::class, 'exportCsv'])->name('forecast.export-csv');
+        });
 
-        // Reports & Analytics Module (Admin only - Staff restricted)
-        Route::middleware('role:admin')->group(function () {
+        // Reports & Analytics Module (Admin and Reports Staff)
+        Route::middleware('role:admin,staff_reports')->group(function () {
             Route::get('reports', [ReportController::class, 'index'])->name('reports.index');
             Route::get('reports/export/inventory', [ReportController::class, 'exportInventory'])->name('reports.export.inventory');
             Route::get('reports/export/low-stock', [ReportController::class, 'exportLowStock'])->name('reports.export.low-stock');

@@ -1440,116 +1440,185 @@ const exportLiveCsv = () => {
             </div>
 
             <form @submit.prevent="promptSaveProduct" class="space-y-4">
-                <div>
-                    <label class="block text-gray-700 text-xs font-semibold uppercase mb-1">Product Name *</label>
-                    <input v-model="formProduct.name" 
+                <!-- Product Name -->
+                <div class="relative">
+                    <input id="prod_name"
+                           v-model="formProduct.name" 
                            type="text" 
-                           placeholder="e.g. Industrial Circuit Breaker 100A" 
-                           class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" 
+                           placeholder=" " 
+                           class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" 
                            required />
+                    <label for="prod_name"
+                           class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                           :class="formProduct.name ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                        Product Name
+                    </label>
                     <span v-if="formErrors.name" class="text-rose-600 text-xs mt-1 block">{{ formErrors.name }}</span>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-gray-700 text-xs font-semibold uppercase mb-1">SKU / Item Code *</label>
-                        <input v-model="formProduct.sku" 
+                    <!-- SKU / Item Code -->
+                    <div class="relative">
+                        <input id="prod_sku"
+                               v-model="formProduct.sku" 
                                type="text" 
-                               placeholder="e.g. BRK-IND-001" 
-                               class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm font-mono text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none uppercase" 
+                               placeholder=" " 
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs font-mono uppercase text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" 
                                required />
+                        <label for="prod_sku"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                               :class="formProduct.sku ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                            SKU / Item Code
+                        </label>
                         <span v-if="formErrors.sku" class="text-rose-600 text-xs mt-1 block">{{ formErrors.sku }}</span>
                     </div>
 
-                    <div>
-                        <label class="block text-gray-700 text-xs font-semibold uppercase mb-1">Category *</label>
-                        <select v-model="formProduct.category" 
-                                class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none">
+                    <!-- Category -->
+                    <div class="relative">
+                        <select id="prod_category"
+                                v-model="formProduct.category" 
+                                class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm">
                             <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
                         </select>
+                        <label for="prod_category"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]">
+                            Category
+                        </label>
                         <span v-if="formErrors.category" class="text-rose-600 text-xs mt-1 block">{{ formErrors.category }}</span>
                     </div>
                 </div>
 
                 <div class="grid grid-cols-3 gap-3">
-                    <div>
-                        <label class="block text-gray-700 text-xs font-semibold uppercase mb-1">Unit of Measure</label>
-                        <input v-model="formProduct.unit" 
+                    <!-- Unit of Measure -->
+                    <div class="relative">
+                        <input id="prod_unit"
+                               v-model="formProduct.unit" 
                                type="text" 
-                               placeholder="pcs, rolls, sets" 
-                               class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" />
+                               placeholder=" " 
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
+                        <label for="prod_unit"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                               :class="formProduct.unit ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                            Unit of Measure
+                        </label>
                     </div>
 
-                    <div>
-                        <label class="block text-gray-700 text-xs font-semibold uppercase mb-1">Cost Price (₱)</label>
-                        <input v-model.number="formProduct.cost_price" 
+                    <!-- Cost Price -->
+                    <div class="relative">
+                        <input id="prod_cost_price"
+                               v-model.number="formProduct.cost_price" 
                                type="number" 
                                step="0.01" 
                                min="0"
-                               class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" />
+                               placeholder=" "
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
+                        <label for="prod_cost_price"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                               :class="formProduct.cost_price !== null && formProduct.cost_price !== undefined && formProduct.cost_price !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                            Cost Price (₱)
+                        </label>
                     </div>
 
-                    <div>
-                        <label class="block text-gray-700 text-xs font-semibold uppercase mb-1">Selling Price (₱) *</label>
-                        <input v-model.number="formProduct.price" 
+                    <!-- Selling Price -->
+                    <div class="relative">
+                        <input id="prod_price"
+                               v-model.number="formProduct.price" 
                                type="number" 
                                step="0.01" 
                                min="0"
-                               class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" 
+                               placeholder=" "
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" 
                                required />
+                        <label for="prod_price"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                               :class="formProduct.price !== null && formProduct.price !== undefined && formProduct.price !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                            Selling Price (₱)
+                        </label>
                         <span v-if="formErrors.price" class="text-rose-600 text-xs mt-1 block">{{ formErrors.price }}</span>
                     </div>
                 </div>
 
                 <div class="grid grid-cols-3 gap-3">
-                    <div v-if="!isEditing">
-                        <label class="block text-gray-700 text-xs font-semibold uppercase mb-1">Initial Stock *</label>
-                        <input v-model.number="formProduct.stock" 
+                    <!-- Initial Stock -->
+                    <div v-if="!isEditing" class="relative">
+                        <input id="prod_stock"
+                               v-model.number="formProduct.stock" 
                                type="number" 
                                min="0" 
-                               class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" 
+                               placeholder=" "
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" 
                                required />
+                        <label for="prod_stock"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                               :class="formProduct.stock !== null && formProduct.stock !== undefined && formProduct.stock !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                            Initial Stock
+                        </label>
                         <span v-if="formErrors.stock" class="text-rose-600 text-xs mt-1 block">{{ formErrors.stock }}</span>
                     </div>
 
-                    <div>
-                        <label class="block text-gray-700 text-xs font-semibold uppercase mb-1">Reorder Level *</label>
-                        <input v-model.number="formProduct.reorder_level" 
+                    <!-- Reorder Level -->
+                    <div class="relative">
+                        <input id="prod_reorder_level"
+                               v-model.number="formProduct.reorder_level" 
                                type="number" 
                                min="0" 
-                               class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" 
+                               placeholder=" "
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" 
                                required />
-                        <span class="text-[10px] text-gray-400">Trigger Low Stock status</span>
+                        <label for="prod_reorder_level"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                               :class="formProduct.reorder_level !== null && formProduct.reorder_level !== undefined && formProduct.reorder_level !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                            Reorder Level
+                        </label>
+                        <span class="text-[10px] text-gray-400 mt-1 block">Trigger Low Stock status</span>
                     </div>
 
-                    <div>
-                        <label class="block text-gray-700 text-xs font-semibold uppercase mb-1">Reorder Quantity</label>
-                        <input v-model.number="formProduct.reorder_quantity" 
+                    <!-- Reorder Quantity -->
+                    <div class="relative">
+                        <input id="prod_reorder_quantity"
+                               v-model.number="formProduct.reorder_quantity" 
                                type="number" 
                                min="0" 
-                               class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" />
-                        <span class="text-[10px] text-gray-400">Suggested order batch</span>
+                               placeholder=" "
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
+                        <label for="prod_reorder_quantity"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                               :class="formProduct.reorder_quantity !== null && formProduct.reorder_quantity !== undefined && formProduct.reorder_quantity !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                            Reorder Quantity
+                        </label>
+                        <span class="text-[10px] text-gray-400 mt-1 block">Suggested order batch</span>
                     </div>
                 </div>
 
                 <div class="grid grid-cols-1 gap-4">
-                    <div>
-                        <label class="block text-gray-700 text-xs font-semibold uppercase mb-1">Supplier</label>
-                        <select v-model="formProduct.supplier_id" 
-                                class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none">
+                    <!-- Supplier -->
+                    <div class="relative">
+                        <select id="prod_supplier"
+                                v-model="formProduct.supplier_id" 
+                                class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm">
                             <option :value="null">-- No Supplier Assigned --</option>
                             <option v-for="sup in suppliers" :key="sup.id" :value="sup.id">
                                 {{ sup.name }} {{ sup.contact_person ? `(${sup.contact_person})` : '' }}
                             </option>
                         </select>
+                        <label for="prod_supplier"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]">
+                            Supplier
+                        </label>
                     </div>
 
-                    <div>
-                        <label class="block text-gray-700 text-xs font-semibold uppercase mb-1">Description / Technical Notes</label>
-                        <textarea v-model="formProduct.description" 
+                    <!-- Description -->
+                    <div class="relative">
+                        <textarea id="prod_description"
+                                  v-model="formProduct.description" 
                                   rows="2" 
-                                  placeholder="Specify certifications, voltage ratings, material type..." 
-                                  class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none"></textarea>
+                                  placeholder=" " 
+                                  class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"></textarea>
+                        <label for="prod_description"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                               :class="formProduct.description ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                            Description / Technical Notes
+                        </label>
                     </div>
                 </div>
 
@@ -1599,60 +1668,94 @@ const exportLiveCsv = () => {
             </div>
 
             <form @submit.prevent="promptStockIn" class="space-y-4 text-xs">
-                <div>
-                    <label class="block text-gray-700 font-semibold uppercase mb-1">Target Product *</label>
-                    <select v-model="formStockIn.product_id" 
-                            class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" required>
+                <!-- Target Product -->
+                <div class="relative">
+                    <select id="stockin_product"
+                            v-model="formStockIn.product_id" 
+                            class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" required>
                         <option v-for="p in products.data" :key="p.id" :value="p.id">
                             {{ p.sku }} &mdash; {{ p.name }} (Current: {{ p.stock }} {{ p.unit || 'pcs' }})
                         </option>
                     </select>
+                    <label for="stockin_product"
+                           class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]">
+                        Target Product
+                    </label>
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-gray-700 font-semibold uppercase mb-1">Incoming Quantity *</label>
-                        <input v-model.number="formStockIn.quantity" 
+                    <!-- Incoming Quantity -->
+                    <div class="relative">
+                        <input id="stockin_qty"
+                               v-model.number="formStockIn.quantity" 
                                type="number" 
                                min="1" 
-                               class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none font-bold" 
+                               placeholder=" "
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none font-bold sm:text-sm" 
                                required />
+                        <label for="stockin_qty"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                               :class="formStockIn.quantity !== null && formStockIn.quantity !== undefined && formStockIn.quantity !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                            Incoming Quantity
+                        </label>
                         <span v-if="formErrors.quantity" class="text-rose-600 text-xs mt-1 block">{{ formErrors.quantity }}</span>
                     </div>
 
-                    <div>
-                        <label class="block text-gray-700 font-semibold uppercase mb-1">Reference Number</label>
-                        <input v-model="formStockIn.reference_number" 
+                    <!-- Reference Number -->
+                    <div class="relative">
+                        <input id="stockin_ref"
+                               v-model="formStockIn.reference_number" 
                                type="text" 
-                               placeholder="e.g. PO-2026-0881" 
-                               class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm font-mono text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" />
+                               placeholder=" " 
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs font-mono text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
+                        <label for="stockin_ref"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                               :class="formStockIn.reference_number ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                            Reference Number
+                        </label>
                     </div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-gray-700 font-semibold uppercase mb-1">Supplier</label>
-                        <select v-model="formStockIn.supplier_id" 
-                                class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none">
+                    <!-- Supplier -->
+                    <div class="relative">
+                        <select id="stockin_supplier"
+                                v-model="formStockIn.supplier_id" 
+                                class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm">
                             <option :value="null">-- Standard Restock --</option>
                             <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
                         </select>
+                        <label for="stockin_supplier"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]">
+                            Supplier
+                        </label>
                     </div>
 
-                    <div>
-                        <label class="block text-gray-700 font-semibold uppercase mb-1">Date Received</label>
-                        <input v-model="formStockIn.movement_date" 
+                    <!-- Date Received -->
+                    <div class="relative">
+                        <input id="stockin_date"
+                               v-model="formStockIn.movement_date" 
                                type="date" 
-                               class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" />
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
+                        <label for="stockin_date"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]">
+                            Date Received
+                        </label>
                     </div>
                 </div>
 
-                <div>
-                    <label class="block text-gray-700 font-semibold uppercase mb-1">Remarks / Note</label>
-                    <input v-model="formStockIn.remarks" 
+                <!-- Remarks -->
+                <div class="relative">
+                    <input id="stockin_remarks"
+                           v-model="formStockIn.remarks" 
                            type="text" 
-                           placeholder="Delivery inspection passed, shelf location B4..." 
-                           class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" />
+                           placeholder=" " 
+                           class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
+                    <label for="stockin_remarks"
+                           class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                           :class="formStockIn.remarks ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                        Remarks / Note
+                    </label>
                 </div>
 
                 <div class="flex justify-end gap-2 pt-3 border-t border-gray-100">
@@ -1700,14 +1803,19 @@ const exportLiveCsv = () => {
             </div>
 
             <form @submit.prevent="promptStockOut" class="space-y-4 text-xs">
-                <div>
-                    <label class="block text-gray-700 font-semibold uppercase mb-1">Target Product *</label>
-                    <select v-model="formStockOut.product_id" 
-                            class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" required>
+                <!-- Target Product -->
+                <div class="relative">
+                    <select id="stockout_product"
+                            v-model="formStockOut.product_id" 
+                            class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" required>
                         <option v-for="p in products.data" :key="p.id" :value="p.id">
                             {{ p.sku }} &mdash; {{ p.name }} (Available: {{ p.stock }} {{ p.unit || 'pcs' }})
                         </option>
                     </select>
+                    <label for="stockout_product"
+                           class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]">
+                        Target Product
+                    </label>
                 </div>
 
                 <div v-if="currentSelectedStockOutProduct" class="p-2.5 bg-gray-50 rounded-lg text-xs flex justify-between items-center">
@@ -1718,55 +1826,84 @@ const exportLiveCsv = () => {
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-gray-700 font-semibold uppercase mb-1">Deduction Quantity *</label>
-                        <input v-model.number="formStockOut.quantity" 
+                    <!-- Deduction Quantity -->
+                    <div class="relative">
+                        <input id="stockout_qty"
+                               v-model.number="formStockOut.quantity" 
                                type="number" 
                                min="1" 
                                :max="currentSelectedStockOutProduct?.stock || 99999"
-                               class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none font-bold" 
+                               placeholder=" "
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none font-bold sm:text-sm" 
                                required />
+                        <label for="stockout_qty"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                               :class="formStockOut.quantity !== null && formStockOut.quantity !== undefined && formStockOut.quantity !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                            Deduction Quantity
+                        </label>
                         <span v-if="formErrors.quantity" class="text-rose-600 text-xs mt-1 block">{{ formErrors.quantity }}</span>
                         <span v-else-if="currentSelectedStockOutProduct && formStockOut.quantity > currentSelectedStockOutProduct.stock" class="text-rose-600 text-xs mt-1 block">
                             Insufficient stock. Available: {{ currentSelectedStockOutProduct.stock }}
                         </span>
                     </div>
 
-                    <div>
-                        <label class="block text-gray-700 font-semibold uppercase mb-1">Reason for Deduction *</label>
-                        <select v-model="formStockOut.reason" 
-                                class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" required>
+                    <!-- Reason for Deduction -->
+                    <div class="relative">
+                        <select id="stockout_reason"
+                                v-model="formStockOut.reason" 
+                                class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" required>
                             <option>Client Project Deployment</option>
                             <option>Direct Store Sale</option>
                             <option>Internal Maintenance Usage</option>
                             <option>Sample / Demo Transfer</option>
                         </select>
+                        <label for="stockout_reason"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]">
+                            Reason for Deduction
+                        </label>
                     </div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-gray-700 font-semibold uppercase mb-1">Reference Number</label>
-                        <input v-model="formStockOut.reference_number" 
+                    <!-- Reference Number -->
+                    <div class="relative">
+                        <input id="stockout_ref"
+                               v-model="formStockOut.reference_number" 
                                type="text" 
-                               placeholder="e.g. SO-2026-0045" 
-                               class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm font-mono text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" />
+                               placeholder=" " 
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs font-mono text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
+                        <label for="stockout_ref"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                               :class="formStockOut.reference_number ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                            Reference Number
+                        </label>
                     </div>
 
-                    <div>
-                        <label class="block text-gray-700 font-semibold uppercase mb-1">Date</label>
-                        <input v-model="formStockOut.movement_date" 
+                    <!-- Date -->
+                    <div class="relative">
+                        <input id="stockout_date"
+                               v-model="formStockOut.movement_date" 
                                type="date" 
-                               class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" />
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
+                        <label for="stockout_date"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]">
+                            Date
+                        </label>
                     </div>
                 </div>
 
-                <div>
-                    <label class="block text-gray-700 font-semibold uppercase mb-1">Remarks</label>
-                    <input v-model="formStockOut.remarks" 
+                <!-- Remarks -->
+                <div class="relative">
+                    <input id="stockout_remarks"
+                           v-model="formStockOut.remarks" 
                            type="text" 
-                           placeholder="Dispatched to Engineer Mendoza / Jobsite 1..." 
-                           class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" />
+                           placeholder=" " 
+                           class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
+                    <label for="stockout_remarks"
+                           class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                           :class="formStockOut.remarks ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                        Remarks
+                    </label>
                 </div>
 
                 <div class="flex justify-end gap-2 pt-3 border-t border-gray-100">
@@ -1814,46 +1951,69 @@ const exportLiveCsv = () => {
             </div>
 
             <form @submit.prevent="promptAdjust" class="space-y-4 text-xs">
-                <div>
-                    <label class="block text-gray-700 font-semibold uppercase mb-1">Target Product *</label>
-                    <select v-model="formAdjust.product_id" 
-                            class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" required>
+                <!-- Target Product -->
+                <div class="relative">
+                    <select id="adjust_product"
+                            v-model="formAdjust.product_id" 
+                            class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" required>
                         <option v-for="p in products.data" :key="p.id" :value="p.id">
                             {{ p.sku }} &mdash; {{ p.name }} (System Stock: {{ p.stock }} {{ p.unit || 'pcs' }})
                         </option>
                     </select>
+                    <label for="adjust_product"
+                           class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]">
+                        Target Product
+                    </label>
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-gray-700 font-semibold uppercase mb-1">Actual Physical Count *</label>
-                        <input v-model.number="formAdjust.physical_count" 
+                    <!-- Actual Physical Count -->
+                    <div class="relative">
+                        <input id="adjust_physical_count"
+                               v-model.number="formAdjust.physical_count" 
                                type="number" 
                                min="0" 
-                               class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none font-bold" 
+                               placeholder=" "
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none font-bold sm:text-sm" 
                                required />
+                        <label for="adjust_physical_count"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                               :class="formAdjust.physical_count !== null && formAdjust.physical_count !== undefined && formAdjust.physical_count !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                            Actual Physical Count
+                        </label>
                         <span v-if="formErrors.physical_count" class="text-rose-600 text-xs mt-1 block">{{ formErrors.physical_count }}</span>
                     </div>
 
-                    <div>
-                        <label class="block text-gray-700 font-semibold uppercase mb-1">Adjustment Reason *</label>
-                        <select v-model="formAdjust.reason" 
-                                class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" required>
+                    <!-- Adjustment Reason -->
+                    <div class="relative">
+                        <select id="adjust_reason"
+                                v-model="formAdjust.reason" 
+                                class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" required>
                             <option>Physical Count Correction</option>
                             <option>Damaged</option>
                             <option>Lost</option>
                             <option>Data Correction</option>
                         </select>
+                        <label for="adjust_reason"
+                               class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]">
+                            Adjustment Reason
+                        </label>
                     </div>
                 </div>
 
-                <div>
-                    <label class="block text-gray-700 font-semibold uppercase mb-1">Reason / Audit Remark *</label>
-                    <input v-model="formAdjust.remarks" 
+                <!-- Reason / Audit Remark -->
+                <div class="relative">
+                    <input id="adjust_remarks"
+                           v-model="formAdjust.remarks" 
                            type="text" 
-                           placeholder="Quarterly audit count variance verified by supervisor..." 
-                           class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none" 
+                           placeholder=" " 
+                           class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" 
                            required />
+                    <label for="adjust_remarks"
+                           class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                           :class="formAdjust.remarks ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                        Reason / Audit Remark
+                    </label>
                 </div>
 
                 <div class="flex justify-end gap-2 pt-3 border-t border-gray-100">

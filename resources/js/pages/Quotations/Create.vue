@@ -116,8 +116,13 @@ function getProductById(id: number | null): CatalogProduct | undefined {
 }
 
 // Check if a product has already been chosen in another row
-function isProductSelectedElsewhere(productId: number, currentRowIndex: number): boolean {
-    return form.items.some((item, idx) => idx !== currentRowIndex && item.product_id === productId);
+function isProductSelectedElsewhere(
+    productId: number,
+    currentRowIndex: number,
+): boolean {
+    return form.items.some(
+        (item, idx) => idx !== currentRowIndex && item.product_id === productId,
+    );
 }
 
 // Add a new product row
@@ -148,9 +153,10 @@ function removeItemRow(index: number) {
 // Validate that either catalog products or unlisted materials are requested
 const hasValidRequirements = computed(() => {
     const hasCatalogItems = form.items.some(
-        (i) => i.product_id !== null && Number(i.quantity) >= 1
+        (i) => i.product_id !== null && Number(i.quantity) >= 1,
     );
-    const hasUnlisted = form.hasOtherMaterials && form.otherMaterials.trim().length > 0;
+    const hasUnlisted =
+        form.hasOtherMaterials && form.otherMaterials.trim().length > 0;
     return hasCatalogItems || hasUnlisted;
 });
 
@@ -162,7 +168,8 @@ function submit() {
     itemsValidationError.value = null;
 
     if (!hasValidRequirements.value) {
-        itemsValidationError.value = 'Please select at least one product from our catalog or describe the unlisted materials you need.';
+        itemsValidationError.value =
+            'Please select at least one product from our catalog or describe the unlisted materials you need.';
         return;
     }
 
@@ -172,7 +179,9 @@ function submit() {
         onSuccess: async () => {
             submittedSuccess.value = true;
             form.reset();
-            form.items = [{ product_id: null, quantity: 1, specifications: '' }];
+            form.items = [
+                { product_id: null, quantity: 1, specifications: '' },
+            ];
             form.hasOtherMaterials = false;
             form.otherMaterials = '';
             form.additionalRequirements = '';
@@ -212,7 +221,9 @@ function submit() {
                 <details
                     class="mt-7 rounded-xl border border-gray-200 bg-white p-4"
                 >
-                    <summary class="text-sm font-semibold text-[#4b5320] cursor-pointer">
+                    <summary
+                        class="cursor-pointer text-sm font-semibold text-[#4b5320]"
+                    >
                         What happens after you submit?
                     </summary>
                     <ol class="mt-5 grid gap-6">
@@ -273,7 +284,8 @@ function submit() {
                 >
                     <p class="font-bold">Your request has been received.</p>
                     <p>
-                        Our team will review your required materials and contact you shortly with an official itemized quotation.
+                        Our team will review your required materials and contact
+                        you shortly with an official itemized quotation.
                     </p>
                 </div>
                 <form
@@ -282,33 +294,48 @@ function submit() {
                     :aria-busy="form.processing"
                     @submit.prevent="submit"
                 >
-                    <!-- Client Details -->
-                    <div class="grid gap-5 sm:grid-cols-2">
+                    <!-- Client Details with Floating Labels -->
+                    <div class="grid gap-4 sm:grid-cols-2">
                         <div v-for="field in fields" :key="field.key">
-                            <label :for="field.key" class="field-label"
-                                >{{ field.label }}
-                                <span aria-hidden="true">*</span></label
-                            ><input
-                                :id="field.key"
-                                v-model="form[field.key]"
-                                :name="field.key"
-                                :type="field.type"
-                                :autocomplete="field.autocomplete"
-                                :maxlength="field.maxlength"
-                                :placeholder="field.placeholder"
-                                required
-                                class="field-control"
-                                :aria-invalid="!!form.errors[field.key]"
-                                :aria-describedby="
-                                    form.errors[field.key]
-                                        ? `${field.key}-error`
-                                        : undefined
-                                "
-                            />
+                            <div class="relative">
+                                <input
+                                    :id="field.key"
+                                    v-model="form[field.key]"
+                                    :name="field.key"
+                                    :type="field.type"
+                                    :autocomplete="field.autocomplete"
+                                    :maxlength="field.maxlength"
+                                    placeholder=" "
+                                    required
+                                    class="peer block w-full rounded-xl border border-gray-200 bg-gray-50/50 px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:bg-white focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                                    :class="
+                                        form.errors[field.key]
+                                            ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+                                            : ''
+                                    "
+                                    :aria-invalid="!!form.errors[field.key]"
+                                    :aria-describedby="
+                                        form.errors[field.key]
+                                            ? `${field.key}-error`
+                                            : undefined
+                                    "
+                                />
+                                <label
+                                    :for="field.key"
+                                    class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                                    :class="
+                                        form[field.key]
+                                            ? '-translate-y-2.5 scale-75 text-[#4b5320]'
+                                            : ''
+                                    "
+                                >
+                                    {{ field.label }}
+                                </label>
+                            </div>
                             <p
                                 v-if="form.errors[field.key]"
                                 :id="`${field.key}-error`"
-                                class="mt-2 text-xs text-red-600"
+                                class="mt-1.5 text-xs text-red-600"
                             >
                                 {{ form.errors[field.key] }}
                             </p>
@@ -367,21 +394,34 @@ function submit() {
                     <!-- ═════════════════════════════════════════════════════ -->
                     <!-- IMPROVED MATERIALS & PROJECT REQUIREMENTS SECTION      -->
                     <!-- ═════════════════════════════════════════════════════ -->
-                    <div class="space-y-5 rounded-2xl border border-gray-200 bg-gray-50/50 p-5">
-                        
+                    <div
+                        class="space-y-5 rounded-2xl border border-gray-200 bg-gray-50/50 p-5"
+                    >
                         <!-- 1. Multi-Product Catalog Selection -->
                         <div>
-                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-3">
+                            <div
+                                class="mb-3 flex flex-col justify-between gap-1 sm:flex-row sm:items-center"
+                            >
                                 <div>
-                                    <label class="field-label mb-0 text-gray-900 font-bold">
+                                    <label
+                                        class="field-label mb-0 font-bold text-gray-900"
+                                    >
                                         Materials &amp; Products
                                     </label>
-                                    <p class="text-xs text-gray-500 mt-0.5">
-                                        Select products from our inventory catalog and specify needed quantities.
+                                    <p class="mt-0.5 text-xs text-gray-500">
+                                        Select products from our inventory
+                                        catalog and specify needed quantities.
                                     </p>
                                 </div>
-                                <span class="text-xs font-semibold text-gray-400">
-                                    {{ form.items.filter(i => i.product_id !== null).length }} item(s) selected
+                                <span
+                                    class="text-xs font-semibold text-gray-400"
+                                >
+                                    {{
+                                        form.items.filter(
+                                            (i) => i.product_id !== null,
+                                        ).length
+                                    }}
+                                    item(s) selected
                                 </span>
                             </div>
 
@@ -390,8 +430,12 @@ function submit() {
                                 v-if="!products || products.length === 0"
                                 class="rounded-xl border border-gray-200 bg-white p-4 text-center text-xs text-gray-500"
                             >
-                                <Info class="size-4 mx-auto text-gray-400 mb-1" />
-                                Catalog products are currently loading or unavailable. You can specify needed materials using the unlisted materials section below.
+                                <Info
+                                    class="mx-auto mb-1 size-4 text-gray-400"
+                                />
+                                Catalog products are currently loading or
+                                unavailable. You can specify needed materials
+                                using the unlisted materials section below.
                             </div>
 
                             <!-- Product Rows List -->
@@ -401,19 +445,28 @@ function submit() {
                                     :key="index"
                                     class="rounded-xl border border-gray-200 bg-white p-3.5 shadow-2xs transition-all hover:border-gray-300"
                                 >
-                                    <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
+                                    <div
+                                        class="grid grid-cols-1 items-start gap-3 sm:grid-cols-12"
+                                    >
                                         <!-- Product Selector -->
                                         <div class="sm:col-span-7">
-                                            <label class="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                                            <label
+                                                class="mb-1 block text-[11px] font-semibold tracking-wider text-gray-500 uppercase"
+                                            >
                                                 Product #{{ index + 1 }}
                                             </label>
                                             <select
                                                 v-model="item.product_id"
-                                                class="field-control text-sm py-2 px-3"
+                                                class="field-control px-3 py-2 text-sm"
                                             >
-                                                <option :value="null">-- Select a catalog product --</option>
+                                                <option :value="null">
+                                                    -- Select a catalog product
+                                                    --
+                                                </option>
                                                 <optgroup
-                                                    v-for="(catProds, catName) in productsByCategory"
+                                                    v-for="(
+                                                        catProds, catName
+                                                    ) in productsByCategory"
                                                     :key="catName"
                                                     :label="catName"
                                                 >
@@ -421,53 +474,91 @@ function submit() {
                                                         v-for="p in catProds"
                                                         :key="p.id"
                                                         :value="p.id"
-                                                        :disabled="isProductSelectedElsewhere(p.id, index)"
+                                                        :disabled="
+                                                            isProductSelectedElsewhere(
+                                                                p.id,
+                                                                index,
+                                                            )
+                                                        "
                                                     >
-                                                        {{ p.name }} ({{ p.sku }})
-                                                        {{ isProductSelectedElsewhere(p.id, index) ? '— [Already Added]' : '' }}
+                                                        {{ p.name }} ({{
+                                                            p.sku
+                                                        }})
+                                                        {{
+                                                            isProductSelectedElsewhere(
+                                                                p.id,
+                                                                index,
+                                                            )
+                                                                ? '— [Already Added]'
+                                                                : ''
+                                                        }}
                                                     </option>
                                                 </optgroup>
                                             </select>
 
                                             <!-- Selected Product Specifications / Meta Info -->
                                             <p
-                                                v-if="item.product_id && getProductById(item.product_id)?.description"
-                                                class="text-[11px] text-gray-500 mt-1 line-clamp-1 italic"
+                                                v-if="
+                                                    item.product_id &&
+                                                    getProductById(
+                                                        item.product_id,
+                                                    )?.description
+                                                "
+                                                class="mt-1 line-clamp-1 text-[11px] text-gray-500 italic"
                                             >
-                                                {{ getProductById(item.product_id)?.description }}
+                                                {{
+                                                    getProductById(
+                                                        item.product_id,
+                                                    )?.description
+                                                }}
                                             </p>
                                         </div>
 
                                         <!-- Quantity Input + Unit Badge -->
                                         <div class="sm:col-span-4">
-                                            <label class="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                                            <label
+                                                class="mb-1 block text-[11px] font-semibold tracking-wider text-gray-500 uppercase"
+                                            >
                                                 Quantity
                                             </label>
-                                            <div class="flex items-center gap-1.5">
+                                            <div
+                                                class="flex items-center gap-1.5"
+                                            >
                                                 <input
-                                                    v-model.number="item.quantity"
+                                                    v-model.number="
+                                                        item.quantity
+                                                    "
                                                     type="number"
                                                     min="1"
                                                     step="1"
                                                     placeholder="1"
-                                                    class="field-control text-sm py-2 px-3 w-full"
+                                                    class="field-control w-full px-3 py-2 text-sm"
                                                 />
                                                 <span
-                                                    class="shrink-0 rounded-lg bg-gray-100 border border-gray-200 px-2.5 py-2 text-xs font-semibold text-gray-700 whitespace-nowrap"
+                                                    class="shrink-0 rounded-lg border border-gray-200 bg-gray-100 px-2.5 py-2 text-xs font-semibold whitespace-nowrap text-gray-700"
                                                     title="Unit of Measurement"
                                                 >
-                                                    {{ getProductById(item.product_id)?.unit || 'pcs' }}
+                                                    {{
+                                                        getProductById(
+                                                            item.product_id,
+                                                        )?.unit || 'pcs'
+                                                    }}
                                                 </span>
                                             </div>
                                         </div>
 
                                         <!-- Remove Row Button -->
-                                        <div class="sm:col-span-1 flex sm:justify-center items-center sm:pt-6">
+                                        <div
+                                            class="flex items-center sm:col-span-1 sm:justify-center sm:pt-6"
+                                        >
                                             <button
                                                 type="button"
                                                 @click="removeItemRow(index)"
-                                                :disabled="form.items.length === 1 && !item.product_id"
-                                                class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer disabled:opacity-30 disabled:pointer-events-none"
+                                                :disabled="
+                                                    form.items.length === 1 &&
+                                                    !item.product_id
+                                                "
+                                                class="cursor-pointer rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:pointer-events-none disabled:opacity-30"
                                                 title="Remove this product"
                                                 aria-label="Remove item"
                                             >
@@ -476,15 +567,33 @@ function submit() {
                                         </div>
                                     </div>
 
-                                    <!-- Optional Custom Specifications for this Item -->
-                                    <div class="mt-2.5 pt-2.5 border-t border-gray-100">
-                                        <input
-                                            v-model="item.specifications"
-                                            type="text"
-                                            maxlength="255"
-                                            placeholder="Optional item notes (e.g. cut length, voltage rating, brand preference, or color)..."
-                                            class="w-full rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-1.5 text-xs text-gray-800 placeholder:text-gray-400 focus:bg-white focus:border-[#F8B803] focus:outline-none focus:ring-1 focus:ring-[#F8B803]"
-                                        />
+                                    <!-- Optional Custom Specifications for this Item with Floating Label -->
+                                    <div
+                                        class="mt-2.5 border-t border-gray-100 pt-2.5"
+                                    >
+                                        <div class="relative">
+                                            <input
+                                                :id="`item-spec-${index}`"
+                                                v-model="item.specifications"
+                                                type="text"
+                                                maxlength="255"
+                                                placeholder=" "
+                                                class="peer block w-full rounded-lg border border-gray-200 bg-gray-50/60 px-3 pt-4.5 pb-1.5 text-xs text-gray-800 focus:border-[#4b5320] focus:bg-white focus:ring-1 focus:ring-[#4b5320] focus:outline-none"
+                                            />
+                                            <label
+                                                :for="`item-spec-${index}`"
+                                                class="pointer-events-none absolute top-2.5 left-3 origin-[0] -translate-y-2 scale-75 transform text-[11px] font-semibold text-gray-400 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                                                :class="
+                                                    item.specifications
+                                                        ? '-translate-y-2 scale-75 text-[#4b5320]'
+                                                        : ''
+                                                "
+                                            >
+                                                Optional item notes (e.g. cut
+                                                length, voltage rating, brand
+                                                preference, or color)
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -494,7 +603,7 @@ function submit() {
                                 <button
                                     type="button"
                                     @click="addItemRow"
-                                    class="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-bold text-gray-700 hover:border-[#4b5320] hover:text-[#4b5320] hover:bg-[#4b5320]/5 shadow-2xs transition-all cursor-pointer"
+                                    class="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-bold text-gray-700 shadow-2xs transition-all hover:border-[#4b5320] hover:bg-[#4b5320]/5 hover:text-[#4b5320]"
                                 >
                                     <Plus class="size-3.5" />
                                     <span>Add Another Product</span>
@@ -504,66 +613,109 @@ function submit() {
 
                         <!-- 2. Other Materials / Unlisted Products -->
                         <div class="border-t border-gray-200 pt-4">
-                            <label class="flex items-center gap-2.5 cursor-pointer select-none">
+                            <label
+                                class="flex cursor-pointer items-center gap-2.5 select-none"
+                            >
                                 <input
                                     v-model="form.hasOtherMaterials"
                                     type="checkbox"
-                                    class="size-4 rounded border-gray-300 text-[#4b5320] focus:ring-[#4b5320] cursor-pointer"
+                                    class="size-4 cursor-pointer rounded border-gray-300 text-[#4b5320] focus:ring-[#4b5320]"
                                 />
-                                <span class="text-xs font-semibold text-gray-800">
-                                    I'm looking for materials not listed in the catalog
+                                <span
+                                    class="text-xs font-semibold text-gray-800"
+                                >
+                                    I'm looking for materials not listed in the
+                                    catalog
                                 </span>
                             </label>
 
-                            <!-- Collapsible Other Materials Textarea -->
+                            <!-- Collapsible Other Materials Textarea with Floating Label -->
                             <div
                                 v-if="form.hasOtherMaterials"
-                                class="mt-3 animate-in fade-in duration-200 space-y-1.5"
+                                class="mt-3 animate-in space-y-1.5 duration-200 fade-in"
                             >
-                                <label for="otherMaterials" class="field-label mb-0">
-                                    Other Materials or Products
-                                </label>
-                                <textarea
-                                    id="otherMaterials"
-                                    v-model="form.otherMaterials"
-                                    rows="3"
-                                    maxlength="3000"
-                                    class="field-control resize-y text-xs sm:text-sm"
-                                    placeholder="Enter product names, quantities, sizes, preferred brands, and custom technical specifications manually..."
-                                ></textarea>
-                                <div class="flex justify-between text-[11px] text-gray-400">
-                                    <span>Include quantities and preferred brands where applicable.</span>
-                                    <span>{{ form.otherMaterials.length }}/3000</span>
+                                <div class="relative">
+                                    <textarea
+                                        id="otherMaterials"
+                                        v-model="form.otherMaterials"
+                                        rows="3"
+                                        maxlength="3000"
+                                        placeholder=" "
+                                        class="peer block w-full resize-y rounded-xl border border-gray-200 bg-white px-3.5 pt-6 pb-2.5 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                                    ></textarea>
+                                    <label
+                                        for="otherMaterials"
+                                        class="pointer-events-none absolute top-4 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                                        :class="
+                                            form.otherMaterials
+                                                ? '-translate-y-2.5 scale-75 text-[#4b5320]'
+                                                : ''
+                                        "
+                                    >
+                                        Other Materials or Products (Names,
+                                        quantities, sizes, brands, specs)
+                                    </label>
+                                </div>
+                                <div
+                                    class="flex justify-between text-[11px] text-gray-400"
+                                >
+                                    <span
+                                        >Include quantities and preferred brands
+                                        where applicable.</span
+                                    >
+                                    <span
+                                        >{{
+                                            form.otherMaterials.length
+                                        }}/3000</span
+                                    >
                                 </div>
                             </div>
                         </div>
 
-                        <!-- 3. Additional Project Requirements & Instructions -->
+                        <!-- 3. Additional Project Requirements & Instructions with Floating Label -->
                         <div class="border-t border-gray-200 pt-4">
-                            <label for="additionalRequirements" class="field-label mb-1">
-                                Additional Project Requirements &amp; Instructions
-                                <span class="text-xs font-normal text-gray-400">(Optional)</span>
-                            </label>
-                            <textarea
-                                id="additionalRequirements"
-                                v-model="form.additionalRequirements"
-                                rows="3"
-                                maxlength="3000"
-                                class="field-control resize-y text-xs sm:text-sm"
-                                placeholder="Specify preferred delivery dates, logistics access, technical certifications, packaging preferences, or special handling instructions…"
-                            ></textarea>
-                            <div class="flex justify-end text-[11px] text-gray-400 mt-1">
-                                <span>{{ form.additionalRequirements.length }}/3000</span>
+                            <div class="relative">
+                                <textarea
+                                    id="additionalRequirements"
+                                    v-model="form.additionalRequirements"
+                                    rows="3"
+                                    maxlength="3000"
+                                    placeholder=" "
+                                    class="peer block w-full resize-y rounded-xl border border-gray-200 bg-white px-3.5 pt-6 pb-2.5 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                                ></textarea>
+                                <label
+                                    for="additionalRequirements"
+                                    class="pointer-events-none absolute top-4 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                                    :class="
+                                        form.additionalRequirements
+                                            ? '-translate-y-2.5 scale-75 text-[#4b5320]'
+                                            : ''
+                                    "
+                                >
+                                    Additional Requirements &amp; Instructions
+                                    (Delivery dates, logistics, certifications)
+                                </label>
+                            </div>
+                            <div
+                                class="mt-1 flex justify-end text-[11px] text-gray-400"
+                            >
+                                <span
+                                    >{{
+                                        form.additionalRequirements.length
+                                    }}/3000</span
+                                >
                             </div>
                         </div>
 
                         <!-- Inline Requirements Validation Notice -->
                         <div
                             v-if="itemsValidationError || form.errors.items"
-                            class="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700 font-medium"
+                            class="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700"
                         >
                             <AlertCircle class="size-4 shrink-0 text-red-600" />
-                            <span>{{ itemsValidationError || form.errors.items }}</span>
+                            <span>{{
+                                itemsValidationError || form.errors.items
+                            }}</span>
                         </div>
                     </div>
 
@@ -573,7 +725,7 @@ function submit() {
                         variant="brand"
                         size="lg"
                         :disabled="form.processing"
-                        class="w-full font-bold text-white shadow-md hover:shadow-lg transition-all cursor-pointer"
+                        class="w-full cursor-pointer font-bold text-white shadow-md transition-all hover:shadow-lg"
                     >
                         <span>{{
                             form.processing

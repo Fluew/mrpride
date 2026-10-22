@@ -8,6 +8,7 @@ import {
     Truck, 
     Clock, 
     CheckCircle2, 
+    Check,
     XCircle, 
     Package, 
     Trash2, 
@@ -112,6 +113,69 @@ const openCreateModal = () => {
     form.supplier_id = props.suppliers[0]?.id || null;
     form.quantity = 10;
     showCreateModal.value = true;
+};
+
+// Action Confirmation Modal State
+interface ConfirmActionOptions {
+    title: string;
+    description: string;
+    details?: Array<{ label: string; value: string | number }>;
+    confirmText?: string;
+    action: () => void;
+}
+
+const showConfirmModal = ref(false);
+const confirmOptions = ref<ConfirmActionOptions>({
+    title: 'Confirm Action',
+    description: 'Are you sure you want to proceed?',
+    details: [],
+    confirmText: 'Confirm & Submit',
+    action: () => {},
+});
+
+const openConfirmModal = (options: ConfirmActionOptions) => {
+    confirmOptions.value = {
+        confirmText: 'Confirm & Submit',
+        ...options,
+    };
+    showConfirmModal.value = true;
+};
+
+const handleConfirmedAction = () => {
+    showConfirmModal.value = false;
+    confirmOptions.value.action();
+};
+
+const promptCreateRequest = () => {
+    form.clearErrors();
+    if (!form.product_id) {
+        form.setError('product_id', 'Please select an item to order.');
+        return;
+    }
+    if (!form.supplier_id) {
+        form.setError('supplier_id', 'Please select a supplier.');
+        return;
+    }
+    if (!form.quantity || form.quantity < 1) {
+        form.setError('quantity', 'Quantity must be at least 1.');
+        return;
+    }
+
+    const prod = props.products.find(p => p.id === form.product_id);
+    const sup = props.suppliers.find(s => s.id === form.supplier_id);
+
+    openConfirmModal({
+        title: 'Confirm Purchase Request',
+        description: `Are you sure you want to submit this purchase request for ${form.quantity} units of "${prod?.name || 'Item'}"?`,
+        details: [
+            { label: 'Item to Order', value: prod ? `${prod.name} (${prod.sku})` : 'Selected Item' },
+            { label: 'Supplier', value: sup?.name || 'Selected Supplier' },
+            { label: 'Quantity', value: `${form.quantity} units` },
+            { label: 'Notes', value: form.notes || 'None' },
+        ],
+        confirmText: 'Submit Request',
+        action: submitRequest,
+    });
 };
 
 const submitRequest = () => {
@@ -335,31 +399,70 @@ const confirmDelete = () => {
                 <button @click="showCreateModal = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
 
-            <form @submit.prevent="submitRequest" class="space-y-4">
-                <div>
-                    <label class="block text-gray-700 text-xs font-semibold mb-1">Item to Order *</label>
-                    <select v-model="form.product_id" required class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm">
+            <form @submit.prevent="promptCreateRequest" class="space-y-4">
+                <!-- Item to Order -->
+                <div class="relative">
+                    <select id="req_product"
+                            v-model="form.product_id" 
+                            required 
+                            class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm">
+                        <option value="" disabled selected>-- Choose Product --</option>
                         <option v-for="p in products" :key="p.id" :value="p.id">
                             {{ p.name }} (Current: {{ p.stock }})
                         </option>
                     </select>
+                    <label for="req_product"
+                           class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]">
+                        Item to Order
+                    </label>
                     <span v-if="form.errors.product_id" class="text-xs text-red-500 mt-1 block">{{ form.errors.product_id }}</span>
                 </div>
-                <div>
-                    <label class="block text-gray-700 text-xs font-semibold mb-1">Supplier *</label>
-                    <select v-model="form.supplier_id" required class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm">
+
+                <!-- Supplier -->
+                <div class="relative">
+                    <select id="req_supplier"
+                            v-model="form.supplier_id" 
+                            required 
+                            class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm">
+                        <option value="" disabled selected>-- Choose Supplier --</option>
                         <option v-for="s in suppliers" :key="s.id" :value="s.id">{{ s.name }}</option>
                     </select>
+                    <label for="req_supplier"
+                           class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]">
+                        Supplier
+                    </label>
                     <span v-if="form.errors.supplier_id" class="text-xs text-red-500 mt-1 block">{{ form.errors.supplier_id }}</span>
                 </div>
-                <div>
-                    <label class="block text-gray-700 text-xs font-semibold mb-1">Order Quantity *</label>
-                    <input v-model.number="form.quantity" type="number" min="1" required class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" />
+
+                <!-- Order Quantity -->
+                <div class="relative">
+                    <input id="req_quantity"
+                           v-model.number="form.quantity" 
+                           type="number" 
+                           min="1" 
+                           placeholder=" "
+                           required 
+                           class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
+                    <label for="req_quantity"
+                           class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                           :class="form.quantity !== null && form.quantity !== undefined && form.quantity !== '' ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                        Order Quantity
+                    </label>
                     <span v-if="form.errors.quantity" class="text-xs text-red-500 mt-1 block">{{ form.errors.quantity }}</span>
                 </div>
-                <div>
-                    <label class="block text-gray-700 text-xs font-semibold mb-1">Notes / Instructions</label>
-                    <textarea v-model="form.notes" rows="2" class="w-full bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm" placeholder="PO reference or delivery instructions..."></textarea>
+
+                <!-- Notes / Instructions -->
+                <div class="relative">
+                    <textarea id="req_notes"
+                              v-model="form.notes" 
+                              rows="2" 
+                              placeholder=" "
+                              class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"></textarea>
+                    <label for="req_notes"
+                           class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                           :class="form.notes ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                        Notes / Instructions
+                    </label>
                 </div>
 
                 <div class="flex justify-end gap-3 mt-6 pt-2 border-t border-gray-100">
@@ -407,6 +510,49 @@ const confirmDelete = () => {
                     @click="confirmDelete"
                 >
                     Delete Request
+                </SpecularButton>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Confirmation Modal -->
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div class="w-11 h-11 rounded-full bg-amber-50 text-[#F8B803] flex items-center justify-center mb-4 border border-amber-100">
+                <CheckCircle2 class="w-6 h-6" />
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
+            <p class="text-gray-600 text-sm mb-4 leading-relaxed">
+                {{ confirmOptions.description }}
+            </p>
+
+            <div v-if="confirmOptions.details && confirmOptions.details.length > 0" class="bg-gray-50 border border-gray-100 rounded-xl p-3.5 mb-5 space-y-2 text-xs">
+                <div v-for="(item, idx) in confirmOptions.details" :key="idx" class="flex justify-between items-center py-0.5 border-b border-gray-100 last:border-b-0">
+                    <span class="text-gray-500 font-medium">{{ item.label }}</span>
+                    <span class="font-semibold text-gray-900 text-right">{{ item.value }}</span>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3">
+                <SpecularButton
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showConfirmModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    type="button"
+                    variant="brand"
+                    size="md"
+                    :radius="10"
+                    @click="handleConfirmedAction"
+                    :disabled="form.processing"
+                >
+                    <Check class="w-4 h-4 mr-1.5 inline" />
+                    <span>{{ confirmOptions.confirmText || 'Confirm & Submit' }}</span>
                 </SpecularButton>
             </div>
         </div>

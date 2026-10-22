@@ -11,6 +11,7 @@ import {
     TrendingUp, 
     Calendar, 
     CheckCircle2, 
+    Check,
     Clock, 
     Trash2, 
     X,
@@ -167,6 +168,56 @@ const removeFromCart = (index: number) => {
 const cartTotal = computed(() => {
     return cart.value.reduce((sum, item) => sum + item.price * item.qty, 0);
 });
+
+// Action Confirmation Modal State
+interface ConfirmActionOptions {
+    title: string;
+    description: string;
+    details?: Array<{ label: string; value: string | number }>;
+    confirmText?: string;
+    action: () => void;
+}
+
+const showConfirmModal = ref(false);
+const confirmOptions = ref<ConfirmActionOptions>({
+    title: 'Confirm Action',
+    description: 'Are you sure you want to proceed?',
+    details: [],
+    confirmText: 'Confirm & Record',
+    action: () => {},
+});
+
+const openConfirmModal = (options: ConfirmActionOptions) => {
+    confirmOptions.value = {
+        confirmText: 'Confirm & Record',
+        ...options,
+    };
+    showConfirmModal.value = true;
+};
+
+const handleConfirmedAction = () => {
+    showConfirmModal.value = false;
+    confirmOptions.value.action();
+};
+
+const promptCompleteTransaction = () => {
+    if (cart.value.length === 0) return;
+
+    const itemCount = cart.value.reduce((s, i) => s + i.qty, 0);
+
+    openConfirmModal({
+        title: 'Confirm Sale Transaction',
+        description: `Are you sure you want to finalize and record this sale for "${currentCustomer.value || 'Walk-in Customer'}"?`,
+        details: [
+            { label: 'Customer / Billed To', value: currentCustomer.value || 'Walk-in Customer' },
+            { label: 'Items in Order', value: `${cart.value.length} distinct items (${itemCount} units)` },
+            { label: 'Payment Method', value: paymentMethod.value },
+            { label: 'Total Amount', value: formatCurrency(cartTotal.value) },
+        ],
+        confirmText: 'Complete Sale',
+        action: completeTransaction,
+    });
+};
 
 const isSubmitting = ref(false);
 const completeTransaction = () => {
@@ -423,28 +474,56 @@ const printSheet = () => {
 
                     <!-- Customer & Payment inputs -->
                     <div class="p-4 border-b border-gray-200 space-y-3 bg-white">
-                        <div>
-                            <label class="block text-xs font-semibold text-gray-700 mb-1">Customer Name</label>
+                        <div class="relative">
                             <input
+                                id="pos_customer"
                                 v-model="currentCustomer"
                                 type="text"
-                                class="w-full bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:border-[#F8B803] focus:outline-none shadow-sm"
-                                placeholder="Walk-in Customer"
+                                placeholder=" "
+                                class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
                             />
+                            <label
+                                for="pos_customer"
+                                class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                                :class="currentCustomer ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''"
+                            >
+                                Customer Name
+                            </label>
                         </div>
                         <div class="grid grid-cols-2 gap-2">
-                            <div>
-                                <label class="block text-xs font-semibold text-gray-700 mb-1">Payment</label>
-                                <select v-model="paymentMethod" class="w-full bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none">
+                            <div class="relative">
+                                <select
+                                    id="pos_payment"
+                                    v-model="paymentMethod"
+                                    class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                                >
                                     <option value="Cash">Cash</option>
                                     <option value="GCash / Maya">GCash / Maya</option>
                                     <option value="Bank Transfer">Bank Transfer</option>
                                     <option value="Check">Check</option>
                                 </select>
+                                <label
+                                    for="pos_payment"
+                                    class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]"
+                                >
+                                    Payment Method
+                                </label>
                             </div>
-                            <div>
-                                <label class="block text-xs font-semibold text-gray-700 mb-1">Notes</label>
-                                <input v-model="notes" type="text" placeholder="Optional notes" class="w-full bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none" />
+                            <div class="relative">
+                                <input
+                                    id="pos_notes"
+                                    v-model="notes"
+                                    type="text"
+                                    placeholder=" "
+                                    class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                                />
+                                <label
+                                    for="pos_notes"
+                                    class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                                    :class="notes ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''"
+                                >
+                                    Notes
+                                </label>
                             </div>
                         </div>
                     </div>
@@ -501,7 +580,7 @@ const printSheet = () => {
                             :radius="10"
                             class="w-full"
                             :disabled="cart.length === 0 || isSubmitting"
-                            @click="completeTransaction"
+                            @click="promptCompleteTransaction"
                         >
                             {{ isSubmitting ? 'Recording...' : 'Complete & Record Sale' }}
                         </SpecularButton>
@@ -579,6 +658,49 @@ const printSheet = () => {
                         Print Invoice
                     </SpecularButton>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Confirmation Modal -->
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div class="w-11 h-11 rounded-full bg-amber-50 text-[#F8B803] flex items-center justify-center mb-4 border border-amber-100">
+                <CheckCircle2 class="w-6 h-6" />
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
+            <p class="text-gray-600 text-sm mb-4 leading-relaxed">
+                {{ confirmOptions.description }}
+            </p>
+
+            <div v-if="confirmOptions.details && confirmOptions.details.length > 0" class="bg-gray-50 border border-gray-100 rounded-xl p-3.5 mb-5 space-y-2 text-xs">
+                <div v-for="(item, idx) in confirmOptions.details" :key="idx" class="flex justify-between items-center py-0.5 border-b border-gray-100 last:border-b-0">
+                    <span class="text-gray-500 font-medium">{{ item.label }}</span>
+                    <span class="font-semibold text-gray-900 text-right">{{ item.value }}</span>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3">
+                <SpecularButton
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showConfirmModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    type="button"
+                    variant="brand"
+                    size="md"
+                    :radius="10"
+                    @click="handleConfirmedAction"
+                    :disabled="isSubmitting"
+                >
+                    <Check class="w-4 h-4 mr-1.5 inline" />
+                    <span>{{ confirmOptions.confirmText || 'Confirm & Record' }}</span>
+                </SpecularButton>
             </div>
         </div>
     </div>

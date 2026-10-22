@@ -62,26 +62,33 @@ class LoginResponse implements LoginResponseContract
             return redirect('/');
         }
 
-        // Admin and Staff: check trusted device
+        // Admin: device restriction removed for now (auto-approve device and continue)
+        if ($user->isAdmin()) {
+            $deviceUuid = $request->cookie('mrpride_device_id') ?: (string) \Illuminate\Support\Str::uuid();
+            cookie()->queue(cookie()->forever('mrpride_device_id', $deviceUuid, httpOnly: true, sameSite: 'lax'));
+
+            TrustedDevice::updateOrCreate(
+                ['user_id' => $user->id, 'device_uuid' => $deviceUuid],
+                [
+                    'device_name' => $this->parseDeviceName($request),
+                    'ip_address' => $request->ip(),
+                    'status' => 'approved',
+                    'last_used_at' => now(),
+                ]
+            );
+
+            if ($user->isPasswordExpired()) {
+                return redirect()->route('password.change');
+            }
+
+            return redirect()->intended($this->redirectPathForCurrentTeam($request, Fortify::redirects('login')));
+        }
+
+        // Staff: check trusted device
         $deviceUuid = $request->cookie('mrpride_device_id');
         $device = $deviceUuid
             ? $user->trustedDevices()->where('device_uuid', $deviceUuid)->first()
             : null;
-
-        // Auto-approve the very first device for initial superadmin setup
-        if (! $device && $user->isSuperAdmin() && $user->trustedDevices()->count() === 0) {
-            $deviceUuid = $deviceUuid ?: (string) \Illuminate\Support\Str::uuid();
-            cookie()->queue(cookie()->forever('mrpride_device_id', $deviceUuid, httpOnly: true, sameSite: 'lax'));
-
-            $device = TrustedDevice::create([
-                'user_id' => $user->id,
-                'device_uuid' => $deviceUuid,
-                'device_name' => $this->parseDeviceName($request),
-                'ip_address' => $request->ip(),
-                'status' => 'approved',
-                'last_used_at' => now(),
-            ]);
-        }
 
         if (! $device || ! $device->isApproved()) {
             // Generate single-use device authorization link
@@ -151,6 +158,13 @@ class LoginResponse implements LoginResponseContract
         // Check password expiration / mandatory change
         if ($user->isPasswordExpired()) {
             return redirect()->route('password.change');
+        }
+
+        if ($user->isStaff()) {
+            $team = $user->currentTeam ?: $user->teams()->first() ?: \App\Models\Team::first();
+            if ($team) {
+                return redirect("/{$team->slug}/" . $user->assignedModuleSlug());
+            }
         }
 
         return redirect()->intended($this->redirectPathForCurrentTeam($request, Fortify::redirects('login')));

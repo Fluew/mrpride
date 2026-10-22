@@ -40,15 +40,6 @@ class UserController extends Controller
 
         $activeTab = $request->input('tab', 'accounts');
 
-        // Tabs other than accounts are strictly Owner/Superadmin only
-        if (in_array($activeTab, ['sessions', 'devices', 'audit', 'security'], true)) {
-            abort_if(
-                ! $currentUser->isSuperAdmin(),
-                403,
-                'This security section is strictly restricted to Owner / Superadmin.'
-            );
-        }
-
         $search = $request->input('search');
         $roleFilter = $request->input('role', 'All Roles');
         $statusFilter = $request->input('status', 'All Statuses');
@@ -80,7 +71,7 @@ class UserController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
-                'role' => $user->isSuperAdmin() ? 'Superadmin' : ($user->isAdmin() ? 'Administrator' : ($user->isStaff() ? 'Staff' : 'User')),
+                'role' => $user->roleLabel(),
                 'raw_role' => $user->role,
                 'status' => ucfirst($user->status ?? 'active'),
                 'is_active' => $user->isActive(),
@@ -89,13 +80,13 @@ class UserController extends Controller
                 'last_login_at' => $user->last_login_at?->format('M d, Y H:i') ?? 'Never',
                 'joined_at' => $user->pivot->created_at?->format('M d, Y') ?? $user->created_at?->format('M d, Y'),
                 'trusted_devices_count' => $user->trusted_devices_count ?? 0,
-                'is_superadmin' => $user->isSuperAdmin(),
+                'is_superadmin' => false,
             ]);
         }
 
-        // 2. Active Sessions Data (Superadmin only)
+        // 2. Active Sessions Data (Admin accessible)
         $sessionsData = [];
-        if ($activeTab === 'sessions' && $currentUser->isSuperAdmin()) {
+        if ($activeTab === 'sessions') {
             $currentSessionId = $request->session()->getId();
 
             $sessionsQuery = DB::table('sessions')
@@ -144,9 +135,9 @@ class UserController extends Controller
             });
         }
 
-        // 3. Trusted Devices Data (Superadmin only)
+        // 3. Trusted Devices Data (Admin accessible - 1 Account = 1 Device)
         $devicesData = [];
-        if ($activeTab === 'devices' && $currentUser->isSuperAdmin()) {
+        if ($activeTab === 'devices') {
             $devicesQuery = TrustedDevice::with('user:id,name,email,role');
 
             if ($search) {
@@ -179,14 +170,14 @@ class UserController extends Controller
                     'id' => $d->user?->id,
                     'name' => $d->user?->name,
                     'email' => $d->user?->email,
-                    'role' => ucfirst($d->user?->role ?? 'user'),
+                    'role' => $d->user ? $d->user->roleLabel() : 'User',
                 ],
             ]);
         }
 
-        // 4. Audit Trail Data (Superadmin only)
+        // 4. Audit Trail Data (Admin accessible)
         $auditData = null;
-        if ($activeTab === 'audit' && $currentUser->isSuperAdmin()) {
+        if ($activeTab === 'audit') {
             $auditQuery = AuditLog::where('category', 'audit')
                 ->with(['user:id,name,email', 'targetUser:id,name,email']);
 
@@ -214,9 +205,9 @@ class UserController extends Controller
             $auditData = $auditQuery->orderByDesc('created_at')->paginate(20)->withQueryString();
         }
 
-        // 5. Security Logs Data (Superadmin only)
+        // 5. Security Logs Data (Admin accessible)
         $securityData = null;
-        if ($activeTab === 'security' && $currentUser->isSuperAdmin()) {
+        if ($activeTab === 'security') {
             $secQuery = AuditLog::where('category', 'security')
                 ->with(['user:id,name,email']);
 
@@ -250,23 +241,23 @@ class UserController extends Controller
                 'id' => $u->id,
                 'name' => $u->name,
                 'email' => $u->email,
-                'role' => $u->isSuperAdmin() ? 'Superadmin' : ($u->isAdmin() ? 'Administrator' : ($u->isStaff() ? 'Staff' : 'User')),
+                'role' => $u->roleLabel(),
                 'raw_role' => $u->role,
                 'status' => ucfirst($u->status ?? 'active'),
                 'is_active' => $u->isActive(),
                 'trusted_devices_count' => $u->trustedDevices()->count(),
-                'is_superadmin' => $u->isSuperAdmin(),
+                'is_superadmin' => false,
             ]);
 
         return Inertia::render('Users/Index', [
             'activeTab' => $activeTab,
-            'isSuperAdmin' => $currentUser->isSuperAdmin(),
+            'isSuperAdmin' => true,
             'users' => $usersList,
             'sessions' => $sessionsData,
             'devices' => $devicesData,
             'auditLogs' => $auditData,
             'securityLogs' => $securityData,
-            'adminRecoveryKey' => $currentUser->isSuperAdmin() ? $currentUser->admin_recovery_key : null,
+            'adminRecoveryKey' => $currentUser->admin_recovery_key,
             'filters' => [
                 'search' => $search,
                 'role' => $roleFilter,
@@ -277,9 +268,15 @@ class UserController extends Controller
                 'date_to' => $request->input('date_to'),
             ],
             'roles' => [
-                ['value' => 'staff', 'label' => 'Staff (Inventory, Quotation, Procurement, Sales, Forecast)'],
-                ['value' => 'admin', 'label' => 'Administrator'],
-                ['value' => 'superadmin', 'label' => 'Owner / Superadmin'],
+                ['value' => 'admin', 'label' => 'Administrator (All Modules)'],
+                ['value' => 'staff_inventory', 'label' => 'Staff - Inventory'],
+                ['value' => 'staff_quotations', 'label' => 'Staff - Quotations'],
+                ['value' => 'staff_procurement', 'label' => 'Staff - Procurement'],
+                ['value' => 'staff_sales', 'label' => 'Staff - Sales'],
+                ['value' => 'staff_forecast', 'label' => 'Staff - Demand Forecasting'],
+                ['value' => 'staff_suppliers', 'label' => 'Staff - Suppliers'],
+                ['value' => 'staff_reports', 'label' => 'Staff - Reports & Analytics'],
+                ['value' => 'user', 'label' => 'Regular Customer'],
             ],
             'temporaryPasswordNotice' => session('temporaryPasswordNotice'),
             'enrollmentNotice' => session('enrollmentNotice'),
@@ -297,7 +294,18 @@ class UserController extends Controller
         $team = $currentUser->currentTeam;
         abort_if(! $team, 403, 'No active team selected.');
 
-        $allowedRoles = $currentUser->isSuperAdmin() ? ['superadmin', 'admin', 'staff', 'user'] : ['admin', 'staff', 'user'];
+        $allowedRoles = [
+            'admin',
+            'staff_inventory',
+            'staff_quotations',
+            'staff_procurement',
+            'staff_sales',
+            'staff_forecast',
+            'staff_suppliers',
+            'staff_reports',
+            'staff',
+            'user',
+        ];
 
         if ($request->filled('first_name') || $request->filled('last_name')) {
             $validated = $request->validate([
@@ -335,12 +343,12 @@ class UserController extends Controller
             'email_verified_at' => now(),
         ]);
 
-        $teamRole = $validated['role'] === 'superadmin' ? 'owner' : ($validated['role'] === 'admin' ? 'admin' : 'staff');
+        $teamRole = $validated['role'] === 'admin' ? 'admin' : (str_starts_with($validated['role'], 'staff') ? 'staff' : 'member');
         $team->members()->attach($user->id, ['role' => $teamRole]);
 
         AuditLogger::audit(
             'account.created',
-            "Administrator {$currentUser->email} created user {$user->email} with role '{$user->role}'. Initial password set to (Firstname)1234.",
+            "Administrator {$currentUser->email} created user {$user->email} with role '{$user->roleLabel()}'. Initial password set to (Firstname)1234.",
             $currentUser,
             $user,
             ['role' => $user->role, 'must_change_password' => true],
@@ -373,14 +381,18 @@ class UserController extends Controller
             return back()->withErrors(['role' => 'You cannot change your own role.']);
         }
 
-        // Regular admin cannot modify a superadmin or elevate to superadmin
-        if (! $currentUser->isSuperAdmin()) {
-            if ($user->isSuperAdmin()) {
-                abort(403, 'Only the Owner/Superadmin can modify a Superadmin account.');
-            }
-        }
-
-        $allowedRoles = $currentUser->isSuperAdmin() ? ['superadmin', 'admin', 'staff', 'user'] : ['admin', 'staff', 'user'];
+        $allowedRoles = [
+            'admin',
+            'staff_inventory',
+            'staff_quotations',
+            'staff_procurement',
+            'staff_sales',
+            'staff_forecast',
+            'staff_suppliers',
+            'staff_reports',
+            'staff',
+            'user',
+        ];
 
         $validated = $request->validate([
             'name' => ['nullable', 'string', 'max:255'],
@@ -404,7 +416,7 @@ class UserController extends Controller
             'role' => $newRole,
         ]);
 
-        $teamRole = $newRole === 'superadmin' ? 'owner' : ($newRole === 'admin' ? 'admin' : 'staff');
+        $teamRole = $newRole === 'admin' ? 'admin' : (str_starts_with($newRole, 'staff') ? 'staff' : 'member');
         $currentUser->currentTeam?->members()->updateExistingPivot($user->id, ['role' => $teamRole]);
 
         // If role changed, invalidate user's active sessions immediately
@@ -445,7 +457,7 @@ class UserController extends Controller
         }
         abort_if(! $user, 404, 'User not found.');
         $currentUser = $request->user();
-        abort_if(! $currentUser || ! $currentUser->isSuperAdmin(), 403, 'Account activation control is restricted to Owner/Superadmin.');
+        abort_if(! $currentUser || ! $currentUser->isAdmin(), 403, 'Account activation control is restricted to Administrator.');
 
         if ($currentUser->id === $user->id) {
             return back()->withErrors(['status' => 'You cannot deactivate your own administrator account.']);
@@ -500,10 +512,6 @@ class UserController extends Controller
             return back()->withErrors(['user' => 'You cannot remove your own administrator account.']);
         }
 
-        if ($user->isSuperAdmin() && ! $currentUser->isSuperAdmin()) {
-            abort(403, 'Only the Owner/Superadmin can remove a Superadmin account.');
-        }
-
         // Invalidate all active sessions
         DB::table('sessions')->where('user_id', $user->id)->delete();
 
@@ -527,7 +535,7 @@ class UserController extends Controller
     }
 
     /**
-     * Revoke an individual active session (Superadmin only).
+     * Revoke an individual active session (Admin accessible).
      */
     public function revokeSession(Request $request, mixed $team, ?string $sessionId = null): RedirectResponse
     {
@@ -535,7 +543,7 @@ class UserController extends Controller
         abort_if(! $actualSessionId, 404, 'Session ID is required.');
 
         $currentUser = $request->user();
-        abort_if(! $currentUser || ! $currentUser->isSuperAdmin(), 403, 'Revoking sessions is restricted to Owner/Superadmin.');
+        abort_if(! $currentUser || ! $currentUser->isAdmin(), 403, 'Revoking sessions is restricted to Administrator.');
 
         $sessionRecord = DB::table('sessions')->where('id', $actualSessionId)->first();
         if ($sessionRecord) {
@@ -556,7 +564,7 @@ class UserController extends Controller
     }
 
     /**
-     * Revoke all active sessions belonging to a specific user (Superadmin only).
+     * Revoke all active sessions belonging to a specific user (Admin accessible).
      */
     public function revokeUserSessions(Request $request, mixed $team, ?User $user = null): RedirectResponse
     {
@@ -566,7 +574,7 @@ class UserController extends Controller
         abort_if(! $user, 404, 'User not found.');
 
         $currentUser = $request->user();
-        abort_if(! $currentUser || ! $currentUser->isSuperAdmin(), 403, 'Revoking user sessions is restricted to Owner/Superadmin.');
+        abort_if(! $currentUser || ! $currentUser->isAdmin(), 403, 'Revoking user sessions is restricted to Administrator.');
 
         $count = DB::table('sessions')->where('user_id', $user->id)->count();
         DB::table('sessions')->where('user_id', $user->id)->delete();
@@ -585,12 +593,12 @@ class UserController extends Controller
     }
 
     /**
-     * Initiate trusted device enrollment or directly add an approved device (Superadmin only).
+     * Initiate trusted device enrollment or directly add an approved device (Admin accessible, 1-device policy).
      */
     public function enrollDevice(Request $request): RedirectResponse
     {
         $currentUser = $request->user();
-        abort_if(! $currentUser || ! $currentUser->isSuperAdmin(), 403, 'Device enrollment is restricted to Owner/Superadmin.');
+        abort_if(! $currentUser || ! $currentUser->isAdmin(), 403, 'Device enrollment is restricted to Administrator.');
 
         $validated = $request->validate([
             'user_id' => ['required', 'exists:users,id'],
@@ -601,6 +609,9 @@ class UserController extends Controller
         $targetUser = User::findOrFail($validated['user_id']);
         abort_if(! $targetUser->isAdminOrStaff(), 422, 'Trusted devices are only applicable to Admin and Staff accounts.');
 
+        // 1 Account, 1 Device Policy: delete any existing registered devices for this user
+        TrustedDevice::where('user_id', $targetUser->id)->delete();
+
         $directApprove = (bool) ($validated['direct_approve'] ?? false);
         $token = Str::random(48);
         $expiresAt = now()->addHours(24);
@@ -609,7 +620,7 @@ class UserController extends Controller
         $device = TrustedDevice::create([
             'user_id' => $targetUser->id,
             'device_uuid' => $deviceUuid,
-            'device_name' => $validated['device_name'] ?: 'Superadmin Registered Device',
+            'device_name' => $validated['device_name'] ?: 'Administrator Registered Device',
             'status' => $directApprove ? 'approved' : 'pending',
             'enrollment_token' => $directApprove ? null : $token,
             'enrollment_token_expires_at' => $directApprove ? null : $expiresAt,
@@ -620,7 +631,7 @@ class UserController extends Controller
 
         AuditLogger::audit(
             $directApprove ? 'device.directly_approved' : 'device.enrollment_initiated',
-            "Administrator {$currentUser->email} " . ($directApprove ? "directly added approved device '{$device->device_name}'" : "initiated trusted-device enrollment") . " for {$targetUser->email}.",
+            "Administrator {$currentUser->email} " . ($directApprove ? "directly added approved device '{$device->device_name}'" : "initiated trusted-device enrollment") . " for {$targetUser->email} (1-device policy enforced).",
             $currentUser,
             $targetUser,
             ['device_id' => $device->id, 'direct_approved' => $directApprove],
@@ -629,7 +640,7 @@ class UserController extends Controller
         );
 
         if ($directApprove) {
-            return back()->with('success', "Trusted device '{$device->device_name}' added and approved for {$targetUser->name}.");
+            return back()->with('success', "Trusted device '{$device->device_name}' added and approved for {$targetUser->name} (1 account, 1 device policy enforced).");
         }
 
         return back()->with('enrollmentNotice', [
@@ -641,7 +652,7 @@ class UserController extends Controller
     }
 
     /**
-     * Revoke a trusted device (Superadmin only).
+     * Revoke a trusted device (Admin accessible).
      */
     public function revokeDevice(Request $request, mixed $team, ?TrustedDevice $device = null): RedirectResponse
     {
@@ -651,7 +662,7 @@ class UserController extends Controller
         abort_if(! $device, 404, 'Device not found.');
 
         $currentUser = $request->user();
-        abort_if(! $currentUser || ! $currentUser->isSuperAdmin(), 403, 'Revoking devices is restricted to Owner/Superadmin.');
+        abort_if(! $currentUser || ! $currentUser->isAdmin(), 403, 'Revoking devices is restricted to Administrator.');
 
         $device->update(['status' => 'revoked']);
 
@@ -672,7 +683,7 @@ class UserController extends Controller
     }
 
     /**
-     * Approve a pending trusted device (Superadmin only).
+     * Approve a pending trusted device (Admin accessible, 1-device policy).
      */
     public function approveDevice(Request $request, mixed $team, ?TrustedDevice $device = null): RedirectResponse
     {
@@ -682,7 +693,12 @@ class UserController extends Controller
         abort_if(! $device, 404, 'Device not found.');
 
         $currentUser = $request->user();
-        abort_if(! $currentUser || ! $currentUser->isSuperAdmin(), 403, 'Approving devices is restricted to Owner/Superadmin.');
+        abort_if(! $currentUser || ! $currentUser->isAdmin(), 403, 'Approving devices is restricted to Administrator.');
+
+        // 1 Account, 1 Device Policy: remove any other devices for this user
+        TrustedDevice::where('user_id', $device->user_id)
+            ->where('id', '!=', $device->id)
+            ->delete();
 
         $device->update([
             'status' => 'approved',
@@ -691,7 +707,7 @@ class UserController extends Controller
 
         AuditLogger::audit(
             'device.approved',
-            "Administrator {$currentUser->email} approved device '{$device->device_name}' for {$device->user?->email}.",
+            "Administrator {$currentUser->email} approved device '{$device->device_name}' for {$device->user?->email} (1-device policy enforced).",
             $currentUser,
             $device->user,
             ['device_name' => $device->device_name],
@@ -699,11 +715,11 @@ class UserController extends Controller
             $request
         );
 
-        return back()->with('success', "Device '{$device->device_name}' approved successfully.");
+        return back()->with('success', "Device '{$device->device_name}' approved successfully (1 account, 1 device policy enforced).");
     }
 
     /**
-     * Delete a trusted device (Superadmin only).
+     * Delete a trusted device (Admin accessible).
      */
     public function destroyDevice(Request $request, mixed $team, ?TrustedDevice $device = null): RedirectResponse
     {
@@ -713,7 +729,7 @@ class UserController extends Controller
         abort_if(! $device, 404, 'Device not found.');
 
         $currentUser = $request->user();
-        abort_if(! $currentUser || ! $currentUser->isSuperAdmin(), 403, 'Deleting devices is restricted to Owner/Superadmin.');
+        abort_if(! $currentUser || ! $currentUser->isAdmin(), 403, 'Deleting devices is restricted to Administrator.');
 
         $deviceName = $device->device_name;
         $device->delete();
@@ -732,12 +748,12 @@ class UserController extends Controller
     }
 
     /**
-     * Regenerate Emergency Admin Recovery Key (Superadmin only).
+     * Regenerate Emergency Admin Recovery Key (Admin accessible).
      */
     public function regenerateRecoveryKey(Request $request): RedirectResponse
     {
         $currentUser = $request->user();
-        abort_if(! $currentUser || ! $currentUser->isSuperAdmin(), 403, 'Recovery key management is restricted to Owner/Superadmin.');
+        abort_if(! $currentUser || ! $currentUser->isAdmin(), 403, 'Recovery key management is restricted to Administrator.');
 
         $newKey = 'RECOVER-' . strtoupper(Str::random(6)) . '-' . strtoupper(Str::random(6)) . '-' . strtoupper(Str::random(6));
         $currentUser->update(['admin_recovery_key' => $newKey]);

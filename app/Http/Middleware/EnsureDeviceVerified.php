@@ -19,8 +19,8 @@ class EnsureDeviceVerified
     {
         $user = $request->user();
 
-        // Device verification applies strictly to admin and staff personnel
-        if (! $user || ! $user->isAdminOrStaff()) {
+        // Device verification applies strictly to staff personnel; bypassed for admin for now
+        if (! $user || ! $user->isAdminOrStaff() || $user->isAdmin()) {
             return $next($request);
         }
 

@@ -20,6 +20,8 @@ return [
 
     'resend' => [
         'key' => env('RESEND_API_KEY'),
+        'name' => env('RESEND_FROM_NAME', 'mrp-electrodesk-dev'),
+        'from_email' => env('RESEND_FROM_EMAIL', 'onboarding@resend.dev'),
     ],
 
     'ses' => [

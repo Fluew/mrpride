@@ -33,9 +33,17 @@ class DeviceVerificationController extends Controller
             );
 
             return redirect('/')->withErrors([
-                'device' => 'This device authorization link is invalid or has expired. Please log in again to generate a new link, or ask the Superadmin to authorize this device.',
+                'device' => 'This device authorization link is invalid or has expired. Please log in again to generate a new link, or ask the Administrator to authorize this device.',
             ]);
         }
+
+        // 1 Account, 1 Device Policy: Remove any previously registered devices for this user
+        TrustedDevice::where('user_id', $device->user_id)
+            ->where('id', '!=', $device->id)
+            ->delete();
+
+        // Terminate any existing sessions across other devices
+        \Illuminate\Support\Facades\DB::table('sessions')->where('user_id', $device->user_id)->delete();
 
         // Set or refresh the permanent device cookie
         $deviceUuid = $device->device_uuid ?: (string) Str::uuid();
@@ -55,7 +63,7 @@ class DeviceVerificationController extends Controller
 
         AuditLogger::security(
             'auth.device.authorized_via_email',
-            "Device '{$deviceName}' authorized via email link for {$device->user->email}.",
+            "Device '{$deviceName}' authorized via email link for {$device->user->email}. 1-Device policy enforced: prior devices and sessions cleared.",
             $device->user,
             'info',
             ['device_uuid' => $deviceUuid, 'ip' => $request->ip()],
