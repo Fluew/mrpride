@@ -8,13 +8,16 @@ use Illuminate\Support\Facades\RateLimiter;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Fortify\Features;
 
-test('login screen can be rendered', function () {
-    $response = $this->get(route('login'));
+test('login screen can be rendered on a trusted device', function () {
+    $deviceData = createTrustedDeviceFor();
+
+    $response = $this->withCookies($deviceData['cookies'])->get(route('login'));
 
     $response->assertOk();
 });
 
 test('login screen includes team invitation context', function () {
+    $deviceData = createTrustedDeviceFor();
     $owner = User::factory()->create();
     $team = Team::factory()->create(['name' => 'Laravel Team']);
     $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
@@ -25,7 +28,7 @@ test('login screen includes team invitation context', function () {
         'invited_by' => $owner->id,
     ]);
 
-    $response = $this->get(route('login', ['invitation' => $invitation->code]));
+    $response = $this->withCookies($deviceData['cookies'])->get(route('login', ['invitation' => $invitation->code]));
 
     $response->assertOk();
     $response->assertInertia(fn (Assert $page) => $page
@@ -35,16 +38,21 @@ test('login screen includes team invitation context', function () {
     );
 });
 
-test('users can authenticate using the login screen', function () {
-    $user = User::factory()->create();
+test('users can authenticate using the login screen on authorized trusted device', function () {
+    $user = User::factory()->create([
+        'role' => 'admin',
+        'password_changed_at' => now(),
+    ]);
+    $teamSlug = $user->personalTeam()?->slug ?? 'mr-pride';
+    $deviceData = createTrustedDeviceFor($user);
 
-    $response = $this->post(route('login.store'), [
+    $response = $this->withCookies($deviceData['cookies'])->post(route('login.store'), [
         'email' => $user->email,
         'password' => 'password',
     ]);
 
     $this->assertAuthenticated();
-    $response->assertRedirect(route('dashboard'));
+    $response->assertRedirect("/{$teamSlug}/dashboard");
 });
 
 test('users with two factor enabled are redirected to two factor challenge', function () {
@@ -57,9 +65,13 @@ test('users with two factor enabled are redirected to two factor challenge', fun
         'confirmPassword' => true,
     ]);
 
-    $user = User::factory()->withTwoFactor()->create();
+    $user = User::factory()->withTwoFactor()->create([
+        'role' => 'admin',
+        'password_changed_at' => now(),
+    ]);
+    $deviceData = createTrustedDeviceFor($user);
 
-    $response = $this->post(route('login'), [
+    $response = $this->withCookies($deviceData['cookies'])->post(route('login'), [
         'email' => $user->email,
         'password' => 'password',
     ]);
@@ -70,9 +82,13 @@ test('users with two factor enabled are redirected to two factor challenge', fun
 });
 
 test('users can not authenticate with invalid password', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->create([
+        'role' => 'admin',
+        'password_changed_at' => now(),
+    ]);
+    $deviceData = createTrustedDeviceFor($user);
 
-    $this->post(route('login.store'), [
+    $this->withCookies($deviceData['cookies'])->post(route('login.store'), [
         'email' => $user->email,
         'password' => 'wrong-password',
     ]);
@@ -86,15 +102,19 @@ test('users can logout', function () {
     $response = $this->actingAs($user)->post(route('logout'));
 
     $this->assertGuest();
-    $response->assertRedirect(route('home'));
+    $response->assertRedirect(route('login'));
 });
 
 test('users are rate limited', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->create([
+        'role' => 'admin',
+        'password_changed_at' => now(),
+    ]);
+    $deviceData = createTrustedDeviceFor($user);
 
     RateLimiter::increment(md5('login'.implode('|', [$user->email, '127.0.0.1'])), amount: 5);
 
-    $response = $this->post(route('login.store'), [
+    $response = $this->withCookies($deviceData['cookies'])->post(route('login.store'), [
         'email' => $user->email,
         'password' => 'wrong-password',
     ]);

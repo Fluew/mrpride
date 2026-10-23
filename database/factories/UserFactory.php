@@ -46,7 +46,7 @@ class UserFactory extends Factory
         return $this->afterCreating(function ($user) {
             $team = Team::factory()->personal()->create([
                 'name' => 'MR Pride',
-                'slug' => 'mr-pride',
+                'slug' => 'mr-pride-' . strtolower(Str::random(6)),
             ]);
 
             $team->members()->attach($user, [

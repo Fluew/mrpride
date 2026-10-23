@@ -8,6 +8,8 @@ use App\Http\Responses\LoginResponse;
 use App\Http\Responses\LogoutResponse;
 use App\Http\Responses\RegisterResponse;
 use App\Models\TeamInvitation;
+use App\Models\TrustedDevice;
+use App\Models\User;
 use App\Services\AuditLogger;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Logout;
@@ -15,9 +17,11 @@ use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
 use Laravel\Fortify\Contracts\LogoutResponse as LogoutResponseContract;
@@ -55,6 +59,83 @@ class FortifyServiceProvider extends ServiceProvider
     {
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
         Fortify::createUsersUsing(CreateNewUser::class);
+
+        Fortify::authenticateUsing(function (Request $request) {
+            $email = (string) $request->input(Fortify::username());
+            $password = (string) $request->input('password');
+
+            $device = TrustedDevice::findActiveByCredential($request);
+            if (! $device) {
+                AuditLogger::security(
+                    'auth.login.unregistered_device',
+                    "Login rejected: Attempted login for email '{$email}' from unregistered or revoked device.",
+                    null,
+                    'warning',
+                    ['ip' => $request->ip(), 'email' => $email],
+                    'blocked',
+                    $request
+                );
+
+                abort(404);
+            }
+
+            $user = User::where('email', $email)->first();
+
+            if (! $user || ! Hash::check($password, $user->password)) {
+                return null;
+            }
+
+            // Only Admin and Staff accounts may log in
+            if (! $user->isAdminOrStaff()) {
+                AuditLogger::security(
+                    'auth.login.customer_blocked',
+                    "Login rejected: Public customer account {$user->email} attempted backend login.",
+                    $user,
+                    'warning',
+                    ['role' => $user->role],
+                    'blocked',
+                    $request
+                );
+
+                abort(404);
+            }
+
+            // Deactivated account check
+            if (! $user->isActive()) {
+                AuditLogger::security(
+                    'auth.login.deactivated',
+                    "Login blocked: User {$user->email} is deactivated.",
+                    $user,
+                    'warning',
+                    ['role' => $user->role],
+                    'blocked',
+                    $request
+                );
+
+                throw ValidationException::withMessages([
+                    Fortify::username() => 'Your account has been deactivated. Please contact the administrator.',
+                ]);
+            }
+
+            // Account-to-Device Binding check
+            if (! $device->isAuthorizedForUser($user)) {
+                AuditLogger::security(
+                    'auth.device.account_mismatch',
+                    "Denied login attempt: Account {$user->email} is not authorized on device '{$device->device_name}' ({$device->device_uuid}).",
+                    $user,
+                    'warning',
+                    ['device_id' => $device->id, 'device_uuid' => $device->device_uuid, 'user_id' => $user->id],
+                    'blocked',
+                    $request
+                );
+
+                throw ValidationException::withMessages([
+                    Fortify::username() => 'This account is not authorized to use this workstation. Please contact your administrator.',
+                ]);
+            }
+
+            return $user;
+        });
     }
 
     /**
@@ -62,11 +143,33 @@ class FortifyServiceProvider extends ServiceProvider
      */
     private function configureViews(): void
     {
-        Fortify::loginView(fn (Request $request) => Inertia::render('auth/Login', [
-            'canResetPassword' => Features::enabled(Features::resetPasswords()),
-            'status' => $request->session()->get('status'),
-            'teamInvitation' => $this->teamInvitation($request),
-        ]));
+        Fortify::loginView(function (Request $request) {
+            $device = TrustedDevice::findActiveByCredential($request);
+
+            if (! $device) {
+                return Inertia::render('NotFound')
+                    ->toResponse($request)
+                    ->setStatusCode(404);
+            }
+
+            $user = $request->user();
+            if ($user && $user->isAdminOrStaff()) {
+                $team = $user->currentTeam ?: $user->teams()->first() ?: \App\Models\Team::first();
+                $teamSlug = $team?->slug ?? 'mr-pride';
+
+                if ($user->isAdmin()) {
+                    return redirect("/{$teamSlug}/dashboard");
+                }
+
+                return redirect("/{$teamSlug}/" . $user->assignedModuleSlug());
+            }
+
+            return Inertia::render('auth/Login', [
+                'canResetPassword' => Features::enabled(Features::resetPasswords()),
+                'status' => $request->session()->get('status'),
+                'teamInvitation' => $this->teamInvitation($request),
+            ]);
+        });
 
         Fortify::resetPasswordView(fn (Request $request) => Inertia::render('auth/ResetPassword', [
             'email' => $request->email,

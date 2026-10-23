@@ -295,8 +295,8 @@ const openEditModal = (quote: Quotation) => {
         email: quote.email || '',
         phone: quote.phone || '',
         address: quote.address || '',
-        quotation_date: quote.quotation_date,
-        valid_until: quote.valid_until,
+        quotation_date: formatDate(quote.quotation_date),
+        valid_until: formatDate(quote.valid_until),
         status: quote.status,
         notes: quote.notes || '',
         terms_and_conditions: quote.terms_and_conditions || '',
@@ -364,7 +364,7 @@ const promptSaveQuotation = () => {
         formError.value = 'At least one line item must be added to the quotation.';
         return;
     }
-    if (form.value.valid_until < form.value.quotation_date) {
+    if (formatDate(form.value.valid_until) < formatDate(form.value.quotation_date)) {
         formError.value = 'Valid Until date cannot be earlier than the Quotation date.';
         return;
     }
@@ -396,7 +396,7 @@ const promptSaveQuotation = () => {
             { label: 'Client / Company', value: form.value.client_name },
             { label: 'Line Items', value: `${form.value.items.length} items (${itemCount} total units)` },
             { label: 'Total Valuation', value: formatCurrency(totalAmount) },
-            { label: 'Validity Date', value: form.value.valid_until },
+            { label: 'Validity Date', value: formatDate(form.value.valid_until) },
         ],
         confirmText: isEditing.value ? 'Save Changes' : 'Create Quotation',
         action: saveQuotation,
@@ -524,6 +524,18 @@ const confirmDelete = () => {
 };
 
 // Helpers
+const formatDate = (dateStr: string | null | undefined): string => {
+    if (!dateStr) return '—';
+    return dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.split(' ')[0];
+};
+
+const isExpired = (validUntil: string | null | undefined, status: string): boolean => {
+    if (!validUntil || status === 'Completed' || status === 'Cancelled') return false;
+    const cleanDate = formatDate(validUntil);
+    const today = new Date().toISOString().slice(0, 10);
+    return cleanDate < today;
+};
+
 const formatCurrency = (amount: number | string) => {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount;
     return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(num || 0);
@@ -698,13 +710,13 @@ const getStatusBadge = (status: string) => {
                             </td>
 
                             <!-- Dates -->
-                            <td class="py-4 text-gray-600 text-xs font-medium">{{ quote.quotation_date }}</td>
+                            <td class="py-4 text-gray-600 text-xs font-medium">{{ formatDate(quote.quotation_date) }}</td>
                             <td class="py-4 text-xs font-medium">
                                 <div class="flex items-center gap-1.5">
-                                    <span :class="quote.valid_until < new Date().toISOString().slice(0, 10) && quote.status !== 'Completed' ? 'text-amber-700 font-semibold' : 'text-gray-600'">
-                                        {{ quote.valid_until }}
+                                    <span :class="isExpired(quote.valid_until, quote.status) ? 'text-amber-700 font-semibold' : 'text-gray-600'">
+                                        {{ formatDate(quote.valid_until) }}
                                     </span>
-                                    <span v-if="quote.valid_until < new Date().toISOString().slice(0, 10) && quote.status !== 'Completed'" 
+                                    <span v-if="isExpired(quote.valid_until, quote.status)" 
                                           class="px-1.5 py-0.2 rounded text-[10px] bg-amber-100 text-amber-800 font-bold">
                                         Expired
                                     </span>
@@ -1317,8 +1329,8 @@ const getStatusBadge = (status: string) => {
                             QUOTATION
                         </span>
                         <p class="text-sm font-bold text-gray-900 font-mono">No: {{ activeQuotation?.quotation_number }}</p>
-                        <p class="text-xs text-gray-500 mt-1">Date: <strong class="text-gray-800">{{ activeQuotation?.quotation_date }}</strong></p>
-                        <p class="text-xs text-gray-500">Valid Until: <strong class="text-gray-800">{{ activeQuotation?.valid_until }}</strong></p>
+                        <p class="text-xs text-gray-500 mt-1">Date: <strong class="text-gray-800">{{ formatDate(activeQuotation?.quotation_date) }}</strong></p>
+                        <p class="text-xs text-gray-500">Valid Until: <strong class="text-gray-800">{{ formatDate(activeQuotation?.valid_until) }}</strong></p>
                         <p class="text-xs text-gray-500 mt-1">Status: <span class="font-bold uppercase text-[#4b5320]">{{ activeQuotation?.status }}</span></p>
                     </div>
                 </div>

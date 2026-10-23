@@ -8,10 +8,11 @@ import { initializeFlashToast } from '@/lib/flashToast';
 const appName = import.meta.env.VITE_APP_NAME || 'MR Pride';
 
 createInertiaApp({
-    title: (title) => (title ? `${title} - ${appName}` : appName),
+    title: (title) => (title === 'Page Not Found' ? 'Page Not Found' : (title ? `${title} - ${appName}` : appName)),
     layout: (name) => {
         switch (true) {
             case name === 'Welcome':
+            case name === 'NotFound':
             case name === 'Products/Index':
             case name === 'Company/Index':
             case name === 'Contact/Index':

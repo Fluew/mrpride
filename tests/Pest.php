@@ -44,7 +44,25 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+function createTrustedDeviceFor(?\App\Models\User $user = null): array
 {
-    // ..
+    $rawCredential = \Illuminate\Support\Str::random(64);
+    $device = \App\Models\TrustedDevice::create([
+        'device_uuid' => (string) \Illuminate\Support\Str::uuid(),
+        'device_name' => 'Test Authorized Device',
+        'user_id' => $user?->id,
+        'status' => 'approved',
+        'credential_hash' => hash('sha256', $rawCredential),
+        'approved_at' => now(),
+    ]);
+
+    return [
+        'device' => $device,
+        'raw_credential' => $rawCredential,
+        'cookies' => [
+            'mrpride_device_uuid' => $device->device_uuid,
+            'mrpride_device_credential' => $rawCredential,
+        ],
+    ];
 }
+

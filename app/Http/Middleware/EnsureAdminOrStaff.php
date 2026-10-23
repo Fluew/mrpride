@@ -18,7 +18,7 @@ class EnsureAdminOrStaff
         $user = $request->user();
 
         if (! $user) {
-            return redirect()->guest('/login');
+            abort(404);
         }
 
         // Deactivated accounts cannot access workspace
@@ -27,16 +27,14 @@ class EnsureAdminOrStaff
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
-            return redirect()->route('login')->withErrors([
-                'email' => 'Your account has been deactivated. Please contact the administrator.',
-            ]);
+            abort(404);
         }
 
-        // Regular users attempting to access admin or staff routes are redirected to home
+        // Regular users attempting to access admin or staff routes receive 404 Page Not Found
         if (! $user->isAdminOrStaff()) {
             \App\Services\AuditLogger::security(
                 'auth.unauthorized_access',
-                "Regular user {$user->email} redirected to home from admin/staff path {$request->path()}.",
+                "Unauthorized user {$user->email} blocked from admin/staff path {$request->path()}.",
                 $user,
                 'warning',
                 ['path' => $request->path()],
@@ -44,7 +42,7 @@ class EnsureAdminOrStaff
                 $request
             );
 
-            return redirect('/');
+            abort(404);
         }
 
         return $next($request);

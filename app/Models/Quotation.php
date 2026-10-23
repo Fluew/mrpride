@@ -38,8 +38,8 @@ class Quotation extends Model
     protected function casts(): array
     {
         return [
-            'quotation_date' => 'date',
-            'valid_until' => 'date',
+            'quotation_date' => 'date:Y-m-d',
+            'valid_until' => 'date:Y-m-d',
             'subtotal' => 'decimal:2',
             'discount' => 'decimal:2',
             'tax_rate' => 'decimal:2',
@@ -92,6 +92,14 @@ class Quotation extends Model
      */
     public function getIsExpiredAttribute(): bool
     {
-        return $this->valid_until < now()->toDateString() && !in_array($this->status, [QuotationStatus::Completed, QuotationStatus::Cancelled]);
+        if (! $this->valid_until) {
+            return false;
+        }
+
+        $validUntil = $this->valid_until instanceof \Carbon\CarbonInterface
+            ? $this->valid_until->toDateString()
+            : substr((string) $this->valid_until, 0, 10);
+
+        return $validUntil < now()->toDateString() && ! in_array($this->status, [QuotationStatus::Completed, QuotationStatus::Cancelled]);
     }
 }

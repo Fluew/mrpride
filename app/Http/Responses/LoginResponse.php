@@ -18,7 +18,7 @@ class LoginResponse implements LoginResponseContract
     {
         $user = $request->user();
 
-        // Check if account is deactivated
+        // 1. Check if account is active
         if (! $user->isActive()) {
             auth()->logout();
             if ($request->hasSession()) {
@@ -41,14 +41,66 @@ class LoginResponse implements LoginResponseContract
             ]);
         }
 
+        // 2. Strict Device Check (for all accounts including Admin and Staff)
+        $device = TrustedDevice::findActiveByCredential($request);
+        if (! $device) {
+            auth()->logout();
+            if ($request->hasSession()) {
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+            }
+
+            AuditLogger::security(
+                'auth.login.unregistered_device',
+                "Login blocked: User {$user->email} attempted login on unregistered or revoked device.",
+                $user,
+                'warning',
+                ['ip' => $request->ip()],
+                'blocked',
+                $request
+            );
+
+            return redirect()->route('login')->withErrors([
+                'email' => 'Access Denied: This device is not registered or is no longer authorized to access MRP ElectroDesk. Contact your system administrator.',
+            ]);
+        }
+
+        // 3. Account-to-Device Binding check
+        if (! $device->isAuthorizedForUser($user)) {
+            auth()->logout();
+            if ($request->hasSession()) {
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+            }
+
+            AuditLogger::security(
+                'auth.device.account_mismatch',
+                "Login rejected: Account {$user->email} is not authorized to use device '{$device->device_name}' ({$device->device_uuid}).",
+                $user,
+                'warning',
+                ['device_id' => $device->id, 'device_uuid' => $device->device_uuid, 'user_id' => $user->id],
+                'blocked',
+                $request
+            );
+
+            return redirect()->route('login')->withErrors([
+                'email' => 'This account is not authorized to use this workstation. Please contact your administrator.',
+            ]);
+        }
+
+        // 4. Update last login and device usage
         $user->update(['last_login_at' => now()]);
+        $device->updateQuietly([
+            'last_used_at' => now(),
+            'ip_address' => $request->ip(),
+        ]);
 
         AuditLogger::security(
             'auth.login.success',
-            "User {$user->email} logged in successfully.",
+            "User {$user->email} logged in successfully on device '{$device->device_name}'.",
             $user,
             'info',
-            ['role' => $user->role],
+            ['role' => $user->role, 'device_id' => $device->id, 'device_name' => $device->device_name],
             'success',
             $request
         );
@@ -62,109 +114,20 @@ class LoginResponse implements LoginResponseContract
             return redirect('/');
         }
 
-        // Admin: device restriction removed for now (auto-approve device and continue)
-        if ($user->isAdmin()) {
-            $deviceUuid = $request->cookie('mrpride_device_id') ?: (string) \Illuminate\Support\Str::uuid();
-            cookie()->queue(cookie()->forever('mrpride_device_id', $deviceUuid, httpOnly: true, sameSite: 'lax'));
-
-            TrustedDevice::updateOrCreate(
-                ['user_id' => $user->id, 'device_uuid' => $deviceUuid],
-                [
-                    'device_name' => $this->parseDeviceName($request),
-                    'ip_address' => $request->ip(),
-                    'status' => 'approved',
-                    'last_used_at' => now(),
-                ]
-            );
-
-            if ($user->isPasswordExpired()) {
-                return redirect()->route('password.change');
-            }
-
-            return redirect()->intended($this->redirectPathForCurrentTeam($request, Fortify::redirects('login')));
-        }
-
-        // Staff: check trusted device
-        $deviceUuid = $request->cookie('mrpride_device_id');
-        $device = $deviceUuid
-            ? $user->trustedDevices()->where('device_uuid', $deviceUuid)->first()
-            : null;
-
-        if (! $device || ! $device->isApproved()) {
-            // Generate single-use device authorization link
-            $token = \Illuminate\Support\Str::random(48);
-            $expiresAt = now()->addHours(24);
-            $assignedUuid = $deviceUuid ?: (string) \Illuminate\Support\Str::uuid();
-            cookie()->queue(cookie()->forever('mrpride_device_id', $assignedUuid, httpOnly: true, sameSite: 'lax'));
-
-            $deviceName = $this->parseDeviceName($request);
-
-            TrustedDevice::updateOrCreate(
-                ['user_id' => $user->id, 'device_uuid' => $assignedUuid],
-                [
-                    'device_name' => $deviceName,
-                    'ip_address' => $request->ip(),
-                    'status' => 'pending',
-                    'enrollment_token' => $token,
-                    'enrollment_token_expires_at' => $expiresAt,
-                ]
-            );
-
-            $accessUrl = url("/device/access/{$token}");
-
-            try {
-                $user->notify(new \App\Notifications\Auth\DeviceAccessNotification(
-                    accessUrl: $accessUrl,
-                    deviceName: $deviceName,
-                    ipAddress: $request->ip() ?? 'Unknown',
-                    expiresAt: $expiresAt->format('M d, Y H:i')
-                ));
-            } catch (\Throwable) {
-                // Ignore email transport failure in local test environment
-            }
-
-            // Immediately log out and terminate the session on this unauthorized device
-            auth()->logout();
-            if ($request->hasSession()) {
-                $request->session()->invalidate();
-                $request->session()->regenerateToken();
-            }
-
-            AuditLogger::security(
-                'auth.device.unauthorized_rerouted',
-                "Unauthorized device attempted login for {$user->email}. Rerouted to home page; authorization link sent to email.",
-                $user,
-                'warning',
-                ['ip' => $request->ip(), 'device' => $deviceName],
-                'blocked',
-                $request
-            );
-
-            $parts = explode('@', $user->email);
-            $maskedEmail = substr($parts[0], 0, 1) . '***@' . ($parts[1] ?? '');
-
-            return redirect('/')->with(
-                'device_notice',
-                "Unauthorized device detected. A secure authorization link has been sent to your email ({$maskedEmail}). Open the link on this device to access the login page and dashboard."
-            );
-        }
-
-        // Update device last used
-        $device->updateQuietly([
-            'last_used_at' => now(),
-            'ip_address' => $request->ip(),
-        ]);
-
-        // Check password expiration / mandatory change
+        // Mandatory password change check
         if ($user->isPasswordExpired()) {
             return redirect()->route('password.change');
         }
 
+        $team = $user->currentTeam ?: $user->teams()->first() ?: \App\Models\Team::first();
+        $teamSlug = $team?->slug ?? 'mr-pride';
+
+        if ($user->isAdmin()) {
+            return redirect()->intended("/{$teamSlug}/dashboard");
+        }
+
         if ($user->isStaff()) {
-            $team = $user->currentTeam ?: $user->teams()->first() ?: \App\Models\Team::first();
-            if ($team) {
-                return redirect("/{$team->slug}/" . $user->assignedModuleSlug());
-            }
+            return redirect()->intended("/{$teamSlug}/" . $user->assignedModuleSlug());
         }
 
         return redirect()->intended($this->redirectPathForCurrentTeam($request, Fortify::redirects('login')));

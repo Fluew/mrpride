@@ -151,28 +151,58 @@ class UserController extends Controller
                 });
             }
 
-            $currentCookieUuid = $request->cookie('mrpride_device_id');
+            $currentCookieUuid = $request->cookie('mrpride_device_uuid') ?: $request->cookie('mrpride_device_id');
+            $allStaffUsers = User::where(function ($q) {
+                $q->whereIn('role', ['admin', 'superadmin', 'owner'])
+                  ->orWhere('role', 'like', 'staff%');
+            })->get(['id', 'name', 'email', 'role'])->keyBy('id');
 
-            $devicesData = $devicesQuery->orderByDesc('last_used_at')->get()->map(fn (TrustedDevice $d) => [
-                'id' => $d->id,
-                'device_uuid' => $d->device_uuid,
-                'device_name' => $d->device_name,
-                'ip_address' => $d->ip_address,
-                'status' => ucfirst($d->status),
-                'raw_status' => $d->status,
-                'is_current' => $d->device_uuid === $currentCookieUuid,
-                'last_used_at' => $d->last_used_at?->diffForHumans() ?? 'Never',
-                'created_at' => $d->created_at?->format('M d, Y'),
-                'enrollment_token' => $d->enrollment_token,
-                'enrollment_link' => $d->enrollment_token ? url("/device/enroll/{$d->enrollment_token}") : null,
-                'is_enrollment_expired' => $d->enrollment_token_expires_at ? $d->enrollment_token_expires_at->isPast() : true,
-                'user' => [
-                    'id' => $d->user?->id,
-                    'name' => $d->user?->name,
-                    'email' => $d->user?->email,
-                    'role' => $d->user ? $d->user->roleLabel() : 'User',
-                ],
-            ]);
+            $devicesData = $devicesQuery->orderByDesc('last_used_at')->get()->map(function (TrustedDevice $d) use ($currentCookieUuid, $allStaffUsers) {
+                $authorizedUsers = [];
+                if ($d->is_shared && is_array($d->authorized_user_ids)) {
+                    foreach ($d->authorized_user_ids as $uid) {
+                        if ($u = $allStaffUsers->get($uid)) {
+                            $authorizedUsers[] = [
+                                'id' => $u->id,
+                                'name' => $u->name,
+                                'email' => $u->email,
+                                'role' => $u->roleLabel(),
+                            ];
+                        }
+                    }
+                }
+
+                $enrollmentCode = $d->enrollment_code ?: $d->enrollment_token;
+                $isEnrollmentExpired = false;
+                if ($d->enrollment_code) {
+                    $isEnrollmentExpired = $d->enrollment_code_expires_at ? $d->enrollment_code_expires_at->isPast() : true;
+                } elseif ($d->enrollment_token) {
+                    $isEnrollmentExpired = $d->enrollment_token_expires_at ? $d->enrollment_token_expires_at->isPast() : true;
+                }
+
+                return [
+                    'id' => $d->id,
+                    'device_uuid' => $d->device_uuid,
+                    'device_name' => $d->device_name,
+                    'ip_address' => $d->ip_address,
+                    'status' => ucfirst($d->status),
+                    'raw_status' => $d->status,
+                    'is_shared' => (bool) $d->is_shared,
+                    'is_current' => $d->device_uuid === $currentCookieUuid,
+                    'last_used_at' => $d->last_used_at?->diffForHumans() ?? 'Never',
+                    'created_at' => $d->created_at?->format('M d, Y'),
+                    'enrollment_code' => $enrollmentCode,
+                    'enrollment_link' => $enrollmentCode ? url("/device/enroll?code={$enrollmentCode}") : null,
+                    'is_enrollment_expired' => $isEnrollmentExpired,
+                    'user' => $d->user ? [
+                        'id' => $d->user->id,
+                        'name' => $d->user->name,
+                        'email' => $d->user->email,
+                        'role' => $d->user->roleLabel(),
+                    ] : null,
+                    'authorized_users' => $authorizedUsers,
+                ];
+            });
         }
 
         // 4. Audit Trail Data (Admin accessible)
@@ -593,7 +623,8 @@ class UserController extends Controller
     }
 
     /**
-     * Initiate trusted device enrollment or directly add an approved device (Admin accessible, 1-device policy).
+     * Initiate trusted device enrollment or directly add an approved device.
+     * Supports both single assigned accounts and multi-account shared workstations.
      */
     public function enrollDevice(Request $request): RedirectResponse
     {
@@ -601,58 +632,109 @@ class UserController extends Controller
         abort_if(! $currentUser || ! $currentUser->isAdmin(), 403, 'Device enrollment is restricted to Administrator.');
 
         $validated = $request->validate([
-            'user_id' => ['required', 'exists:users,id'],
+            'assignment_type' => ['required', 'string', 'in:single,shared'],
+            'user_id' => ['nullable', 'required_if:assignment_type,single', 'exists:users,id'],
+            'authorized_user_ids' => ['nullable', 'required_if:assignment_type,shared', 'array'],
+            'authorized_user_ids.*' => ['exists:users,id'],
             'device_name' => ['nullable', 'string', 'max:100'],
             'direct_approve' => ['nullable', 'boolean'],
+            'expires_in_hours' => ['nullable', 'integer', 'min:1', 'max:168'],
         ]);
 
-        $targetUser = User::findOrFail($validated['user_id']);
-        abort_if(! $targetUser->isAdminOrStaff(), 422, 'Trusted devices are only applicable to Admin and Staff accounts.');
-
-        // 1 Account, 1 Device Policy: delete any existing registered devices for this user
-        TrustedDevice::where('user_id', $targetUser->id)->delete();
-
+        $assignmentType = $validated['assignment_type'];
         $directApprove = (bool) ($validated['direct_approve'] ?? false);
+        $expiresInHours = (int) ($validated['expires_in_hours'] ?? 24);
+        $enrollmentCode = TrustedDevice::generateEnrollmentCode();
         $token = Str::random(48);
-        $expiresAt = now()->addHours(24);
+        $expiresAt = now()->addHours($expiresInHours);
         $deviceUuid = (string) Str::uuid();
 
+        $targetUser = null;
+        if ($assignmentType === 'single') {
+            $targetUser = User::findOrFail($validated['user_id']);
+            abort_if(! $targetUser->isAdminOrStaff(), 422, 'Trusted devices are only applicable to Admin and Staff accounts.');
+            // Enforce single active device per user policy for single-user devices
+            TrustedDevice::where('user_id', $targetUser->id)->where('is_shared', false)->delete();
+        }
+
         $device = TrustedDevice::create([
-            'user_id' => $targetUser->id,
+            'user_id' => $assignmentType === 'single' ? $targetUser?->id : null,
+            'is_shared' => $assignmentType === 'shared',
+            'authorized_user_ids' => $assignmentType === 'shared' ? array_map('intval', $validated['authorized_user_ids'] ?? []) : null,
             'device_uuid' => $deviceUuid,
-            'device_name' => $validated['device_name'] ?: 'Administrator Registered Device',
+            'device_name' => $validated['device_name'] ?: ($assignmentType === 'shared' ? 'Shared Workstation' : "{$targetUser?->name}'s Device"),
             'status' => $directApprove ? 'approved' : 'pending',
+            'approved_by' => $directApprove ? $currentUser->id : null,
+            'approved_at' => $directApprove ? now() : null,
+            'enrollment_code' => $directApprove ? null : $enrollmentCode,
+            'enrollment_code_expires_at' => $directApprove ? null : $expiresAt,
             'enrollment_token' => $directApprove ? null : $token,
             'enrollment_token_expires_at' => $directApprove ? null : $expiresAt,
             'last_used_at' => $directApprove ? now() : null,
         ]);
 
-        $enrollmentLink = $directApprove ? null : url("/device/enroll/{$token}");
+        $enrollmentLink = $directApprove ? null : url("/device/enroll?code={$enrollmentCode}");
 
         AuditLogger::audit(
             $directApprove ? 'device.directly_approved' : 'device.enrollment_initiated',
-            "Administrator {$currentUser->email} " . ($directApprove ? "directly added approved device '{$device->device_name}'" : "initiated trusted-device enrollment") . " for {$targetUser->email} (1-device policy enforced).",
+            "Administrator {$currentUser->email} created device enrollment for '{$device->device_name}' (Policy: " . ($device->is_shared ? 'Shared Workstation' : 'Single Account') . ").",
             $currentUser,
             $targetUser,
-            ['device_id' => $device->id, 'direct_approved' => $directApprove],
+            ['device_id' => $device->id, 'device_uuid' => $deviceUuid, 'code' => $enrollmentCode],
             'success',
             $request
         );
 
         if ($directApprove) {
-            return back()->with('success', "Trusted device '{$device->device_name}' added and approved for {$targetUser->name} (1 account, 1 device policy enforced).");
+            return back()->with('success', "Device '{$device->device_name}' added and approved directly.");
         }
 
         return back()->with('enrollmentNotice', [
-            'user_name' => $targetUser->name,
-            'user_email' => $targetUser->email,
+            'device_name' => $device->device_name,
+            'user_name' => $targetUser?->name ?? 'Shared Workstation',
+            'user_email' => $targetUser?->email ?? 'Multiple Authorized Staff',
+            'code' => $enrollmentCode,
             'link' => $enrollmentLink,
             'expires_at' => $expiresAt->format('M d, Y H:i'),
-        ])->with('success', "Device enrollment invitation created for {$targetUser->name}.");
+        ])->with('success', "Device enrollment code created: {$enrollmentCode}");
+    }
+
+    /**
+     * Rename a trusted device (Admin accessible).
+     */
+    public function renameDevice(Request $request, mixed $team, ?TrustedDevice $device = null): RedirectResponse
+    {
+        if ($team instanceof TrustedDevice) {
+            $device = $team;
+        }
+        abort_if(! $device, 404, 'Device not found.');
+
+        $currentUser = $request->user();
+        abort_if(! $currentUser || ! $currentUser->isAdmin(), 403, 'Renaming devices is restricted to Administrator.');
+
+        $validated = $request->validate([
+            'device_name' => ['required', 'string', 'max:100'],
+        ]);
+
+        $oldName = $device->device_name;
+        $device->update(['device_name' => trim($validated['device_name'])]);
+
+        AuditLogger::audit(
+            'device.renamed',
+            "Administrator {$currentUser->email} renamed device #{$device->id} from '{$oldName}' to '{$device->device_name}'.",
+            $currentUser,
+            $device->user,
+            ['device_id' => $device->id, 'old_name' => $oldName, 'new_name' => $device->device_name],
+            'success',
+            $request
+        );
+
+        return back()->with('success', "Device successfully renamed to '{$device->device_name}'.");
     }
 
     /**
      * Revoke a trusted device (Admin accessible).
+     * Immediately invalidates device access and active user sessions.
      */
     public function revokeDevice(Request $request, mixed $team, ?TrustedDevice $device = null): RedirectResponse
     {
@@ -664,14 +746,22 @@ class UserController extends Controller
         $currentUser = $request->user();
         abort_if(! $currentUser || ! $currentUser->isAdmin(), 403, 'Revoking devices is restricted to Administrator.');
 
-        $device->update(['status' => 'revoked']);
+        $device->update([
+            'status' => 'revoked',
+            'credential_hash' => null, // clear hash so credential immediately fails verification
+        ]);
 
-        // Revoke active sessions for the device's user to enforce immediate lockout from this device
-        DB::table('sessions')->where('user_id', $device->user_id)->delete();
+        // Revoke active sessions for the device's user(s) to enforce immediate lockout
+        if ($device->user_id) {
+            DB::table('sessions')->where('user_id', $device->user_id)->delete();
+        }
+        if ($device->is_shared && is_array($device->authorized_user_ids)) {
+            DB::table('sessions')->whereIn('user_id', $device->authorized_user_ids)->delete();
+        }
 
         AuditLogger::audit(
             'device.revoked',
-            "Administrator {$currentUser->email} revoked device '{$device->device_name}' for user ID {$device->user_id}. User sessions terminated.",
+            "Administrator {$currentUser->email} revoked device '{$device->device_name}' ({$device->device_uuid}). Workstation access immediately terminated.",
             $currentUser,
             $device->user,
             ['device_name' => $device->device_name, 'device_uuid' => $device->device_uuid],
@@ -679,11 +769,11 @@ class UserController extends Controller
             $request
         );
 
-        return back()->with('success', "Device '{$device->device_name}' revoked successfully.");
+        return back()->with('success', "Device '{$device->device_name}' revoked successfully. Workstation access is now blocked.");
     }
 
     /**
-     * Approve a pending trusted device (Admin accessible, 1-device policy).
+     * Approve a pending trusted device (Admin accessible).
      */
     public function approveDevice(Request $request, mixed $team, ?TrustedDevice $device = null): RedirectResponse
     {
@@ -695,19 +785,24 @@ class UserController extends Controller
         $currentUser = $request->user();
         abort_if(! $currentUser || ! $currentUser->isAdmin(), 403, 'Approving devices is restricted to Administrator.');
 
-        // 1 Account, 1 Device Policy: remove any other devices for this user
-        TrustedDevice::where('user_id', $device->user_id)
-            ->where('id', '!=', $device->id)
-            ->delete();
+        // For single-user devices, ensure 1 active device policy
+        if ($device->user_id && ! $device->is_shared) {
+            TrustedDevice::where('user_id', $device->user_id)
+                ->where('id', '!=', $device->id)
+                ->where('is_shared', false)
+                ->delete();
+        }
 
         $device->update([
             'status' => 'approved',
+            'approved_by' => $currentUser->id,
+            'approved_at' => now(),
             'last_used_at' => now(),
         ]);
 
         AuditLogger::audit(
             'device.approved',
-            "Administrator {$currentUser->email} approved device '{$device->device_name}' for {$device->user?->email} (1-device policy enforced).",
+            "Administrator {$currentUser->email} approved device '{$device->device_name}'.",
             $currentUser,
             $device->user,
             ['device_name' => $device->device_name],
@@ -715,7 +810,7 @@ class UserController extends Controller
             $request
         );
 
-        return back()->with('success', "Device '{$device->device_name}' approved successfully (1 account, 1 device policy enforced).");
+        return back()->with('success', "Device '{$device->device_name}' approved successfully.");
     }
 
     /**

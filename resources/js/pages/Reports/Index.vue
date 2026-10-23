@@ -1352,8 +1352,8 @@ const horizontalBarOptions = {
                                 <tr v-for="q in filteredQuotations" :key="q.id" class="hover:bg-gray-50/70 transition-colors">
                                     <td class="py-3 px-4 font-mono font-bold text-gray-900">{{ q.quotation_number }}</td>
                                     <td class="py-3 px-4 font-medium text-gray-800">{{ q.client_name }}</td>
-                                    <td class="py-3 px-4 text-gray-500">{{ q.quotation_date }}</td>
-                                    <td class="py-3 px-4 text-gray-500">{{ q.valid_until }}</td>
+                                    <td class="py-3 px-4 text-gray-500">{{ q.quotation_date ? q.quotation_date.split('T')[0] : '—' }}</td>
+                                    <td class="py-3 px-4 text-gray-500">{{ q.valid_until ? q.valid_until.split('T')[0] : '—' }}</td>
                                     <td class="py-3 px-4 text-right font-bold text-gray-900">₱{{ q.grand_total.toFixed(2) }}</td>
                                     <td class="py-3 px-4 text-center">
                                         <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-700">

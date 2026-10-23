@@ -6,20 +6,25 @@ use App\Models\TeamInvitation;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 
-test('guests are redirected to the login page', function () {
+test('guests attempting to access dashboard receive 404 page not found', function () {
     $user = User::factory()->create();
     $team = $user->currentTeam;
 
     $response = $this->get(route('dashboard'));
-    $response->assertRedirect(route('login'));
+    $response->assertNotFound();
 });
 
 test('authenticated users can visit the dashboard', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->create([
+        'role' => 'admin',
+        'password_changed_at' => now(),
+    ]);
     $team = $user->currentTeam;
+    $deviceData = createTrustedDeviceFor($user);
 
     $response = $this
         ->actingAs($user)
+        ->withCookies($deviceData['cookies'])
         ->get(route('dashboard'));
 
     $response->assertOk();
@@ -27,8 +32,13 @@ test('authenticated users can visit the dashboard', function () {
 
 test('dashboard includes pending invitations for the authenticated user', function () {
     $owner = User::factory()->create(['name' => 'Taylor Otwell']);
-    $invitedUser = User::factory()->create(['email' => 'invited@example.com']);
+    $invitedUser = User::factory()->create([
+        'email' => 'invited@example.com',
+        'role' => 'admin',
+        'password_changed_at' => now(),
+    ]);
     $team = Team::factory()->create(['name' => 'Laravel Team']);
+    $deviceData = createTrustedDeviceFor($invitedUser);
 
     $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
 
@@ -40,6 +50,7 @@ test('dashboard includes pending invitations for the authenticated user', functi
 
     $response = $this
         ->actingAs($invitedUser)
+        ->withCookies($deviceData['cookies'])
         ->get(route('dashboard'));
 
     $response->assertOk();
@@ -56,8 +67,13 @@ test('dashboard includes pending invitations for the authenticated user', functi
 
 test('dashboard does not include accepted invitations', function () {
     $owner = User::factory()->create();
-    $invitedUser = User::factory()->create(['email' => 'invited@example.com']);
+    $invitedUser = User::factory()->create([
+        'email' => 'invited@example.com',
+        'role' => 'admin',
+        'password_changed_at' => now(),
+    ]);
     $team = Team::factory()->create();
+    $deviceData = createTrustedDeviceFor($invitedUser);
 
     $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
 
@@ -69,6 +85,7 @@ test('dashboard does not include accepted invitations', function () {
 
     $response = $this
         ->actingAs($invitedUser)
+        ->withCookies($deviceData['cookies'])
         ->get(route('dashboard'));
 
     $response->assertOk();
@@ -80,8 +97,13 @@ test('dashboard does not include accepted invitations', function () {
 
 test('dashboard excludes expired invitations without deleting them', function () {
     $owner = User::factory()->create();
-    $invitedUser = User::factory()->create(['email' => 'invited@example.com']);
+    $invitedUser = User::factory()->create([
+        'email' => 'invited@example.com',
+        'role' => 'admin',
+        'password_changed_at' => now(),
+    ]);
     $team = Team::factory()->create();
+    $deviceData = createTrustedDeviceFor($invitedUser);
 
     $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
 
@@ -93,6 +115,7 @@ test('dashboard excludes expired invitations without deleting them', function ()
 
     $response = $this
         ->actingAs($invitedUser)
+        ->withCookies($deviceData['cookies'])
         ->get(route('dashboard'));
 
     $response->assertOk();
@@ -108,8 +131,13 @@ test('dashboard excludes expired invitations without deleting them', function ()
 
 test('dashboard does not include or delete other users invitations', function () {
     $owner = User::factory()->create();
-    $invitedUser = User::factory()->create(['email' => 'invited@example.com']);
+    $invitedUser = User::factory()->create([
+        'email' => 'invited@example.com',
+        'role' => 'admin',
+        'password_changed_at' => now(),
+    ]);
     $team = Team::factory()->create();
+    $deviceData = createTrustedDeviceFor($invitedUser);
 
     $team->members()->attach($owner, ['role' => TeamRole::Owner->value]);
 
@@ -121,6 +149,7 @@ test('dashboard does not include or delete other users invitations', function ()
 
     $response = $this
         ->actingAs($invitedUser)
+        ->withCookies($deviceData['cookies'])
         ->get(route('dashboard'));
 
     $response->assertOk();

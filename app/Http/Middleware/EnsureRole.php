@@ -19,7 +19,10 @@ class EnsureRole
         $user = $request->user();
 
         if (! $user) {
-            return redirect()->guest('/login');
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json(['message' => 'Unauthenticated.'], 401);
+            }
+            abort(404);
         }
 
         // Immediately block deactivated accounts
@@ -28,9 +31,7 @@ class EnsureRole
             $request->session()->invalidate();
             $request->session()->regenerateToken();
 
-            return redirect()->route('login')->withErrors([
-                'email' => 'Your account has been deactivated. Please contact the administrator.',
-            ]);
+            abort(404);
         }
 
         // Admin can access ALL modules unconditionally
@@ -61,6 +62,15 @@ class EnsureRole
                 'blocked',
                 $request
             );
+
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json(['message' => 'Unauthorized access. Your assigned role lacks permissions for this operation.'], 403);
+            }
+
+            // For browser / non-admin attempting admin module
+            if (in_array('admin', $roles, true)) {
+                abort(404);
+            }
 
             abort(403, 'Unauthorized access. Your assigned role lacks permissions for this operation.');
         }

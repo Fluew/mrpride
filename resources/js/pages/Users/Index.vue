@@ -72,9 +72,11 @@ interface TrustedDeviceItem {
     ip_address: string;
     status: string;
     raw_status: string;
+    is_shared: boolean;
     is_current: boolean;
     last_used_at: string;
     created_at: string;
+    enrollment_code: string | null;
     enrollment_token: string | null;
     enrollment_link: string | null;
     is_enrollment_expired: boolean;
@@ -83,7 +85,13 @@ interface TrustedDeviceItem {
         name: string;
         email: string;
         role: string;
-    };
+    } | null;
+    authorized_users?: Array<{
+        id: number;
+        name: string;
+        email: string;
+        role: string;
+    }>;
 }
 
 interface LogItem {
@@ -137,8 +145,10 @@ const props = defineProps<{
     roles?: Array<{ value: string; label: string }>;
     temporaryPasswordNotice?: string | null;
     enrollmentNotice?: {
+        device_name?: string;
         user_name: string;
         user_email: string;
+        code?: string;
         link: string;
         expires_at: string;
     } | null;
@@ -203,6 +213,7 @@ const showEditModal = ref(false);
 const showStatusModal = ref(false);
 const showDeleteModal = ref(false);
 const showEnrollModal = ref(false);
+const showRenameDeviceModal = ref(false);
 const showRevokeSessionModal = ref(false);
 const showRevokeUserSessionsModal = ref(false);
 const showRevokeDeviceModal = ref(false);
@@ -228,9 +239,16 @@ const editForm = useForm({
 });
 
 const enrollForm = useForm({
+    assignment_type: 'single' as 'single' | 'shared',
     user_id: '' as string | number,
+    authorized_user_ids: [] as number[],
     device_name: '',
+    expires_in_hours: 24,
     direct_approve: false,
+});
+
+const renameDeviceForm = useForm({
+    device_name: '',
 });
 
 // Modal Triggers
@@ -266,11 +284,12 @@ const openDeleteModal = (user: UserAccount) => {
 const openEnrollModal = (user?: UserAccount) => {
     enrollForm.reset();
     enrollForm.clearErrors();
+    enrollForm.assignment_type = 'single';
+    enrollForm.user_id = user ? user.id : '';
+    enrollForm.authorized_user_ids = [];
+    enrollForm.device_name = user ? `${user.name}'s Device` : '';
+    enrollForm.expires_in_hours = 24;
     enrollForm.direct_approve = false;
-    if (user) {
-        enrollForm.user_id = user.id;
-        enrollForm.device_name = `${user.name}'s Device`;
-    }
     showEnrollModal.value = true;
 };
 
@@ -462,25 +481,35 @@ const confirmDelete = () => {
     });
 };
 
+
 const promptEnrollDevice = () => {
     enrollForm.clearErrors();
-    if (!enrollForm.user_id) {
-        enrollForm.setError('user_id', 'Please select a user account.');
+    if (enrollForm.assignment_type === 'single' && !enrollForm.user_id) {
+        enrollForm.setError('user_id', 'Please select an account holder.');
+        return;
+    }
+    if (enrollForm.assignment_type === 'shared' && (!enrollForm.authorized_user_ids || !enrollForm.authorized_user_ids.length)) {
+        enrollForm.setError('authorized_user_ids' as any, 'Please select at least one authorized account for this workstation.');
         return;
     }
 
     const targetUser = props.users?.find(u => u.id === Number(enrollForm.user_id));
-    const deviceLabel = enrollForm.device_name.trim() || `${targetUser?.name || 'Member'}'s Device`;
+    const deviceLabel = enrollForm.device_name.trim() || (enrollForm.assignment_type === 'shared' ? 'Shared Workstation' : `${targetUser?.name || 'Member'}'s Device`);
+
+    const policyLabel = enrollForm.assignment_type === 'shared'
+        ? `Shared Workstation (${enrollForm.authorized_user_ids.length} authorized accounts)`
+        : `Single Account: ${targetUser?.name || 'Selected User'}`;
 
     openConfirmModal({
-        title: 'Confirm Device Enrollment',
-        description: `Are you sure you want to enroll this device for "${targetUser?.name || 'the selected account'}"?`,
+        title: 'Confirm Workstation Enrollment',
+        description: `Generate a trusted device registration code for "${deviceLabel}"?`,
         details: [
-            { label: 'Account Holder', value: targetUser?.name || 'Selected User' },
+            { label: 'Workstation Policy', value: policyLabel },
             { label: 'Device Identifier', value: deviceLabel },
-            { label: 'Enrollment Mode', value: enrollForm.direct_approve ? 'Immediate Direct Approval' : 'One-Time Invitation Link (24 Hours)' },
+            { label: 'Enrollment Code Lifespan', value: `${enrollForm.expires_in_hours} Hours (Single-use)` },
+            { label: 'Mode', value: enrollForm.direct_approve ? 'Immediate Direct Approval' : 'Cryptographic Enrollment Code' },
         ],
-        confirmText: 'Authorize & Enroll',
+        confirmText: 'Generate Enrollment Code',
         confirmVariant: 'brand',
         action: submitEnroll,
     });
@@ -495,6 +524,26 @@ const submitEnroll = () => {
         },
     });
 };
+
+const openRenameDeviceModal = (device: TrustedDeviceItem) => {
+    selectedDevice.value = device;
+    renameDeviceForm.device_name = device.device_name;
+    renameDeviceForm.clearErrors();
+    showRenameDeviceModal.value = true;
+};
+
+const submitRenameDevice = () => {
+    if (!selectedDevice.value) return;
+    renameDeviceForm.patch(`/${teamSlug.value}/users/devices/${selectedDevice.value.id}/rename`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            showRenameDeviceModal.value = false;
+            selectedDevice.value = null;
+            renameDeviceForm.reset();
+        },
+    });
+};
+
 
 const confirmRevokeSession = () => {
     if (!selectedSession.value) return;
@@ -530,12 +579,16 @@ const confirmRevokeDevice = () => {
 };
 
 const promptApproveDevice = (device: TrustedDeviceItem) => {
+    const accountDisplay = device.is_shared
+        ? `Shared Workstation (${device.authorized_users?.length || 0} accounts)`
+        : `${device.user?.name || 'Assigned User'} (${device.user?.email || '—'})`;
+
     openConfirmModal({
         title: 'Confirm Device Approval',
         description: `Authorize and approve access for "${device.device_name}"?`,
         details: [
             { label: 'Device Name', value: device.device_name },
-            { label: 'Account', value: `${device.user.name} (${device.user.email})` },
+            { label: 'Account Policy', value: accountDisplay },
             { label: 'IP Address', value: device.ip_address || 'Not Recorded' },
             { label: 'Hardware UUID', value: device.device_uuid },
         ],
@@ -557,7 +610,7 @@ const promptDeleteDevice = (device: TrustedDeviceItem) => {
         description: `Permanently delete the trusted device entry for "${device.device_name}"?`,
         details: [
             { label: 'Device Name', value: device.device_name },
-            { label: 'Account', value: device.user.name },
+            { label: 'Account', value: device.user?.name || (device.is_shared ? 'Shared Workstation' : 'Unassigned') },
             { label: 'Hardware UUID', value: device.device_uuid },
         ],
         confirmText: 'Delete Record',
@@ -813,10 +866,7 @@ const regenerateRecoveryKey = () => {
                                 </td>
                             </tr>
                             <tr v-for="user in users" :key="user.id" class="hover:bg-gray-50/70 transition-colors">
-                                <td class="py-4 text-gray-900 font-semibold flex items-center gap-3">
-                                    <div class="size-9 rounded-full bg-[#4b5320] text-[#F8B803] flex items-center justify-center font-bold text-xs shadow-xs">
-                                        {{ user.name.slice(0, 2).toUpperCase() }}
-                                    </div>
+                                <td class="py-4 text-gray-900 font-semibold">
                                     <div>
                                         <div class="flex items-center gap-1.5">
                                             <span>{{ user.name }}</span>
@@ -1077,6 +1127,48 @@ const regenerateRecoveryKey = () => {
                 </div>
             </div>
 
+            <!-- Enrollment Notice Card -->
+            <div
+                v-if="enrollmentNotice"
+                class="mb-5 rounded-2xl border border-emerald-300 bg-emerald-50/90 p-5 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4"
+            >
+                <div class="space-y-1">
+                    <div class="flex items-center gap-2">
+                        <ShieldCheck class="size-5 text-emerald-600" />
+                        <h3 class="text-sm font-bold text-emerald-950">
+                            Active Workstation Enrollment Code
+                        </h3>
+                    </div>
+                    <p class="text-xs text-emerald-800">
+                        Open <span class="font-mono font-semibold">/device/enroll</span> on candidate browser and submit this code:
+                    </p>
+                    <div class="mt-2 flex flex-wrap items-center gap-2.5">
+                        <code class="px-3.5 py-1.5 bg-white border border-emerald-300 rounded-xl text-base font-mono font-bold text-emerald-950 shadow-xs tracking-wider">
+                            {{ enrollmentNotice.code }}
+                        </code>
+                        <button
+                            v-if="enrollmentNotice.code"
+                            @click="copyToClipboard(enrollmentNotice.code)"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-emerald-300 rounded-lg text-xs font-semibold text-emerald-900 hover:bg-emerald-100 shadow-2xs transition-colors cursor-pointer"
+                        >
+                            <Copy class="size-3.5" />
+                            {{ copiedKey ? 'Copied!' : 'Copy Code' }}
+                        </button>
+                        <button
+                            v-if="enrollmentNotice.link"
+                            @click="copyToClipboard(enrollmentNotice.link)"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 shadow-2xs transition-colors cursor-pointer"
+                        >
+                            <ExternalLink class="size-3.5" />
+                            Copy Link
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-emerald-700 mt-1">
+                        Workstation: {{ enrollmentNotice.device_name || 'Terminal' }} • Account Policy: {{ enrollmentNotice.user_name }} • Expires: {{ enrollmentNotice.expires_at }} (Single-use)
+                    </p>
+                </div>
+            </div>
+
             <!-- Filters & Actions -->
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                 <div class="relative flex-1 sm:max-w-md">
@@ -1107,7 +1199,7 @@ const regenerateRecoveryKey = () => {
                         <thead>
                             <tr class="border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wider font-semibold">
                                 <th class="pb-3 font-semibold">Device Label</th>
-                                <th class="pb-3 font-semibold">Account Holder</th>
+                                <th class="pb-3 font-semibold">Authorized Account(s)</th>
                                 <th class="pb-3 font-semibold">IP Address</th>
                                 <th class="pb-3 font-semibold">Status</th>
                                 <th class="pb-3 font-semibold">Registered</th>
@@ -1133,8 +1225,24 @@ const regenerateRecoveryKey = () => {
                                     <div class="text-[11px] font-mono text-gray-400 mt-0.5">{{ d.device_uuid }}</div>
                                 </td>
                                 <td class="py-4">
-                                    <div class="font-medium text-gray-900">{{ d.user.name }}</div>
-                                    <div class="text-xs text-gray-500">{{ d.user.email }} ({{ d.user.role }})</div>
+                                    <div v-if="d.is_shared">
+                                        <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200">
+                                            <Users class="size-3" /> Shared Workstation
+                                        </span>
+                                        <div class="text-xs text-gray-600 mt-1 font-medium">
+                                            {{ d.authorized_users?.length || 0 }} authorized accounts
+                                        </div>
+                                        <div v-if="d.authorized_users?.length" class="text-[11px] text-gray-400 mt-0.5 truncate max-w-xs">
+                                            {{ d.authorized_users.map(u => u.name).join(', ') }}
+                                        </div>
+                                    </div>
+                                    <div v-else-if="d.user">
+                                        <div class="font-medium text-gray-900">{{ d.user.name }}</div>
+                                        <div class="text-xs text-gray-500">{{ d.user.email }} ({{ d.user.role }})</div>
+                                    </div>
+                                    <div v-else class="text-xs text-gray-400 italic">
+                                        Unassigned Workstation
+                                    </div>
                                 </td>
                                 <td class="py-4 font-mono text-xs text-gray-600">
                                     {{ d.ip_address || '—' }}
@@ -1150,12 +1258,24 @@ const regenerateRecoveryKey = () => {
                                     >
                                         {{ d.status }}
                                     </span>
-                                    <div v-if="d.enrollment_link && !d.is_enrollment_expired" class="mt-1">
+                                    <div v-if="d.enrollment_code && !d.is_enrollment_expired" class="mt-1 flex items-center gap-1.5">
+                                        <code class="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[11px] font-mono font-bold text-gray-800">
+                                            {{ d.enrollment_code }}
+                                        </code>
+                                        <button
+                                            @click="copyToClipboard(d.enrollment_code)"
+                                            class="text-[10px] text-emerald-700 hover:underline inline-flex items-center gap-0.5 font-semibold cursor-pointer"
+                                            title="Copy Code"
+                                        >
+                                            <Copy class="size-3" /> Copy
+                                        </button>
+                                    </div>
+                                    <div v-if="d.enrollment_link && !d.is_enrollment_expired" class="mt-0.5">
                                         <button
                                             @click="copyToClipboard(d.enrollment_link)"
-                                            class="text-[10px] text-emerald-700 hover:underline inline-flex items-center gap-1 font-semibold"
+                                            class="text-[10px] text-emerald-700 hover:underline inline-flex items-center gap-1 font-semibold cursor-pointer"
                                         >
-                                            <Copy class="size-3" /> Copy Invitation Link
+                                            <ExternalLink class="size-3" /> Link
                                         </button>
                                     </div>
                                 </td>
@@ -1163,11 +1283,20 @@ const regenerateRecoveryKey = () => {
                                 <td class="py-4 text-xs text-gray-500">{{ d.last_used_at }}</td>
                                 <td class="py-4 text-right">
                                     <div class="inline-flex items-center gap-2">
+                                        <!-- Rename device -->
+                                        <button
+                                            @click="openRenameDeviceModal(d)"
+                                            class="p-1.5 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                                            title="Rename Device"
+                                        >
+                                            <Pencil class="size-4" />
+                                        </button>
+
                                         <!-- Approve pending -->
                                         <button
                                             v-if="d.raw_status === 'pending'"
                                             @click="promptApproveDevice(d)"
-                                            class="text-xs font-semibold text-emerald-700 hover:bg-emerald-50 px-2.5 py-1 border border-emerald-200 rounded-lg transition-colors"
+                                            class="text-xs font-semibold text-emerald-700 hover:bg-emerald-50 px-2.5 py-1 border border-emerald-200 rounded-lg transition-colors cursor-pointer"
                                         >
                                             Approve
                                         </button>
@@ -1176,7 +1305,7 @@ const regenerateRecoveryKey = () => {
                                         <button
                                             v-if="d.raw_status !== 'revoked'"
                                             @click="openRevokeDeviceModal(d)"
-                                            class="text-xs font-semibold text-red-600 hover:bg-red-50 px-2.5 py-1 border border-red-200 rounded-lg transition-colors"
+                                            class="text-xs font-semibold text-red-600 hover:bg-red-50 px-2.5 py-1 border border-red-200 rounded-lg transition-colors cursor-pointer"
                                         >
                                             Revoke
                                         </button>
@@ -1184,8 +1313,8 @@ const regenerateRecoveryKey = () => {
                                         <!-- Delete record -->
                                         <button
                                             @click="promptDeleteDevice(d)"
-                                            class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                            title="Delete Device"
+                                            class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                            title="Delete Device Record"
                                         >
                                             <Trash2 class="size-4" />
                                         </button>
@@ -1689,21 +1818,55 @@ const regenerateRecoveryKey = () => {
 
     <!-- Enroll Device Modal -->
     <div v-if="showEnrollModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
+        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-lg shadow-2xl">
             <div class="flex justify-between items-center mb-5">
-                <h3 class="text-xl font-bold text-gray-900">Initiate Device Enrollment</h3>
-                <button @click="showEnrollModal = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+                <h3 class="text-xl font-bold text-gray-900">Initiate Workstation Enrollment</h3>
+                <button @click="showEnrollModal = false" class="text-gray-400 hover:text-gray-600 text-xl cursor-pointer">&times;</button>
             </div>
 
-            <form @submit.prevent="promptEnrollDevice" class="space-y-4">
-                <div class="relative">
+            <form @submit.prevent="promptEnrollDevice" class="space-y-4.5">
+                <!-- Assignment Policy Selection -->
+                <div class="space-y-1.5">
+                    <label class="text-xs font-semibold text-gray-700">Workstation Assignment Policy</label>
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <button
+                            type="button"
+                            @click="enrollForm.assignment_type = 'single'"
+                            :class="[
+                                'p-3 rounded-xl border text-left transition-all cursor-pointer',
+                                enrollForm.assignment_type === 'single'
+                                    ? 'border-[#4b5320] bg-[#4b5320]/5 text-[#4b5320] ring-1 ring-[#4b5320]'
+                                    : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+                            ]"
+                        >
+                            <div class="font-bold text-xs">Single Account</div>
+                            <div class="text-[11px] text-gray-500 mt-0.5">Bound strictly to 1 user</div>
+                        </button>
+
+                        <button
+                            type="button"
+                            @click="enrollForm.assignment_type = 'shared'"
+                            :class="[
+                                'p-3 rounded-xl border text-left transition-all cursor-pointer',
+                                enrollForm.assignment_type === 'shared'
+                                    ? 'border-[#4b5320] bg-[#4b5320]/5 text-[#4b5320] ring-1 ring-[#4b5320]'
+                                    : 'border-gray-200 hover:bg-gray-50 text-gray-700'
+                            ]"
+                        >
+                            <div class="font-bold text-xs">Shared Workstation</div>
+                            <div class="text-[11px] text-gray-500 mt-0.5">Authorize multiple accounts</div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Single Account Selector -->
+                <div v-if="enrollForm.assignment_type === 'single'" class="relative">
                     <select
                         id="enroll-user"
                         v-model="enrollForm.user_id"
-                        required
                         class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
                     >
-                        <option value="" disabled>Choose account...</option>
+                        <option value="" disabled>Choose account holder...</option>
                         <option v-for="u in users" :key="u.id" :value="u.id">
                             {{ u.name }} ({{ u.email }}) — {{ u.role }}
                         </option>
@@ -1712,10 +1875,35 @@ const regenerateRecoveryKey = () => {
                         for="enroll-user"
                         class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]"
                     >
-                        Select Admin or Staff Account
+                        Assigned Account Holder
                     </label>
                     <span v-if="enrollForm.errors.user_id" class="text-xs text-red-500 mt-1 block">{{ enrollForm.errors.user_id }}</span>
                 </div>
+
+                <!-- Shared Workstation Multi-Select Checklist -->
+                <div v-else class="space-y-1.5">
+                    <label class="text-xs font-semibold text-gray-700">Select Authorized Personnel Accounts</label>
+                    <div class="max-h-40 overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-100 p-2 bg-gray-50/50">
+                        <label
+                            v-for="u in users"
+                            :key="u.id"
+                            class="flex items-center gap-2.5 p-2 hover:bg-white rounded-lg transition-colors cursor-pointer text-xs"
+                        >
+                            <input
+                                type="checkbox"
+                                :value="u.id"
+                                v-model="enrollForm.authorized_user_ids"
+                                class="rounded border-gray-300 text-[#4b5320] focus:ring-[#4b5320]"
+                            />
+                            <div>
+                                <span class="font-semibold text-gray-900">{{ u.name }}</span>
+                                <span class="text-gray-500 text-[11px] ml-1.5">({{ u.role }})</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Device Label -->
                 <div class="relative">
                     <input
                         id="enroll-device-name"
@@ -1729,41 +1917,78 @@ const regenerateRecoveryKey = () => {
                         class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
                         :class="enrollForm.device_name ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''"
                     >
-                        Device Label / Description
+                        Workstation Label (e.g. Gary's iPhone, Shop Terminal 1)
                     </label>
                 </div>
 
+                <!-- Code Expiration Selection -->
+                <div class="space-y-1">
+                    <label class="text-xs font-semibold text-gray-700">Code Validity Duration</label>
+                    <select
+                        v-model="enrollForm.expires_in_hours"
+                        class="block w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-900 focus:border-[#4b5320] focus:outline-none"
+                    >
+                        <option :value="1">1 Hour</option>
+                        <option :value="24">24 Hours (Default)</option>
+                        <option :value="72">72 Hours</option>
+                        <option :value="168">7 Days</option>
+                    </select>
+                </div>
+
+                <!-- Direct Approval Option -->
                 <label class="flex items-start gap-2.5 text-xs text-gray-700 cursor-pointer pt-1">
                     <input v-model="enrollForm.direct_approve" type="checkbox" class="mt-0.5 rounded border-gray-300 text-[#4b5320] focus:ring-[#4b5320]" />
                     <div>
-                        <span class="font-semibold text-gray-900">Directly register as approved device</span>
+                        <span class="font-semibold text-gray-900">Directly mark as approved</span>
                         <p class="text-[11px] text-gray-500">
-                            Grants immediate trusted access without requiring the user to open an invitation link.
+                            Pre-authorizes device entry directly in the system.
                         </p>
                     </div>
                 </label>
-
-                <p v-if="!enrollForm.direct_approve" class="text-xs text-gray-500">
-                    A single-use, 24-hour verification invitation link will be created. The user must open it on the physical device being registered.
-                </p>
-
-                <!-- 1-device policy reminder -->
-                <div class="rounded-xl border border-blue-200 bg-blue-50/70 p-3 text-xs text-blue-900 flex items-start gap-2">
-                    <ShieldCheck class="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                    <div>
-                        <span class="font-bold text-blue-950">1 Account, 1 Device Policy:</span>
-                        <p class="text-[11px] text-blue-800 mt-0.5">
-                            Enrolling or approving a new device replaces any previously registered device for this account.
-                        </p>
-                    </div>
-                </div>
 
                 <div class="flex justify-end gap-3 mt-6 pt-2 border-t border-gray-100">
                     <SpecularButton type="button" variant="secondary" size="md" :radius="10" @click="showEnrollModal = false">
                         Cancel
                     </SpecularButton>
                     <SpecularButton type="submit" variant="brand" size="md" :radius="10" :disabled="enrollForm.processing">
-                        {{ enrollForm.processing ? 'Saving...' : (enrollForm.direct_approve ? 'Add & Authorize Device' : 'Create Enrollment Invitation') }}
+                        {{ enrollForm.processing ? 'Generating...' : 'Generate Enrollment Code' }}
+                    </SpecularButton>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Rename Device Modal -->
+    <div v-if="showRenameDeviceModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="text-xl font-bold text-gray-900">Rename Workstation</h3>
+                <button @click="showRenameDeviceModal = false" class="text-gray-400 hover:text-gray-600 text-xl cursor-pointer">&times;</button>
+            </div>
+
+            <form @submit.prevent="submitRenameDevice" class="space-y-4">
+                <div class="space-y-1.5">
+                    <label for="rename-device-name" class="text-xs font-semibold text-gray-700">
+                        Device / Terminal Display Name
+                    </label>
+                    <input
+                        id="rename-device-name"
+                        v-model="renameDeviceForm.device_name"
+                        type="text"
+                        required
+                        class="block w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-sm text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none"
+                    />
+                    <span v-if="renameDeviceForm.errors.device_name" class="text-xs text-red-500 mt-1 block">
+                        {{ renameDeviceForm.errors.device_name }}
+                    </span>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-6 pt-2 border-t border-gray-100">
+                    <SpecularButton type="button" variant="secondary" size="md" :radius="10" @click="showRenameDeviceModal = false">
+                        Cancel
+                    </SpecularButton>
+                    <SpecularButton type="submit" variant="brand" size="md" :radius="10" :disabled="renameDeviceForm.processing">
+                        {{ renameDeviceForm.processing ? 'Saving...' : 'Save Name' }}
                     </SpecularButton>
                 </div>
             </form>

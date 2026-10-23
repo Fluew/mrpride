@@ -51,76 +51,52 @@ Route::post('/forgot-password/resend-otp', [ForgotPasswordController::class, 're
     ->middleware(['guest', 'throttle:4,1'])
     ->name('password.resend-otp');
 
-// Public device authorization links (single-use email link and superadmin enrollment invitation)
+// Public device enrollment & access-denied routes
+Route::get('/access-denied', [DeviceVerificationController::class, 'accessDenied'])->name('device.access-denied');
+Route::get('/device/enroll', [DeviceVerificationController::class, 'showEnroll'])->name('device.enroll');
+Route::post('/device/enroll', [DeviceVerificationController::class, 'processEnroll'])->middleware('throttle:10,1')->name('device.enroll-submit');
 Route::get('/device/access/{token}', [DeviceVerificationController::class, 'authorizeDevice'])->name('device.access');
-Route::get('/device/enroll/{token}', [DeviceVerificationController::class, 'authorizeDevice'])->name('device.enroll');
+Route::get('/device/enroll/{token}', [DeviceVerificationController::class, 'authorizeDevice'])->name('device.enroll-token');
+
+// Admin role route convention
+Route::prefix('admin')->middleware(['device_verified'])->group(function () {
+    Route::get('/dashboard', function (\Illuminate\Http\Request $request) {
+        $user = $request->user();
+        if (! $user || ! $user->isAdmin()) {
+            abort(404);
+        }
+        $team = $user->currentTeam ?: $user->teams()->first() ?: \App\Models\Team::first();
+        $teamSlug = $team?->slug ?? 'mr-pride';
+        return redirect("/{$teamSlug}/dashboard");
+    })->name('admin.dashboard');
+
+    Route::any('{any}', function () {
+        abort(404);
+    })->where('any', '.*');
+});
+
+// Staff role route convention
+Route::prefix('staff')->middleware(['device_verified'])->group(function () {
+    Route::get('/dashboard', function (\Illuminate\Http\Request $request) {
+        $user = $request->user();
+        if (! $user || ! $user->isStaff()) {
+            abort(404);
+        }
+        $team = $user->currentTeam ?: $user->teams()->first() ?: \App\Models\Team::first();
+        $teamSlug = $team?->slug ?? 'mr-pride';
+        return redirect("/{$teamSlug}/" . $user->assignedModuleSlug());
+    })->name('staff.dashboard');
+
+    Route::any('{any}', function () {
+        abort(404);
+    })->where('any', '.*');
+});
 
 // Authenticated dashboard redirect
 Route::get('/dashboard', function (\Illuminate\Http\Request $request) {
     $user = $request->user();
-    if (! $user) {
-        return redirect('/login');
-    }
-
-    // Regular users attempting to access admin/staff dashboard are redirected to home
-    if (! $user->isAdminOrStaff()) {
-        return redirect('/');
-    }
-
-    // Admin/Staff device verification check
-    $deviceUuid = $request->cookie('mrpride_device_id');
-    $device = $deviceUuid
-        ? $user->trustedDevices()->where('device_uuid', $deviceUuid)->first()
-        : null;
-
-    if (! $device || ! $device->isApproved()) {
-        $token = \Illuminate\Support\Str::random(48);
-        $expiresAt = now()->addHours(24);
-        $assignedUuid = $deviceUuid ?: (string) \Illuminate\Support\Str::uuid();
-        cookie()->queue(cookie()->forever('mrpride_device_id', $assignedUuid, httpOnly: true, sameSite: 'lax'));
-
-        $deviceName = 'Web Browser';
-        $agent = $request->userAgent() ?? '';
-        if (str_contains($agent, 'Windows')) $deviceName = 'Windows Device';
-        elseif (str_contains($agent, 'Macintosh')) $deviceName = 'macOS Device';
-        elseif (str_contains($agent, 'Linux')) $deviceName = 'Linux Device';
-        elseif (str_contains($agent, 'Android')) $deviceName = 'Android Device';
-        elseif (str_contains($agent, 'iPhone') || str_contains($agent, 'iPad')) $deviceName = 'iOS Device';
-
-        \App\Models\TrustedDevice::updateOrCreate(
-            ['user_id' => $user->id, 'device_uuid' => $assignedUuid],
-            [
-                'device_name' => $deviceName,
-                'ip_address' => $request->ip(),
-                'status' => 'pending',
-                'enrollment_token' => $token,
-                'enrollment_token_expires_at' => $expiresAt,
-            ]
-        );
-
-        $accessUrl = url("/device/access/{$token}");
-        try {
-            $user->notify(new \App\Notifications\Auth\DeviceAccessNotification(
-                accessUrl: $accessUrl,
-                deviceName: $deviceName,
-                ipAddress: $request->ip() ?? 'Unknown',
-                expiresAt: $expiresAt->format('M d, Y H:i')
-            ));
-        } catch (\Throwable) {}
-
-        auth()->logout();
-        if ($request->hasSession()) {
-            $request->session()->invalidate();
-            $request->session()->regenerateToken();
-        }
-
-        $parts = explode('@', $user->email);
-        $maskedEmail = substr($parts[0], 0, 1) . '***@' . ($parts[1] ?? '');
-
-        return redirect('/')->with(
-            'device_notice',
-            "Unauthorized device detected. A secure authorization link has been sent to your email ({$maskedEmail}). Open the link on this device to access the login page and dashboard."
-        );
+    if (! $user || ! $user->isAdminOrStaff()) {
+        abort(404);
     }
 
     // Check mandatory password change or expiration
@@ -129,16 +105,17 @@ Route::get('/dashboard', function (\Illuminate\Http\Request $request) {
     }
 
     $team = $user->currentTeam ?: $user->teams()->first() ?: \App\Models\Team::first();
+    $teamSlug = $team?->slug ?? 'mr-pride';
     if ($team) {
         $user->switchTeam($team);
         if ($user->isAdmin()) {
-            return redirect("/{$team->slug}/dashboard");
+            return redirect("/{$teamSlug}/dashboard");
         }
-        return redirect("/{$team->slug}/" . $user->assignedModuleSlug());
+        return redirect("/{$teamSlug}/" . $user->assignedModuleSlug());
     }
 
-    return redirect('/');
-})->middleware(['auth'])->name('dashboard.redirect');
+    abort(404);
+})->middleware(['device_verified'])->name('dashboard.redirect');
 
 // Admin & Staff Workspace routes with full security middleware stack
 Route::prefix('{current_team}')
@@ -174,6 +151,7 @@ Route::prefix('{current_team}')
             Route::delete('users/sessions/{sessionId}', [UserController::class, 'revokeSession'])->name('users.sessions.destroy');
             Route::post('users/{user}/sessions/revoke', [UserController::class, 'revokeUserSessions'])->name('users.sessions.revoke-user');
             Route::post('users/devices/enroll', [UserController::class, 'enrollDevice'])->name('users.devices.enroll');
+            Route::patch('users/devices/{device}/rename', [UserController::class, 'renameDevice'])->name('users.devices.rename');
             Route::post('users/devices/{device}/approve', [UserController::class, 'approveDevice'])->name('users.devices.approve');
             Route::post('users/devices/{device}/revoke', [UserController::class, 'revokeDevice'])->name('users.devices.revoke');
             Route::delete('users/devices/{device}', [UserController::class, 'destroyDevice'])->name('users.devices.destroy');
