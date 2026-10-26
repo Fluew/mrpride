@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import SpecularButton from '@/components/ui/SpecularButton.vue';
 import { 
     Search, 
@@ -15,7 +15,12 @@ import {
     Clock, 
     Trash2, 
     X,
-    CreditCard
+    CreditCard,
+    Building2,
+    Smartphone,
+    Upload,
+    FileText,
+    ExternalLink
 } from '@lucide/vue';
 
 interface SaleItem {
@@ -38,6 +43,11 @@ interface Sale {
     grand_total: number;
     status: string;
     payment_method?: string;
+    payment_reference?: string;
+    amount_paid?: number;
+    payment_date?: string;
+    proof_of_payment?: string;
+    proof_url?: string;
     notes?: string;
     items?: SaleItem[];
 }
@@ -101,8 +111,13 @@ const applyFilter = () => {
 // POS State
 const posModalOpen = ref(false);
 const productSearch = ref('');
-const currentCustomer = ref('Walk-in Customer');
-const paymentMethod = ref('Cash');
+const currentCustomer = ref('');
+const paymentMethod = ref<'Bank Transfer' | 'GCash'>('Bank Transfer');
+const paymentReference = ref('');
+const amountPaid = ref<number | ''>('');
+const paymentDate = ref(new Date().toISOString().split('T')[0]);
+const proofOfPaymentFile = ref<File | null>(null);
+const proofFileName = ref('');
 const notes = ref('');
 const cart = ref<Array<{
     product_id: number;
@@ -122,8 +137,13 @@ const filteredProducts = computed(() => {
 });
 
 const openPosModal = () => {
-    currentCustomer.value = 'Walk-in Customer';
-    paymentMethod.value = 'Cash';
+    currentCustomer.value = '';
+    paymentMethod.value = 'Bank Transfer';
+    paymentReference.value = '';
+    amountPaid.value = '';
+    paymentDate.value = new Date().toISOString().split('T')[0];
+    proofOfPaymentFile.value = null;
+    proofFileName.value = '';
     notes.value = '';
     cart.value = [];
     productSearch.value = '';
@@ -169,6 +189,43 @@ const cartTotal = computed(() => {
     return cart.value.reduce((sum, item) => sum + item.price * item.qty, 0);
 });
 
+// Auto-sync amount paid with cart total when total changes
+watch(cartTotal, (newTotal) => {
+    if (newTotal > 0) {
+        amountPaid.value = Number(newTotal.toFixed(2));
+    } else {
+        amountPaid.value = '';
+    }
+});
+
+const handleProofFileChange = (e: Event) => {
+    const target = e.target as HTMLInputElement;
+    if (target.files && target.files.length > 0) {
+        proofOfPaymentFile.value = target.files[0];
+        proofFileName.value = target.files[0].name;
+    } else {
+        proofOfPaymentFile.value = null;
+        proofFileName.value = '';
+    }
+};
+
+const clearProofFile = () => {
+    proofOfPaymentFile.value = null;
+    proofFileName.value = '';
+};
+
+const canComplete = computed(() => {
+    return (
+        cart.value.length > 0 &&
+        currentCustomer.value.trim().length > 0 &&
+        paymentReference.value.trim().length > 0 &&
+        amountPaid.value !== '' &&
+        Number(amountPaid.value) > 0 &&
+        Boolean(paymentDate.value) &&
+        !isSubmitting.value
+    );
+});
+
 // Action Confirmation Modal State
 interface ConfirmActionOptions {
     title: string;
@@ -201,17 +258,21 @@ const handleConfirmedAction = () => {
 };
 
 const promptCompleteTransaction = () => {
-    if (cart.value.length === 0) return;
+    if (!canComplete.value) return;
 
     const itemCount = cart.value.reduce((s, i) => s + i.qty, 0);
 
     openConfirmModal({
         title: 'Confirm Sale Transaction',
-        description: `Are you sure you want to finalize and record this sale for "${currentCustomer.value || 'Walk-in Customer'}"?`,
+        description: `Are you sure you want to finalize and record this sale for "${currentCustomer.value.trim()}"?`,
         details: [
-            { label: 'Customer / Billed To', value: currentCustomer.value || 'Walk-in Customer' },
-            { label: 'Items in Order', value: `${cart.value.length} distinct items (${itemCount} units)` },
+            { label: 'Customer Name', value: currentCustomer.value.trim() },
             { label: 'Payment Method', value: paymentMethod.value },
+            { label: 'Payment Reference', value: paymentReference.value.trim() },
+            { label: 'Amount Paid', value: formatCurrency(Number(amountPaid.value)) },
+            { label: 'Payment Date', value: paymentDate.value },
+            { label: 'Proof of Payment', value: proofFileName.value ? proofFileName.value : 'None attached' },
+            { label: 'Items in Order', value: `${cart.value.length} distinct items (${itemCount} units)` },
             { label: 'Total Amount', value: formatCurrency(cartTotal.value) },
         ],
         confirmText: 'Complete Sale',
@@ -221,15 +282,19 @@ const promptCompleteTransaction = () => {
 
 const isSubmitting = ref(false);
 const completeTransaction = () => {
-    if (cart.value.length === 0) return;
+    if (!canComplete.value) return;
 
     isSubmitting.value = true;
     router.post(
         `/${teamSlug.value}/sales`,
         {
-            customer: currentCustomer.value || 'Walk-in Customer',
+            customer: currentCustomer.value.trim(),
             payment_method: paymentMethod.value,
-            notes: notes.value,
+            payment_reference: paymentReference.value.trim(),
+            amount_paid: Number(amountPaid.value),
+            payment_date: paymentDate.value,
+            notes: notes.value || undefined,
+            proof_of_payment: proofOfPaymentFile.value || undefined,
             items: cart.value.map(item => ({
                 product_id: item.product_id,
                 qty: item.qty,
@@ -237,6 +302,7 @@ const completeTransaction = () => {
         },
         {
             preserveScroll: true,
+            forceFormData: true,
             onSuccess: () => {
                 isSubmitting.value = false;
                 closePosModal();
@@ -374,7 +440,12 @@ const printSheet = () => {
                             <td class="px-6 py-4 text-gray-600">{{ new Date(sale.sale_date).toLocaleString() }}</td>
                             <td class="px-6 py-4 font-medium text-gray-900">{{ sale.client_name }}</td>
                             <td class="px-6 py-4 text-gray-600">{{ sale.items?.length || 0 }} items</td>
-                            <td class="px-6 py-4 text-gray-600 text-xs">{{ sale.payment_method || 'Cash' }}</td>
+                            <td class="px-6 py-4 text-gray-600 text-xs">
+                                <div class="font-medium text-gray-900">{{ sale.payment_method || 'Bank Transfer' }}</div>
+                                <div v-if="sale.payment_reference" class="text-[11px] text-gray-500 font-mono mt-0.5">
+                                    Ref: {{ sale.payment_reference }}
+                                </div>
+                            </td>
                             <td class="px-6 py-4 font-black text-gray-900">{{ formatCurrency(Number(sale.grand_total)) }}</td>
                             <td class="px-6 py-4">
                                 <span :class="[
@@ -426,11 +497,11 @@ const printSheet = () => {
 
         <!-- POS Modal -->
         <div v-if="posModalOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div class="bg-white border border-gray-200 rounded-2xl shadow-2xl w-full max-w-5xl flex flex-col md:flex-row h-[85vh] overflow-hidden">
+            <div class="bg-white border border-gray-200 rounded-2xl shadow-2xl w-full max-w-6xl flex flex-col md:flex-row h-[90vh] overflow-hidden">
                 
                 <!-- Left: Catalog -->
-                <div class="w-full md:w-3/5 border-r border-gray-200 flex flex-col">
-                    <div class="p-4 border-b border-gray-200 bg-gray-50">
+                <div class="w-full md:w-7/12 border-r border-gray-200 flex flex-col h-full overflow-hidden">
+                    <div class="p-4 border-b border-gray-200 bg-gray-50 shrink-0">
                         <h2 class="text-lg font-bold text-gray-900 mb-2">Select Products</h2>
                         <div class="relative">
                             <Search class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -463,123 +534,251 @@ const printSheet = () => {
                 </div>
 
                 <!-- Right: Cart & Checkout -->
-                <div class="w-full md:w-2/5 flex flex-col bg-gray-50">
-                    <div class="p-4 border-b border-gray-200 bg-white flex justify-between items-center">
+                <div class="w-full md:w-5/12 flex flex-col bg-gray-50 h-full overflow-hidden">
+                    <div class="p-3.5 border-b border-gray-200 bg-white flex justify-between items-center shrink-0">
                         <div class="flex items-center gap-2">
                             <ShoppingCart class="w-5 h-5 text-gray-700" />
-                            <h2 class="text-lg font-bold text-gray-900">Current Order</h2>
+                            <h2 class="text-base font-bold text-gray-900">Current Order</h2>
                         </div>
-                        <button @click="closePosModal" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+                        <button @click="closePosModal" class="text-gray-400 hover:text-gray-600 text-xl font-bold">&times;</button>
                     </div>
 
-                    <!-- Customer & Payment inputs -->
-                    <div class="p-4 border-b border-gray-200 space-y-3 bg-white">
-                        <div class="relative">
+                    <!-- Scrollable Form & Cart Section -->
+                    <div class="flex-1 overflow-y-auto p-4 space-y-3.5">
+                        <!-- Customer Name Input -->
+                        <div>
+                            <label for="pos_customer" class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                                Customer Name <span class="text-rose-500">*</span>
+                            </label>
                             <input
                                 id="pos_customer"
                                 v-model="currentCustomer"
                                 type="text"
-                                placeholder=" "
-                                class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
+                                placeholder="Customer Name"
+                                class="block w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm placeholder:text-gray-400 font-medium shadow-xs"
+                                required
                             />
-                            <label
-                                for="pos_customer"
-                                class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
-                                :class="currentCustomer ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''"
-                            >
-                                Customer Name
-                            </label>
                         </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div class="relative">
-                                <select
-                                    id="pos_payment"
-                                    v-model="paymentMethod"
-                                    class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
-                                >
-                                    <option value="Cash">Cash</option>
-                                    <option value="GCash / Maya">GCash / Maya</option>
-                                    <option value="Bank Transfer">Bank Transfer</option>
-                                    <option value="Check">Check</option>
-                                </select>
-                                <label
-                                    for="pos_payment"
-                                    class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]"
-                                >
-                                    Payment Method
-                                </label>
-                            </div>
-                            <div class="relative">
-                                <input
-                                    id="pos_notes"
-                                    v-model="notes"
-                                    type="text"
-                                    placeholder=" "
-                                    class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
-                                />
-                                <label
-                                    for="pos_notes"
-                                    class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
-                                    :class="notes ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''"
-                                >
-                                    Notes
-                                </label>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Cart Items -->
-                    <div class="flex-1 overflow-y-auto p-4 space-y-2">
-                        <div v-if="cart.length === 0" class="text-gray-400 text-center mt-12 text-sm">
-                            <ShoppingCart class="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                            Cart is empty.<br>Click products on the left to add items.
-                        </div>
-                        <div
-                            v-for="(item, idx) in cart"
-                            :key="item.product_id"
-                            class="flex justify-between items-center bg-white border border-gray-200 p-2.5 rounded-xl shadow-sm"
-                        >
-                            <div class="flex-1 pr-2">
-                                <div class="text-xs font-semibold text-gray-900 line-clamp-1">{{ item.name }}</div>
-                                <div class="text-[11px] text-gray-500">{{ formatCurrency(item.price) }} each</div>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <div class="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
-                                    <button @click="updateQty(idx, item.qty - 1)" class="px-2 py-0.5 text-gray-600 hover:bg-gray-100 text-xs font-bold">-</button>
-                                    <span class="px-2 text-xs font-semibold text-gray-900">{{ item.qty }}</span>
-                                    <button @click="updateQty(idx, item.qty + 1)" class="px-2 py-0.5 text-gray-600 hover:bg-gray-100 text-xs font-bold">+</button>
-                                </div>
-                                <span class="text-xs font-bold text-gray-900 w-16 text-right">
-                                    {{ formatCurrency(item.price * item.qty) }}
-                                </span>
-                                <button @click="removeFromCart(idx)" class="text-gray-400 hover:text-red-500 ml-1">
-                                    <X class="w-3.5 h-3.5" />
+                        <!-- Select payment method -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                                Select payment method <span class="text-rose-500">*</span>
+                            </label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button
+                                    type="button"
+                                    @click="paymentMethod = 'Bank Transfer'"
+                                    :class="[
+                                        'flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-bold transition-all shadow-xs cursor-pointer',
+                                        paymentMethod === 'Bank Transfer'
+                                            ? 'border-[#4b5320] bg-[#4b5320] text-white shadow-sm ring-2 ring-[#4b5320]/20'
+                                            : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                                    ]"
+                                >
+                                    <Building2 class="w-4 h-4 shrink-0" />
+                                    <span>Bank Transfer</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    @click="paymentMethod = 'GCash'"
+                                    :class="[
+                                        'flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-bold transition-all shadow-xs cursor-pointer',
+                                        paymentMethod === 'GCash'
+                                            ? 'border-[#007DFE] bg-[#007DFE] text-white shadow-sm ring-2 ring-[#007DFE]/20'
+                                            : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                                    ]"
+                                >
+                                    <Smartphone class="w-4 h-4 shrink-0" />
+                                    <span>GCash</span>
                                 </button>
                             </div>
                         </div>
+
+                        <!-- Enter payment details -->
+                        <div class="rounded-xl border border-gray-200 bg-white p-3.5 space-y-3 shadow-xs">
+                            <div class="flex items-center justify-between border-b border-gray-100 pb-2">
+                                <span class="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                                    <Receipt class="w-3.5 h-3.5 text-[#4b5320]" />
+                                    Enter payment details
+                                </span>
+                                <span class="text-[11px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
+                                    {{ paymentMethod }}
+                                </span>
+                            </div>
+
+                            <!-- Payment reference number (required) -->
+                            <div>
+                                <label for="pos_ref" class="block text-xs font-semibold text-gray-700 mb-1">
+                                    Payment reference number <span class="text-rose-500">*</span>
+                                </label>
+                                <input
+                                    id="pos_ref"
+                                    v-model="paymentReference"
+                                    type="text"
+                                    :placeholder="paymentMethod === 'GCash' ? 'e.g. GCash Ref # (e.g. 1002348912)' : 'e.g. Bank Transfer Ref / Trace #'"
+                                    class="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none placeholder:text-gray-400 font-mono shadow-xs"
+                                    required
+                                />
+                            </div>
+
+                            <!-- Amount paid & Payment date -->
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label for="pos_amount" class="block text-xs font-semibold text-gray-700 mb-1">
+                                        Amount paid <span class="text-rose-500">*</span>
+                                    </label>
+                                    <div class="relative">
+                                        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-bold">₱</span>
+                                        <input
+                                            id="pos_amount"
+                                            v-model.number="amountPaid"
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            placeholder="0.00"
+                                            class="block w-full rounded-lg border border-gray-200 bg-white pl-6 pr-2.5 py-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none font-semibold shadow-xs"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label for="pos_date" class="block text-xs font-semibold text-gray-700 mb-1">
+                                        Payment date <span class="text-rose-500">*</span>
+                                    </label>
+                                    <input
+                                        id="pos_date"
+                                        v-model="paymentDate"
+                                        type="date"
+                                        class="block w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none shadow-xs"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <!-- Optional proof of payment, if needed -->
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-700 mb-1">
+                                    Optional proof of payment, if needed
+                                </label>
+                                <div v-if="!proofOfPaymentFile" class="relative">
+                                    <input
+                                        id="pos_proof"
+                                        type="file"
+                                        accept="image/*,application/pdf"
+                                        @change="handleProofFileChange"
+                                        class="sr-only"
+                                    />
+                                    <label
+                                        for="pos_proof"
+                                        class="flex items-center justify-center gap-2 w-full px-3 py-2 border border-dashed border-gray-300 rounded-lg bg-gray-50/50 hover:bg-gray-50 cursor-pointer text-xs text-gray-600 transition-colors"
+                                    >
+                                        <Upload class="w-3.5 h-3.5 text-gray-400" />
+                                        <span>Upload receipt / transfer screenshot</span>
+                                    </label>
+                                </div>
+                                <div v-else class="flex items-center justify-between px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs">
+                                    <div class="flex items-center gap-2 truncate text-gray-700">
+                                        <FileText class="w-3.5 h-3.5 text-[#4b5320] shrink-0" />
+                                        <span class="truncate font-medium">{{ proofFileName }}</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        @click="clearProofFile"
+                                        class="text-gray-400 hover:text-red-500 ml-2 p-0.5 cursor-pointer"
+                                        title="Remove file"
+                                    >
+                                        <X class="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Optional Notes -->
+                        <div>
+                            <label for="pos_notes" class="block text-xs font-semibold text-gray-700 mb-1">
+                                Order Notes <span class="text-gray-400 font-normal">(Optional)</span>
+                            </label>
+                            <input
+                                id="pos_notes"
+                                v-model="notes"
+                                type="text"
+                                placeholder="Add any special instructions or remarks..."
+                                class="block w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none placeholder:text-gray-400 shadow-xs"
+                            />
+                        </div>
+
+                        <!-- Cart Items -->
+                        <div class="space-y-2 pt-1">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                                    Cart Items ({{ cart.length }})
+                                </span>
+                                <span v-if="cart.length > 0" class="text-xs text-gray-500">
+                                    {{ cart.reduce((s, i) => s + i.qty, 0) }} total units
+                                </span>
+                            </div>
+
+                            <div v-if="cart.length === 0" class="text-gray-400 text-center py-6 text-xs bg-white rounded-xl border border-dashed border-gray-200">
+                                <ShoppingCart class="w-6 h-6 mx-auto mb-1 text-gray-300" />
+                                Cart is empty. Click products on the left to add items.
+                            </div>
+
+                            <div
+                                v-for="(item, idx) in cart"
+                                :key="item.product_id"
+                                class="flex justify-between items-center bg-white border border-gray-200 p-2.5 rounded-xl shadow-xs"
+                            >
+                                <div class="flex-1 pr-2">
+                                    <div class="text-xs font-semibold text-gray-900 line-clamp-1">{{ item.name }}</div>
+                                    <div class="text-[11px] text-gray-500">{{ formatCurrency(item.price) }} each</div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <div class="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-white">
+                                        <button @click="updateQty(idx, item.qty - 1)" class="px-2 py-0.5 text-gray-600 hover:bg-gray-100 text-xs font-bold cursor-pointer">-</button>
+                                        <span class="px-2 text-xs font-semibold text-gray-900">{{ item.qty }}</span>
+                                        <button @click="updateQty(idx, item.qty + 1)" class="px-2 py-0.5 text-gray-600 hover:bg-gray-100 text-xs font-bold cursor-pointer">+</button>
+                                    </div>
+                                    <span class="text-xs font-bold text-gray-900 w-16 text-right">
+                                        {{ formatCurrency(item.price * item.qty) }}
+                                    </span>
+                                    <button @click="removeFromCart(idx)" class="text-gray-400 hover:text-red-500 ml-1 cursor-pointer">
+                                        <X class="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- Total & Checkout -->
-                    <div class="p-4 bg-white border-t border-gray-200">
+                    <!-- Total & Checkout Footer -->
+                    <div class="p-4 bg-white border-t border-gray-200 shrink-0 shadow-xs">
                         <div class="flex justify-between text-gray-500 text-xs mb-1">
                             <span>Subtotal</span>
                             <span>{{ formatCurrency(cartTotal) }}</span>
                         </div>
-                        <div class="flex justify-between text-gray-500 text-xs mb-3">
-                            <span>Items Count</span>
-                            <span>{{ cart.reduce((s, i) => s + i.qty, 0) }} units</span>
+                        <div class="flex justify-between text-gray-500 text-xs mb-2.5">
+                            <span>Payment Method</span>
+                            <span class="font-semibold text-gray-800">{{ paymentMethod }}</span>
                         </div>
-                        <div class="flex justify-between items-baseline text-gray-900 text-xl font-black mb-4">
+                        <div class="flex justify-between items-baseline text-gray-900 text-lg font-black mb-3">
                             <span>Total</span>
                             <span class="text-[#F8B803] text-2xl">{{ formatCurrency(cartTotal) }}</span>
                         </div>
                         
+                        <div v-if="!canComplete && cart.length > 0" class="mb-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1">
+                            <span v-if="!currentCustomer.trim()">Enter Customer Name to proceed.</span>
+                            <span v-else-if="!paymentReference.trim()">Enter Payment Reference Number.</span>
+                            <span v-else-if="!amountPaid || Number(amountPaid) <= 0">Enter valid Amount Paid.</span>
+                        </div>
+
                         <SpecularButton
                             variant="brand"
                             size="lg"
                             :radius="10"
                             class="w-full"
-                            :disabled="cart.length === 0 || isSubmitting"
+                            :disabled="!canComplete || isSubmitting"
                             @click="promptCompleteTransaction"
                         >
                             {{ isSubmitting ? 'Recording...' : 'Complete & Record Sale' }}
@@ -598,19 +797,42 @@ const printSheet = () => {
                         <h2 class="text-2xl font-black text-gray-900 tracking-tight">OFFICIAL RECEIPT / INVOICE</h2>
                         <p class="text-sm text-gray-500">Invoice: <strong class="text-[#F8B803]">{{ selectedInvoice.invoice_number }}</strong></p>
                     </div>
-                    <button @click="invoiceModalOpen = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+                    <button @click="invoiceModalOpen = false" class="text-gray-400 hover:text-gray-600 text-xl font-bold cursor-pointer">&times;</button>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4 text-xs text-gray-600 mb-6 bg-gray-50 p-4 rounded-xl">
-                    <div>
-                        <div class="font-bold text-gray-900 mb-1">Billed To:</div>
+                <div class="grid grid-cols-2 gap-4 text-xs text-gray-600 mb-6 bg-gray-50 p-4 rounded-xl border border-gray-100">
+                    <div class="space-y-1">
+                        <div class="font-bold text-gray-900 mb-1">Customer / Billed To:</div>
                         <div class="text-sm font-semibold text-gray-800">{{ selectedInvoice.client_name }}</div>
-                        <div>Payment Method: {{ selectedInvoice.payment_method || 'Cash' }}</div>
+                        <div><span class="text-gray-500">Payment Method:</span> <strong class="text-gray-900">{{ selectedInvoice.payment_method || 'Bank Transfer' }}</strong></div>
+                        <div v-if="selectedInvoice.payment_reference">
+                            <span class="text-gray-500">Payment Reference:</span> <strong class="font-mono text-gray-900">{{ selectedInvoice.payment_reference }}</strong>
+                        </div>
+                        <div v-if="selectedInvoice.amount_paid">
+                            <span class="text-gray-500">Amount Paid:</span> <strong class="text-gray-900">{{ formatCurrency(Number(selectedInvoice.amount_paid)) }}</strong>
+                        </div>
+                        <div v-if="selectedInvoice.payment_date">
+                            <span class="text-gray-500">Payment Date:</span> <strong class="text-gray-900">{{ new Date(selectedInvoice.payment_date).toLocaleDateString() }}</strong>
+                        </div>
+                        <div v-if="selectedInvoice.proof_url" class="pt-1.5">
+                            <a
+                                :href="selectedInvoice.proof_url"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="inline-flex items-center gap-1.5 text-xs font-semibold text-[#4b5320] hover:underline"
+                            >
+                                <ExternalLink class="w-3.5 h-3.5" />
+                                View Proof of Payment Attachment
+                            </a>
+                        </div>
                     </div>
-                    <div class="text-right">
+                    <div class="text-right space-y-1">
                         <div class="font-bold text-gray-900 mb-1">Invoice Details:</div>
                         <div>Date: {{ new Date(selectedInvoice.sale_date).toLocaleString() }}</div>
                         <div>Status: <span class="font-bold text-emerald-600">{{ selectedInvoice.status }}</span></div>
+                        <div v-if="selectedInvoice.notes" class="text-gray-500 italic mt-2">
+                            Notes: {{ selectedInvoice.notes }}
+                        </div>
                     </div>
                 </div>
 

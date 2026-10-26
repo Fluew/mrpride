@@ -89,6 +89,11 @@ class LoginResponse implements LoginResponseContract
         }
 
         // 4. Update last login and device usage
+        $isFirstLogin = ($user->last_login_at === null);
+        if ($isFirstLogin) {
+            session(['is_first_login' => true]);
+        }
+
         $user->update(['last_login_at' => now()]);
         $device->updateQuietly([
             'last_used_at' => now(),

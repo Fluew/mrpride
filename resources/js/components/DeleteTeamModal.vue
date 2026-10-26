@@ -31,7 +31,7 @@ const confirmationName = ref('');
 const formKey = ref(0);
 
 const canDeleteTeam = computed(() => {
-    return confirmationName.value === props.team.name;
+    return confirmationName.value === props.team.name || confirmationName.value.trim().toUpperCase() === 'YES';
 });
 
 const handleOpenChange = (nextOpen: boolean) => {
@@ -66,15 +66,14 @@ const handleOpenChange = (nextOpen: boolean) => {
                 <div class="space-y-4 py-4">
                     <div class="grid gap-2">
                         <Label for="confirmation-name">
-                            Type
-                            <strong>"{{ props.team.name }}"</strong> to confirm
+                            Type <strong>"{{ props.team.name }}"</strong> or <strong class="font-mono text-rose-600">YES</strong> to confirm deletion:
                         </Label>
                         <Input
                             id="confirmation-name"
                             name="name"
                             data-test="delete-team-name"
                             v-model="confirmationName"
-                            placeholder="Enter team name"
+                            placeholder="Type YES or team name"
                             autocomplete="off"
                         />
                         <InputError :message="errors.name" />

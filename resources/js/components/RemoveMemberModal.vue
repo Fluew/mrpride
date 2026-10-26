@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { router } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
     Dialog,
     DialogClose,
@@ -26,6 +28,13 @@ const emit = defineEmits<{
 }>();
 
 const processing = ref(false);
+const deleteConfirmText = ref('');
+
+watch(() => props.open, (newVal) => {
+    if (!newVal) {
+        deleteConfirmText.value = '';
+    }
+});
 
 const removeMember = () => {
     if (!props.member) {
@@ -51,6 +60,18 @@ const removeMember = () => {
                 </DialogDescription>
             </DialogHeader>
 
+            <div class="space-y-2 py-2">
+                <Label class="text-xs font-semibold">
+                    Type <span class="font-mono font-bold text-rose-600">YES</span> if you wish to delete:
+                </Label>
+                <Input
+                    v-model="deleteConfirmText"
+                    type="text"
+                    placeholder="Type YES here"
+                    class="font-mono text-sm"
+                />
+            </div>
+
             <DialogFooter class="gap-2">
                 <DialogClose as-child>
                     <Button variant="secondary"> Cancel </Button>
@@ -59,7 +80,7 @@ const removeMember = () => {
                 <Button
                     data-test="remove-member-confirm"
                     variant="destructive"
-                    :disabled="processing"
+                    :disabled="processing || deleteConfirmText.trim().toUpperCase() !== 'YES'"
                     @click="removeMember"
                 >
                     Remove member

@@ -40,8 +40,9 @@ class DeleteTeamRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
-                if ($this->input('name') !== $this->team()->name) {
-                    $validator->errors()->add('name', __('The team name does not match.'));
+                $input = trim((string) $this->input('name'));
+                if ($input !== $this->team()->name && strtoupper($input) !== 'YES') {
+                    $validator->errors()->add('name', __('Please type the team name or "YES" to confirm deletion.'));
                 }
             },
         ];

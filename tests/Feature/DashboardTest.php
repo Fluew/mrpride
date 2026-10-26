@@ -162,3 +162,49 @@ test('dashboard does not include or delete other users invitations', function ()
         'id' => $invitation->id,
     ]);
 });
+
+test('dashboard passes isFirstLogin true on first time login and includes user first name', function () {
+    $user = User::factory()->create([
+        'name' => 'Juan Dela Cruz',
+        'role' => 'admin',
+        'password_changed_at' => now(),
+        'last_login_at' => null,
+    ]);
+    $deviceData = createTrustedDeviceFor($user);
+
+    $response = $this
+        ->actingAs($user)
+        ->withSession(['is_first_login' => true])
+        ->withCookies($deviceData['cookies'])
+        ->get(route('dashboard'));
+
+    $response->assertOk();
+    $response->assertInertia(fn (Assert $page) => $page
+        ->component('Dashboard')
+        ->where('isFirstLogin', true)
+        ->where('auth.user.first_name', 'Juan')
+    );
+});
+
+test('dashboard passes isFirstLogin false for returning user', function () {
+    $user = User::factory()->create([
+        'name' => 'Juan Dela Cruz',
+        'role' => 'admin',
+        'password_changed_at' => now(),
+        'last_login_at' => now()->subDays(2),
+        'created_at' => now()->subDays(10),
+    ]);
+    $deviceData = createTrustedDeviceFor($user);
+
+    $response = $this
+        ->actingAs($user)
+        ->withCookies($deviceData['cookies'])
+        ->get(route('dashboard'));
+
+    $response->assertOk();
+    $response->assertInertia(fn (Assert $page) => $page
+        ->component('Dashboard')
+        ->where('isFirstLogin', false)
+        ->where('auth.user.first_name', 'Juan')
+    );
+});

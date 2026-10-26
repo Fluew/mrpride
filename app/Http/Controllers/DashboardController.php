@@ -144,10 +144,19 @@ class DashboardController extends Controller
                 ->all();
         }
 
+        $isFirstLogin = (bool) session('is_first_login', false);
+        if (! $isFirstLogin && $user) {
+            $loginCount = $user->auditLogs()->where('action_type', 'auth.login.success')->count();
+            if ($loginCount <= 1 && ($user->last_login_at === null || ($user->created_at && $user->created_at->diffInHours(now()) < 24))) {
+                $isFirstLogin = true;
+            }
+        }
+
         return Inertia::render('Dashboard', [
             'pendingInvitations' => $pendingInvitations,
             'stats' => $stats,
             'recentActivity' => $recentActivity,
+            'isFirstLogin' => $isFirstLogin,
         ]);
     }
 }

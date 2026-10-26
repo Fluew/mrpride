@@ -1,0 +1,1213 @@
+<script setup lang="ts">
+import { Head, router, usePage } from '@inertiajs/vue3';
+import { ref, computed, watch } from 'vue';
+import SpecularButton from '@/components/ui/SpecularButton.vue';
+import {
+    Archive,
+    Trash2,
+    RotateCcw,
+    Eye,
+    Search,
+    AlertTriangle,
+    CheckCircle2,
+    Clock,
+    User,
+    Package,
+    Building2,
+    FileText,
+    ShoppingCart,
+    Truck,
+    Banknote,
+    MessageSquare,
+    Layers,
+    X,
+    Filter,
+    RefreshCw,
+    ShieldAlert,
+    Check,
+    FileSpreadsheet,
+    AlertCircle
+} from '@lucide/vue';
+
+interface TrashedRecord {
+    id: number | string;
+    type: string;
+    type_label: string;
+    badge: string;
+    title: string;
+    identifier: string;
+    summary: string;
+    deleted_at_raw: string;
+    deleted_at: string;
+    deleted_at_human: string;
+    created_at: string;
+    deleted_by?: {
+        id: number;
+        name: string;
+        email: string;
+        role: string;
+    } | null;
+    details: Array<{ label: string; value: string }>;
+}
+
+interface AvailableType {
+    key: string;
+    label: string;
+    badge: string;
+}
+
+const props = defineProps<{
+    records: {
+        data: TrashedRecord[];
+        current_page: number;
+        last_page: number;
+        total: number;
+        from: number;
+        to: number;
+        links: Array<{ url: string | null; label: string; active: boolean }>;
+    };
+    counts: Record<string, number>;
+    stats: {
+        total: number;
+        deleted_today: number;
+        types_with_records: number;
+    };
+    filters: {
+        type: string;
+        search: string;
+    };
+    availableTypes: AvailableType[];
+}>();
+
+const page = usePage();
+const teamSlug = computed(() => (page.props as any).currentTeam?.slug || '');
+
+// Local filter state
+const searchQuery = ref(props.filters.search || '');
+const selectedType = ref(props.filters.type || 'all');
+let searchTimeout: ReturnType<typeof setTimeout> | null = null;
+
+const applyFilters = () => {
+    if (searchTimeout) clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        router.get(
+            `/${teamSlug.value}/recycle-bin`,
+            {
+                type: selectedType.value !== 'all' ? selectedType.value : undefined,
+                search: searchQuery.value ? searchQuery.value : undefined,
+            },
+            {
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+            }
+        );
+    }, 300);
+};
+
+const filterByType = (type: string) => {
+    selectedType.value = type;
+    applyFilters();
+};
+
+watch(searchQuery, () => {
+    applyFilters();
+});
+
+// Toast Notifications
+const notificationMessage = ref('');
+const notificationType = ref<'success' | 'error' | 'info'>('success');
+
+const showNotification = (msg: string, type: 'success' | 'error' | 'info' = 'success') => {
+    notificationMessage.value = msg;
+    notificationType.value = type;
+    setTimeout(() => {
+        notificationMessage.value = '';
+    }, 4500);
+};
+
+// Check flash messages on mount / updates
+watch(
+    () => page.props.flash,
+    (flash: any) => {
+        if (flash?.success) showNotification(flash.success, 'success');
+        if (flash?.error) showNotification(flash.error, 'error');
+        if (flash?.info) showNotification(flash.info, 'info');
+    },
+    { immediate: true, deep: true }
+);
+
+// Selection state for bulk actions
+const selectedIds = ref<Array<{ type: string; id: number | string }>>([]);
+
+const isAllSelected = computed(() => {
+    if (!props.records.data.length) return false;
+    return props.records.data.every((r) =>
+        selectedIds.value.some((sel) => sel.type === r.type && sel.id === r.id)
+    );
+});
+
+const toggleSelectAll = () => {
+    if (isAllSelected.value) {
+        selectedIds.value = [];
+    } else {
+        selectedIds.value = props.records.data.map((r) => ({ type: r.type, id: r.id }));
+    }
+};
+
+const toggleSelectItem = (record: TrashedRecord) => {
+    const idx = selectedIds.value.findIndex((sel) => sel.type === record.type && sel.id === record.id);
+    if (idx >= 0) {
+        selectedIds.value.splice(idx, 1);
+    } else {
+        selectedIds.value.push({ type: record.type, id: record.id });
+    }
+};
+
+const isItemSelected = (record: TrashedRecord) => {
+    return selectedIds.value.some((sel) => sel.type === record.type && sel.id === record.id);
+};
+
+// ==========================================
+// ACTION MODALS STATE
+// ==========================================
+const isProcessing = ref(false);
+
+// View Details Modal
+const showDetailsModal = ref(false);
+const activeRecord = ref<TrashedRecord | null>(null);
+
+const openDetailsModal = (record: TrashedRecord) => {
+    activeRecord.value = record;
+    showDetailsModal.value = true;
+};
+
+// Restore Single Modal
+const showRestoreModal = ref(false);
+const recordToRestore = ref<TrashedRecord | null>(null);
+
+const openRestoreModal = (record: TrashedRecord) => {
+    recordToRestore.value = record;
+    showRestoreModal.value = true;
+};
+
+const confirmRestore = () => {
+    if (!recordToRestore.value) return;
+    isProcessing.value = true;
+
+    router.post(
+        `/${teamSlug.value}/recycle-bin/${recordToRestore.value.type}/${recordToRestore.value.id}/restore`,
+        {},
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                showRestoreModal.value = false;
+                if (showDetailsModal.value && activeRecord.value?.id === recordToRestore.value?.id) {
+                    showDetailsModal.value = false;
+                }
+                recordToRestore.value = null;
+                isProcessing.value = false;
+                // Clean up selected items
+                selectedIds.value = selectedIds.value.filter(
+                    (s) => !(s.type === recordToRestore.value?.type && s.id === recordToRestore.value?.id)
+                );
+            },
+            onError: () => {
+                isProcessing.value = false;
+                showNotification('Failed to restore record.', 'error');
+            },
+            onFinish: () => {
+                isProcessing.value = false;
+            },
+        }
+    );
+};
+
+// Permanent Delete Single Modal
+const showForceDeleteModal = ref(false);
+const recordToForceDelete = ref<TrashedRecord | null>(null);
+const forceDeleteConfirmInput = ref('');
+const bulkForceDeleteConfirmInput = ref('');
+const emptyBinConfirmInput = ref('');
+
+const openForceDeleteModal = (record: TrashedRecord) => {
+    forceDeleteConfirmInput.value = '';
+    recordToForceDelete.value = record;
+    showForceDeleteModal.value = true;
+};
+
+const openBulkForceDeleteModal = () => {
+    bulkForceDeleteConfirmInput.value = '';
+    showBulkForceDeleteModal.value = true;
+};
+
+const openEmptyBinModal = () => {
+    emptyBinConfirmInput.value = '';
+    showEmptyBinModal.value = true;
+};
+
+const confirmForceDelete = () => {
+    if (!recordToForceDelete.value) return;
+    isProcessing.value = true;
+
+    router.delete(
+        `/${teamSlug.value}/recycle-bin/${recordToForceDelete.value.type}/${recordToForceDelete.value.id}/force`,
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                showForceDeleteModal.value = false;
+                if (showDetailsModal.value && activeRecord.value?.id === recordToForceDelete.value?.id) {
+                    showDetailsModal.value = false;
+                }
+                recordToForceDelete.value = null;
+                isProcessing.value = false;
+                // Clean up selected items
+                selectedIds.value = selectedIds.value.filter(
+                    (s) => !(s.type === recordToForceDelete.value?.type && s.id === recordToForceDelete.value?.id)
+                );
+            },
+            onError: () => {
+                isProcessing.value = false;
+                showNotification('Failed to permanently delete record.', 'error');
+            },
+            onFinish: () => {
+                isProcessing.value = false;
+            },
+        }
+    );
+};
+
+// Bulk Restore Modal
+const showBulkRestoreModal = ref(false);
+
+const confirmBulkRestore = () => {
+    if (!selectedIds.value.length) return;
+    isProcessing.value = true;
+
+    router.post(
+        `/${teamSlug.value}/recycle-bin/bulk-restore`,
+        { items: selectedIds.value },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                showBulkRestoreModal.value = false;
+                selectedIds.value = [];
+                isProcessing.value = false;
+            },
+            onError: () => {
+                isProcessing.value = false;
+                showNotification('Failed to perform bulk restore.', 'error');
+            },
+            onFinish: () => {
+                isProcessing.value = false;
+            },
+        }
+    );
+};
+
+// Bulk Force Delete Modal
+const showBulkForceDeleteModal = ref(false);
+
+const confirmBulkForceDelete = () => {
+    if (!selectedIds.value.length) return;
+    isProcessing.value = true;
+
+    router.post(
+        `/${teamSlug.value}/recycle-bin/bulk-force-delete`,
+        { items: selectedIds.value },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                showBulkForceDeleteModal.value = false;
+                selectedIds.value = [];
+                isProcessing.value = false;
+            },
+            onError: () => {
+                isProcessing.value = false;
+                showNotification('Failed to permanently purge records.', 'error');
+            },
+            onFinish: () => {
+                isProcessing.value = false;
+            },
+        }
+    );
+};
+
+// Empty Bin Modal
+const showEmptyBinModal = ref(false);
+
+const confirmEmptyBin = () => {
+    isProcessing.value = true;
+
+    router.post(
+        `/${teamSlug.value}/recycle-bin/empty`,
+        {},
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                showEmptyBinModal.value = false;
+                selectedIds.value = [];
+                isProcessing.value = false;
+            },
+            onError: () => {
+                isProcessing.value = false;
+                showNotification('Failed to empty recycle bin.', 'error');
+            },
+            onFinish: () => {
+                isProcessing.value = false;
+            },
+        }
+    );
+};
+
+// Helper to get type icon
+const getTypeIcon = (type: string) => {
+    switch (type) {
+        case 'product':
+            return Package;
+        case 'supplier':
+            return Building2;
+        case 'client':
+            return User;
+        case 'quotation':
+            return FileText;
+        case 'purchase_order':
+            return ShoppingCart;
+        case 'purchase_request':
+            return Layers;
+        case 'commercial_invoice':
+            return FileSpreadsheet;
+        case 'delivery':
+            return Truck;
+        case 'inquiry':
+            return MessageSquare;
+        case 'sale':
+            return Banknote;
+        default:
+            return Archive;
+    }
+};
+
+// Helper to get type badge color classes
+const getTypeBadgeClasses = (type: string) => {
+    switch (type) {
+        case 'product':
+            return 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60';
+        case 'supplier':
+            return 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60';
+        case 'client':
+            return 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/60';
+        case 'quotation':
+            return 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800/60';
+        case 'purchase_order':
+            return 'bg-cyan-50 text-cyan-800 border-cyan-200 dark:bg-cyan-950/40 dark:text-cyan-300 dark:border-cyan-800/60';
+        case 'purchase_request':
+            return 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800/60';
+        case 'commercial_invoice':
+            return 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/60';
+        case 'delivery':
+            return 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/60';
+        case 'inquiry':
+            return 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-800/60';
+        case 'sale':
+            return 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60';
+        default:
+            return 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700';
+    }
+};
+</script>
+
+<template>
+    <Head title="Archive / Recycle Bin | Admin" />
+
+    <!-- Toast Notification -->
+    <div
+        v-if="notificationMessage"
+        class="fixed top-5 right-5 z-[100] max-w-md px-4 py-3 rounded-xl shadow-xl border text-sm flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-200"
+        :class="[
+            notificationType === 'success' ? 'bg-emerald-50 text-emerald-900 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-100 dark:border-emerald-800' :
+            notificationType === 'error' ? 'bg-rose-50 text-rose-900 border-rose-200 dark:bg-rose-950 dark:text-rose-100 dark:border-rose-800' :
+            'bg-blue-50 text-blue-900 border-blue-200 dark:bg-blue-950 dark:text-blue-100 dark:border-blue-800'
+        ]"
+    >
+        <CheckCircle2 v-if="notificationType === 'success'" class="w-5 h-5 text-emerald-600 shrink-0" />
+        <AlertCircle v-else-if="notificationType === 'error'" class="w-5 h-5 text-rose-600 shrink-0" />
+        <Clock v-else class="w-5 h-5 text-blue-600 shrink-0" />
+        <span class="font-medium text-xs sm:text-sm">{{ notificationMessage }}</span>
+        <button @click="notificationMessage = ''" class="ml-auto text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">&times;</button>
+    </div>
+
+    <div class="workspace-page p-4 sm:p-6 max-w-[1600px] mx-auto space-y-6">
+        <!-- Page Header -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <div class="flex items-center gap-2.5">
+                    <div class="flex size-11 items-center justify-center rounded-xl bg-[#4b5320] text-[#F8B803] shadow-md shadow-[#4b5320]/20">
+                        <Archive class="size-6" />
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h1 class="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Archive / Recycle Bin</h1>
+                            <span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800">
+                                Admin Only
+                            </span>
+                        </div>
+                        <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                            A centralized page for recoverable deleted records. Restore items to active use or permanently delete them with audit logging.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Header Action Buttons -->
+            <div class="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+                <SpecularButton
+                    type="button"
+                    variant="destructive"
+                    size="md"
+                    :radius="10"
+                    :disabled="stats.total === 0 || isProcessing"
+                    @click="openEmptyBinModal"
+                >
+                    <Trash2 class="w-4 h-4 mr-1.5" />
+                    <span>Empty Recycle Bin</span>
+                </SpecularButton>
+
+                <SpecularButton
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="router.reload({ preserveScroll: true })"
+                >
+                    <RefreshCw class="w-4 h-4 mr-1.5" />
+                    <span>Refresh</span>
+                </SpecularButton>
+            </div>
+        </div>
+
+        <!-- Metrics Overview Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Total Archived -->
+            <div class="p-4 rounded-2xl bg-white dark:bg-gray-800/90 border border-gray-200/80 dark:border-gray-700/80 shadow-xs flex items-center justify-between">
+                <div>
+                    <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 block">Total Recoverable Records</span>
+                    <span class="text-2xl font-black text-gray-900 dark:text-white mt-1 block">{{ stats.total }}</span>
+                    <span class="text-[11px] text-gray-400 dark:text-gray-500 block mt-0.5">Across all catalog & operational modules</span>
+                </div>
+                <div class="p-3 bg-amber-50 dark:bg-amber-950/50 text-[#F8B803] rounded-xl border border-amber-100 dark:border-amber-800/50">
+                    <Archive class="w-6 h-6" />
+                </div>
+            </div>
+
+            <!-- Deleted Today -->
+            <div class="p-4 rounded-2xl bg-white dark:bg-gray-800/90 border border-gray-200/80 dark:border-gray-700/80 shadow-xs flex items-center justify-between">
+                <div>
+                    <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 block">Deleted Today</span>
+                    <span class="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1 block">{{ stats.deleted_today }}</span>
+                    <span class="text-[11px] text-gray-400 dark:text-gray-500 block mt-0.5">Recently archived in the last 24h</span>
+                </div>
+                <div class="p-3 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 rounded-xl border border-emerald-100 dark:border-emerald-800/50">
+                    <Clock class="w-6 h-6" />
+                </div>
+            </div>
+
+            <!-- Distinct Types -->
+            <div class="p-4 rounded-2xl bg-white dark:bg-gray-800/90 border border-gray-200/80 dark:border-gray-700/80 shadow-xs flex items-center justify-between">
+                <div>
+                    <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 block">Active Record Types</span>
+                    <span class="text-2xl font-black text-[#4b5320] dark:text-[#F8B803] mt-1 block">{{ stats.types_with_records }} / {{ availableTypes.length }}</span>
+                    <span class="text-[11px] text-gray-400 dark:text-gray-500 block mt-0.5">Modules with archived entities</span>
+                </div>
+                <div class="p-3 bg-lime-50 dark:bg-lime-950/50 text-[#4b5320] rounded-xl border border-lime-100 dark:border-lime-800/50">
+                    <Layers class="w-6 h-6" />
+                </div>
+            </div>
+
+            <!-- Security & Retention Policy Card -->
+            <div class="p-4 rounded-2xl bg-gradient-to-br from-[#4b5320]/10 via-[#F8B803]/5 to-transparent border border-[#4b5320]/20 dark:border-[#F8B803]/20 shadow-xs flex items-center justify-between">
+                <div>
+                    <span class="text-xs font-bold text-gray-900 dark:text-white block">Audit-Logged Operations</span>
+                    <span class="text-[11px] text-gray-600 dark:text-gray-300 mt-1 block leading-relaxed">
+                        Restores and permanent deletions require administrator privileges and are automatically logged with timestamps and user identification.
+                    </span>
+                </div>
+                <div class="p-2.5 bg-[#4b5320] text-[#F8B803] rounded-xl shadow-xs shrink-0 ml-3">
+                    <ShieldAlert class="w-5 h-5" />
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter Tabs & Search Bar -->
+        <div class="bg-white dark:bg-gray-800/90 border border-gray-200/80 dark:border-gray-700/80 rounded-2xl p-4 shadow-xs space-y-3">
+            <div class="flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center">
+                <!-- Search Box -->
+                <div class="relative flex-1 max-w-md">
+                    <Search class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                        v-model="searchQuery"
+                        type="text"
+                        placeholder="Search archived records by title, SKU, or user..."
+                        class="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/50 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320]"
+                    />
+                    <button
+                        v-if="searchQuery"
+                        @click="searchQuery = ''; applyFilters();"
+                        class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                        <X class="w-3.5 h-3.5" />
+                    </button>
+                </div>
+
+                <!-- Record Count Indicator -->
+                <div class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5 self-center">
+                    <Filter class="w-3.5 h-3.5 text-gray-400" />
+                    <span>Showing {{ records.from || 0 }} - {{ records.to || 0 }} of {{ records.total }} records</span>
+                </div>
+            </div>
+
+            <!-- Type Filter Tabs (Scrollable on mobile) -->
+            <div class="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 no-scrollbar border-t border-gray-100 dark:border-gray-700/50">
+                <button
+                    type="button"
+                    @click="filterByType('all')"
+                    class="px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition flex items-center gap-1.5"
+                    :class="selectedType === 'all'
+                        ? 'bg-[#4b5320] text-white shadow-xs'
+                        : 'bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'"
+                >
+                    <Archive class="w-3.5 h-3.5" />
+                    <span>All Records</span>
+                    <span
+                        class="px-1.5 py-0.2 rounded-full text-[10px]"
+                        :class="selectedType === 'all' ? 'bg-white/20 text-white' : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200'"
+                    >
+                        {{ counts.all || 0 }}
+                    </span>
+                </button>
+
+                <button
+                    v-for="t in availableTypes"
+                    :key="t.key"
+                    type="button"
+                    @click="filterByType(t.key)"
+                    class="px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition flex items-center gap-1.5"
+                    :class="selectedType === t.key
+                        ? 'bg-[#4b5320] text-white shadow-xs'
+                        : 'bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'"
+                >
+                    <component :is="getTypeIcon(t.key)" class="w-3.5 h-3.5" />
+                    <span>{{ t.label }}</span>
+                    <span
+                        class="px-1.5 py-0.2 rounded-full text-[10px]"
+                        :class="selectedType === t.key ? 'bg-white/20 text-white' : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200'"
+                    >
+                        {{ counts[t.key] || 0 }}
+                    </span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Bulk Action Floating / Sticky Bar (When items are checked) -->
+        <div
+            v-if="selectedIds.length > 0"
+            class="p-3 bg-gray-900 text-white rounded-2xl shadow-xl flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-150"
+        >
+            <div class="flex items-center gap-3">
+                <span class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-white/10">
+                    {{ selectedIds.length }} item{{ selectedIds.length === 1 ? '' : 's' }} selected
+                </span>
+                <span class="text-xs text-gray-400 hidden sm:inline">Choose an operation for the selected archived records</span>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <button
+                    type="button"
+                    @click="showBulkRestoreModal = true"
+                    class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition flex items-center gap-1.5"
+                >
+                    <RotateCcw class="w-3.5 h-3.5" />
+                    <span>Restore Selected</span>
+                </button>
+
+                <button
+                    type="button"
+                    @click="openBulkForceDeleteModal"
+                    class="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition flex items-center gap-1.5"
+                >
+                    <Trash2 class="w-3.5 h-3.5" />
+                    <span>Permanently Delete Selected</span>
+                </button>
+
+                <button
+                    type="button"
+                    @click="selectedIds = []"
+                    class="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 text-xs transition"
+                >
+                    Clear Selection
+                </button>
+            </div>
+        </div>
+
+        <!-- Trashed Records Table Container -->
+        <div class="bg-white dark:bg-gray-800/90 border border-gray-200/80 dark:border-gray-700/80 rounded-2xl shadow-xs overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-50/80 dark:bg-gray-900/60 border-b border-gray-200/80 dark:border-gray-700/80 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                        <tr>
+                            <th class="p-3.5 w-10 text-center">
+                                <input
+                                    type="checkbox"
+                                    :checked="isAllSelected"
+                                    @change="toggleSelectAll"
+                                    class="rounded text-[#4b5320] focus:ring-[#4b5320] cursor-pointer"
+                                />
+                            </th>
+                            <th class="p-3.5">Record Type</th>
+                            <th class="p-3.5">Title & Identifier</th>
+                            <th class="p-3.5">Summary / Details</th>
+                            <th class="p-3.5">Deleted Date</th>
+                            <th class="p-3.5">Deleted By</th>
+                            <th class="p-3.5 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700/60 text-xs">
+                        <tr
+                            v-for="record in records.data"
+                            :key="`${record.type}-${record.id}`"
+                            class="hover:bg-gray-50/80 dark:hover:bg-gray-700/30 transition-colors"
+                            :class="isItemSelected(record) ? 'bg-[#4b5320]/5 dark:bg-[#4b5320]/10' : ''"
+                        >
+                            <!-- Checkbox -->
+                            <td class="p-3.5 text-center">
+                                <input
+                                    type="checkbox"
+                                    :checked="isItemSelected(record)"
+                                    @change="toggleSelectItem(record)"
+                                    class="rounded text-[#4b5320] focus:ring-[#4b5320] cursor-pointer"
+                                />
+                            </td>
+
+                            <!-- Record Type Badge -->
+                            <td class="p-3.5 whitespace-nowrap">
+                                <span
+                                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border"
+                                    :class="getTypeBadgeClasses(record.type)"
+                                >
+                                    <component :is="getTypeIcon(record.type)" class="w-3.5 h-3.5 shrink-0" />
+                                    <span>{{ record.type_label }}</span>
+                                </span>
+                            </td>
+
+                            <!-- Title & Identifier -->
+                            <td class="p-3.5 max-w-xs">
+                                <div class="font-bold text-gray-900 dark:text-white truncate text-xs sm:text-sm">
+                                    {{ record.title }}
+                                </div>
+                                <div class="text-[11px] text-gray-500 dark:text-gray-400 font-mono mt-0.5 truncate">
+                                    {{ record.identifier }}
+                                </div>
+                            </td>
+
+                            <!-- Summary / Details -->
+                            <td class="p-3.5 max-w-sm">
+                                <span class="text-xs text-gray-700 dark:text-gray-300 font-medium leading-relaxed">
+                                    {{ record.summary || '—' }}
+                                </span>
+                            </td>
+
+                            <!-- Deleted Date -->
+                            <td class="p-3.5 whitespace-nowrap">
+                                <div class="font-semibold text-gray-900 dark:text-gray-200">
+                                    {{ record.deleted_at_human }}
+                                </div>
+                                <div class="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+                                    {{ record.deleted_at }}
+                                </div>
+                            </td>
+
+                            <!-- Deleted By User -->
+                            <td class="p-3.5 whitespace-nowrap">
+                                <div v-if="record.deleted_by" class="flex items-center gap-2">
+                                    <div class="w-6 h-6 rounded-full bg-[#4b5320]/15 dark:bg-[#F8B803]/20 text-[#4b5320] dark:text-[#F8B803] flex items-center justify-center font-bold text-[10px]">
+                                        {{ record.deleted_by.name ? record.deleted_by.name.charAt(0).toUpperCase() : 'U' }}
+                                    </div>
+                                    <div>
+                                        <div class="font-semibold text-gray-900 dark:text-gray-100 leading-tight">
+                                            {{ record.deleted_by.name }}
+                                        </div>
+                                        <div class="text-[10px] text-gray-400">
+                                            {{ record.deleted_by.email }}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-else class="text-gray-400 text-[11px] italic">
+                                    Previous / System Deletion
+                                </div>
+                            </td>
+
+                            <!-- Actions -->
+                            <td class="p-3.5 text-right whitespace-nowrap">
+                                <div class="inline-flex items-center gap-1.5">
+                                    <!-- View Details Button -->
+                                    <button
+                                        type="button"
+                                        @click="openDetailsModal(record)"
+                                        class="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                                        title="View Record Details"
+                                    >
+                                        <Eye class="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <!-- Restore Button -->
+                                    <button
+                                        type="button"
+                                        @click="openRestoreModal(record)"
+                                        class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold transition"
+                                        title="Restore record to active use"
+                                    >
+                                        <RotateCcw class="w-3.5 h-3.5" />
+                                        <span>Restore</span>
+                                    </button>
+
+                                    <!-- Permanently Delete Button -->
+                                    <button
+                                        type="button"
+                                        @click="openForceDeleteModal(record)"
+                                        class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200 dark:border-rose-800 text-xs font-semibold transition"
+                                        title="Permanently erase from database"
+                                    >
+                                        <Trash2 class="w-3.5 h-3.5" />
+                                        <span>Delete</span>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+
+                        <!-- Empty State -->
+                        <tr v-if="records.data.length === 0">
+                            <td colspan="7" class="py-16 text-center">
+                                <div class="max-w-md mx-auto space-y-3">
+                                    <div class="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-400 mx-auto flex items-center justify-center">
+                                        <Archive class="w-7 h-7" />
+                                    </div>
+                                    <h3 class="text-base font-bold text-gray-900 dark:text-white">
+                                        {{ searchQuery || selectedType !== 'all' ? 'No Matching Archived Records' : 'Recycle Bin is Empty' }}
+                                    </h3>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                                        {{ searchQuery || selectedType !== 'all'
+                                            ? 'No archived items match your current filter criteria. Try resetting the filters.'
+                                            : 'Deleted items from inventory, suppliers, clients, quotations, deliveries, and inquiries will safely appear here for recovery.' }}
+                                    </p>
+                                    <div v-if="searchQuery || selectedType !== 'all'" class="pt-2">
+                                        <SpecularButton
+                                            type="button"
+                                            variant="secondary"
+                                            size="sm"
+                                            :radius="8"
+                                            @click="searchQuery = ''; selectedType = 'all'; applyFilters();"
+                                        >
+                                            Reset Filters
+                                        </SpecularButton>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination Bar -->
+            <div
+                v-if="records.total > 0"
+                class="px-4 py-3 bg-gray-50/60 dark:bg-gray-900/40 border-t border-gray-200/80 dark:border-gray-700/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs"
+            >
+                <div class="text-gray-500 dark:text-gray-400">
+                    Showing <strong class="text-gray-800 dark:text-gray-200">{{ records.from || 0 }}</strong> to <strong class="text-gray-800 dark:text-gray-200">{{ records.to || 0 }}</strong> of <strong class="text-gray-800 dark:text-gray-200">{{ records.total }}</strong> records
+                </div>
+
+                <div class="flex items-center gap-1">
+                    <button
+                        v-for="(link, i) in records.links"
+                        :key="i"
+                        :disabled="!link.url || link.active"
+                        @click="link.url && router.visit(link.url, { preserveScroll: true, preserveState: true })"
+                        v-html="link.label"
+                        class="px-2.5 py-1 rounded-lg border text-xs font-semibold transition"
+                        :class="[
+                            link.active
+                                ? 'bg-[#4b5320] text-white border-[#4b5320]'
+                                : link.url
+                                ? 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-100'
+                                : 'bg-transparent text-gray-300 dark:text-gray-600 border-transparent cursor-not-allowed'
+                        ]"
+                    ></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- VIEW DETAILS MODAL -->
+    <!-- ========================================================================= -->
+    <div
+        v-if="showDetailsModal && activeRecord"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto"
+    >
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-8">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-start">
+                <div class="flex items-start gap-3">
+                    <div class="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-[#F8B803] border border-amber-100 dark:border-amber-800 shrink-0 mt-0.5">
+                        <component :is="getTypeIcon(activeRecord.type)" class="w-6 h-6" />
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span
+                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border"
+                                :class="getTypeBadgeClasses(activeRecord.type)"
+                            >
+                                {{ activeRecord.type_label }}
+                            </span>
+                            <span class="text-xs text-gray-400">ID: {{ activeRecord.id }}</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-gray-900 dark:text-white mt-1">{{ activeRecord.title }}</h3>
+                        <p class="text-xs text-gray-500 font-mono">{{ activeRecord.identifier }}</p>
+                    </div>
+                </div>
+
+                <button @click="showDetailsModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                    <X class="w-5 h-5" />
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+                <!-- Deletion Metadata Callout -->
+                <div class="p-4 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200/80 dark:border-gray-700/80 space-y-2 text-xs">
+                    <div class="flex items-center justify-between py-1 border-b border-gray-200/60 dark:border-gray-700/60">
+                        <span class="text-gray-500 font-medium">Deleted When:</span>
+                        <span class="font-bold text-gray-900 dark:text-white">{{ activeRecord.deleted_at }} ({{ activeRecord.deleted_at_human }})</span>
+                    </div>
+
+                    <div class="flex items-center justify-between py-1 border-b border-gray-200/60 dark:border-gray-700/60">
+                        <span class="text-gray-500 font-medium">Deleted By User:</span>
+                        <span class="font-bold text-gray-900 dark:text-white">
+                            {{ activeRecord.deleted_by ? `${activeRecord.deleted_by.name} (${activeRecord.deleted_by.email} • ${activeRecord.deleted_by.role})` : 'System / Previous Admin' }}
+                        </span>
+                    </div>
+
+                    <div class="flex items-center justify-between py-1">
+                        <span class="text-gray-500 font-medium">Original Record Created:</span>
+                        <span class="font-semibold text-gray-700 dark:text-gray-300">{{ activeRecord.created_at }}</span>
+                    </div>
+                </div>
+
+                <!-- Attributes Table -->
+                <div>
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">Original Record Properties</h4>
+                    <div class="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+                        <table class="w-full text-left text-xs divide-y divide-gray-100 dark:divide-gray-700">
+                            <tbody class="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-800">
+                                <tr v-for="(attr, idx) in activeRecord.details" :key="idx" class="hover:bg-gray-50/50 dark:hover:bg-gray-700/30">
+                                    <td class="p-2.5 font-semibold text-gray-500 dark:text-gray-400 w-1/3 bg-gray-50/50 dark:bg-gray-900/30">
+                                        {{ attr.label }}
+                                    </td>
+                                    <td class="p-2.5 text-gray-900 dark:text-gray-100 break-words">
+                                        {{ attr.value }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="px-6 py-4 bg-gray-50 dark:bg-gray-900/60 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center">
+                <SpecularButton
+                    type="button"
+                    variant="destructive"
+                    size="md"
+                    :radius="10"
+                    @click="openForceDeleteModal(activeRecord)"
+                >
+                    <Trash2 class="w-4 h-4 mr-1.5" />
+                    <span>Permanently Delete</span>
+                </SpecularButton>
+
+                <div class="flex items-center gap-2">
+                    <SpecularButton
+                        type="button"
+                        variant="secondary"
+                        size="md"
+                        :radius="10"
+                        @click="showDetailsModal = false"
+                    >
+                        Close
+                    </SpecularButton>
+                    <SpecularButton
+                        type="button"
+                        variant="brand"
+                        size="md"
+                        :radius="10"
+                        @click="openRestoreModal(activeRecord)"
+                    >
+                        <RotateCcw class="w-4 h-4 mr-1.5" />
+                        <span>Restore Record</span>
+                    </SpecularButton>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- RESTORE SINGLE CONFIRMATION MODAL -->
+    <!-- ========================================================================= -->
+    <div
+        v-if="showRestoreModal && recordToRestore"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+    >
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div class="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center mb-4 border border-emerald-100 dark:border-emerald-800">
+                <RotateCcw class="w-6 h-6" />
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Restore Archived Record</h3>
+            <p class="text-gray-600 dark:text-gray-300 text-sm mb-4 leading-relaxed">
+                Are you sure you want to restore <strong class="text-gray-900 dark:text-white">"{{ recordToRestore.title }}"</strong> ({{ recordToRestore.type_label }}) back to active status?
+            </p>
+            <div class="p-3 bg-emerald-50/50 dark:bg-emerald-950/30 rounded-xl border border-emerald-100 dark:border-emerald-800/40 text-xs text-emerald-800 dark:text-emerald-300 mb-6">
+                This record will immediately become visible and usable again in the <strong>{{ recordToRestore.type_label }}</strong> module.
+            </div>
+            <div class="flex justify-end gap-3">
+                <SpecularButton
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showRestoreModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    type="button"
+                    variant="brand"
+                    size="md"
+                    :radius="10"
+                    :disabled="isProcessing"
+                    @click="confirmRestore"
+                >
+                    <Check class="w-4 h-4 mr-1.5" />
+                    <span>{{ isProcessing ? 'Restoring...' : 'Confirm Restore' }}</span>
+                </SpecularButton>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- PERMANENT DELETE SINGLE CONFIRMATION MODAL -->
+    <!-- ========================================================================= -->
+    <div
+        v-if="showForceDeleteModal && recordToForceDelete"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+    >
+        <div class="bg-white dark:bg-gray-800 border border-rose-200 dark:border-rose-900/60 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div class="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center mb-4 border border-rose-100 dark:border-rose-800">
+                <AlertTriangle class="w-6 h-6" />
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Permanently Delete Record</h3>
+            <p class="text-gray-600 dark:text-gray-300 text-sm mb-4 leading-relaxed">
+                Warning: You are about to permanently purge <strong class="text-gray-900 dark:text-white">"{{ recordToForceDelete.title }}"</strong> ({{ recordToForceDelete.type_label }}) from the database.
+            </p>
+            <div class="p-3.5 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-800/60 text-xs text-rose-800 dark:text-rose-300 mb-4 space-y-1">
+                <div class="font-bold flex items-center gap-1.5">
+                    <ShieldAlert class="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>Restricted Admin Action</span>
+                </div>
+                <p>This action is irreversible. The record will be permanently purged and an audit entry will be logged under your administrative credentials.</p>
+            </div>
+            <div class="mt-2 mb-6">
+                <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 dark:bg-rose-950 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-800">YES</span> if you wish to delete:
+                </label>
+                <input
+                    v-model="forceDeleteConfirmInput"
+                    type="text"
+                    placeholder="Type YES here"
+                    class="w-full px-3 py-2 text-sm font-mono rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                />
+            </div>
+            <div class="flex justify-end gap-3">
+                <SpecularButton
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showForceDeleteModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    type="button"
+                    variant="destructive"
+                    size="md"
+                    :radius="10"
+                    :disabled="isProcessing || forceDeleteConfirmInput.trim().toUpperCase() !== 'YES'"
+                    @click="confirmForceDelete"
+                >
+                    <Trash2 class="w-4 h-4 mr-1.5" />
+                    <span>{{ isProcessing ? 'Purging...' : 'Yes, Permanently Delete' }}</span>
+                </SpecularButton>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- BULK RESTORE CONFIRMATION MODAL -->
+    <!-- ========================================================================= -->
+    <div
+        v-if="showBulkRestoreModal"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+    >
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div class="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center mb-4 border border-emerald-100 dark:border-emerald-800">
+                <RotateCcw class="w-6 h-6" />
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Bulk Restore Records</h3>
+            <p class="text-gray-600 dark:text-gray-300 text-sm mb-4 leading-relaxed">
+                Are you sure you want to restore all <strong class="text-gray-900 dark:text-white">{{ selectedIds.length }} selected records</strong> back to active status?
+            </p>
+            <div class="flex justify-end gap-3">
+                <SpecularButton
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showBulkRestoreModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    type="button"
+                    variant="brand"
+                    size="md"
+                    :radius="10"
+                    :disabled="isProcessing"
+                    @click="confirmBulkRestore"
+                >
+                    <Check class="w-4 h-4 mr-1.5" />
+                    <span>{{ isProcessing ? 'Restoring...' : `Restore ${selectedIds.length} Items` }}</span>
+                </SpecularButton>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- BULK FORCE DELETE CONFIRMATION MODAL -->
+    <!-- ========================================================================= -->
+    <div
+        v-if="showBulkForceDeleteModal"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+    >
+        <div class="bg-white dark:bg-gray-800 border border-rose-200 dark:border-rose-900/60 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div class="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center mb-4 border border-rose-100 dark:border-rose-800">
+                <AlertTriangle class="w-6 h-6" />
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Bulk Permanent Delete</h3>
+            <p class="text-gray-600 dark:text-gray-300 text-sm mb-4 leading-relaxed">
+                Warning: You are about to permanently purge <strong class="text-gray-900 dark:text-white">{{ selectedIds.length }} records</strong> from the system database. This cannot be undone.
+            </p>
+            <div class="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-800 text-xs text-rose-800 dark:text-rose-300 mb-4">
+                All selected records will be permanently erased and this batch action will be logged in the audit trail.
+            </div>
+            <div class="mt-2 mb-6">
+                <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 dark:bg-rose-950 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-800">YES</span> if you wish to delete:
+                </label>
+                <input
+                    v-model="bulkForceDeleteConfirmInput"
+                    type="text"
+                    placeholder="Type YES here"
+                    class="w-full px-3 py-2 text-sm font-mono rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                />
+            </div>
+            <div class="flex justify-end gap-3">
+                <SpecularButton
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showBulkForceDeleteModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    type="button"
+                    variant="destructive"
+                    size="md"
+                    :radius="10"
+                    :disabled="isProcessing || bulkForceDeleteConfirmInput.trim().toUpperCase() !== 'YES'"
+                    @click="confirmBulkForceDelete"
+                >
+                    <Trash2 class="w-4 h-4 mr-1.5" />
+                    <span>{{ isProcessing ? 'Purging...' : `Purge ${selectedIds.length} Items` }}</span>
+                </SpecularButton>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- EMPTY RECYCLE BIN CONFIRMATION MODAL -->
+    <!-- ========================================================================= -->
+    <div
+        v-if="showEmptyBinModal"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+    >
+        <div class="bg-white dark:bg-gray-800 border border-rose-200 dark:border-rose-900/60 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div class="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center mb-4 border border-rose-100 dark:border-rose-800">
+                <Trash2 class="w-6 h-6" />
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Empty Entire Recycle Bin?</h3>
+            <p class="text-gray-600 dark:text-gray-300 text-sm mb-4 leading-relaxed">
+                Are you sure you want to permanently delete <strong class="text-gray-900 dark:text-white">all {{ stats.total }} records</strong> currently in the Recycle Bin?
+            </p>
+            <div class="p-3.5 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-800 text-xs text-rose-800 dark:text-rose-300 mb-4 space-y-1">
+                <span class="font-bold block">Irreversible Database Purge</span>
+                <span>Every recoverable item across all modules will be completely erased. This operation will be logged to the security audit trail.</span>
+            </div>
+            <div class="mt-2 mb-6">
+                <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 dark:bg-rose-950 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-800">YES</span> if you wish to delete:
+                </label>
+                <input
+                    v-model="emptyBinConfirmInput"
+                    type="text"
+                    placeholder="Type YES here"
+                    class="w-full px-3 py-2 text-sm font-mono rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                />
+            </div>
+            <div class="flex justify-end gap-3">
+                <SpecularButton
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    :radius="10"
+                    @click="showEmptyBinModal = false"
+                >
+                    Cancel
+                </SpecularButton>
+                <SpecularButton
+                    type="button"
+                    variant="destructive"
+                    size="md"
+                    :radius="10"
+                    :disabled="isProcessing || emptyBinConfirmInput.trim().toUpperCase() !== 'YES'"
+                    @click="confirmEmptyBin"
+                >
+                    <Trash2 class="w-4 h-4 mr-1.5" />
+                    <span>{{ isProcessing ? 'Emptying...' : 'Yes, Empty Recycle Bin' }}</span>
+                </SpecularButton>
+            </div>
+        </div>
+    </div>
+</template>

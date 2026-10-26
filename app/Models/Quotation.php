@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\QuotationStatus;
+use App\Traits\TracksDeletions;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Quotation extends Model
 {
-    use HasFactory;
+    use HasFactory, TracksDeletions;
 
     protected $fillable = [
         'team_id',
@@ -33,6 +34,7 @@ class Quotation extends Model
         'terms_and_conditions',
         'prepared_by_id',
         'converted_to_sale_id',
+        'deleted_by_id',
     ];
 
     protected function casts(): array

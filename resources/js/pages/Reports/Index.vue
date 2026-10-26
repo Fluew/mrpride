@@ -1583,24 +1583,29 @@ const horizontalBarOptions = {
                         <div>
                             <h4 class="text-sm font-bold text-gray-900 mb-2">AHP Criteria Weighting</h4>
                             <p class="text-xs text-gray-500 mb-4 leading-relaxed">
-                                Suppliers are evaluated across four normalized decision criteria:
+                                Suppliers are evaluated across three normalized decision criteria:
                             </p>
                             <div class="space-y-2 text-xs">
-                                <div class="flex justify-between p-2 rounded-lg bg-gray-50">
-                                    <span class="font-semibold text-gray-700">1. Price Competitiveness</span>
-                                    <span class="text-gray-500 font-mono">Weight (0-10)</span>
+                                <div class="flex flex-col p-2.5 rounded-lg bg-gray-50 border border-gray-100">
+                                    <div class="flex justify-between items-center mb-0.5">
+                                        <span class="font-bold text-gray-800">1. Price / Cost</span>
+                                        <span class="text-gray-500 font-mono text-[11px]">Weight (0-10)</span>
+                                    </div>
+                                    <span class="text-[11px] text-gray-500">price competitiveness of the supplier</span>
                                 </div>
-                                <div class="flex justify-between p-2 rounded-lg bg-gray-50">
-                                    <span class="font-semibold text-gray-700">2. Material Quality</span>
-                                    <span class="text-gray-500 font-mono">Weight (0-10)</span>
+                                <div class="flex flex-col p-2.5 rounded-lg bg-gray-50 border border-gray-100">
+                                    <div class="flex justify-between items-center mb-0.5">
+                                        <span class="font-bold text-gray-800">2. Quality</span>
+                                        <span class="text-gray-500 font-mono text-[11px]">Weight (0-10)</span>
+                                    </div>
+                                    <span class="text-[11px] text-gray-500">quality of product of the supplier evaluated by the staffs</span>
                                 </div>
-                                <div class="flex justify-between p-2 rounded-lg bg-gray-50">
-                                    <span class="font-semibold text-gray-700">3. Delivery Punctuality</span>
-                                    <span class="text-gray-500 font-mono">Weight (0-10)</span>
-                                </div>
-                                <div class="flex justify-between p-2 rounded-lg bg-gray-50">
-                                    <span class="font-semibold text-gray-700">4. Customer Service</span>
-                                    <span class="text-gray-500 font-mono">Weight (0-10)</span>
+                                <div class="flex flex-col p-2.5 rounded-lg bg-gray-50 border border-gray-100">
+                                    <div class="flex justify-between items-center mb-0.5">
+                                        <span class="font-bold text-gray-800">3. Delivery Reliability</span>
+                                        <span class="text-gray-500 font-mono text-[11px]">Weight (0-10)</span>
+                                    </div>
+                                    <span class="text-[11px] text-gray-500">reliability of supplier in terms on delivery to MR Pride</span>
                                 </div>
                             </div>
                         </div>

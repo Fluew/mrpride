@@ -277,6 +277,7 @@ const openStatusModal = (user: UserAccount) => {
 };
 
 const openDeleteModal = (user: UserAccount) => {
+    deleteConfirmInput.value = '';
     selectedUser.value = user;
     showDeleteModal.value = true;
 };
@@ -304,6 +305,7 @@ const openRevokeUserSessionsModal = (user: UserAccount) => {
 };
 
 const openRevokeDeviceModal = (device: TrustedDeviceItem) => {
+    revokeDeviceConfirmInput.value = '';
     selectedDevice.value = device;
     showRevokeDeviceModal.value = true;
 };
@@ -324,6 +326,9 @@ interface ConfirmActionOptions {
 }
 
 const showConfirmModal = ref(false);
+const deleteConfirmInput = ref('');
+const confirmActionInput = ref('');
+const revokeDeviceConfirmInput = ref('');
 const confirmOptions = ref<ConfirmActionOptions>({
     title: 'Confirm Action',
     description: 'Are you sure you want to proceed?',
@@ -334,6 +339,7 @@ const confirmOptions = ref<ConfirmActionOptions>({
 });
 
 const openConfirmModal = (options: ConfirmActionOptions) => {
+    confirmActionInput.value = '';
     confirmOptions.value = {
         confirmText: 'Confirm & Proceed',
         confirmVariant: 'brand',
@@ -374,6 +380,7 @@ const promptCreateUser = () => {
             staff_inventory: 'Staff - Inventory',
             staff_quotations: 'Staff - Quotations',
             staff_procurement: 'Staff - Procurement',
+            staff_deliveries: 'Staff - Deliveries',
             staff_sales: 'Staff - Sales',
             staff_forecast: 'Staff - Demand Forecasting',
             staff_suppliers: 'Staff - Suppliers',
@@ -1801,15 +1808,32 @@ const regenerateRecoveryKey = () => {
     <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
         <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
             <h3 class="text-xl font-bold text-gray-900 mb-2">Delete Account</h3>
-            <p class="text-gray-600 text-sm mb-6">
+            <p class="text-gray-600 text-sm mb-4">
                 Are you sure you want to delete <span class="font-semibold text-gray-900">{{ selectedUser?.name }}</span>?
                 All active sessions and registered trusted devices will be revoked immediately.
             </p>
+            <div class="mt-4 mb-6">
+                <label class="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                </label>
+                <input
+                    v-model="deleteConfirmInput"
+                    type="text"
+                    placeholder="Type YES here"
+                    class="w-full px-3 py-2 text-sm font-mono rounded-xl border border-gray-300 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                />
+            </div>
             <div class="flex justify-end gap-3">
                 <SpecularButton variant="secondary" size="md" :radius="10" @click="showDeleteModal = false">
                     Cancel
                 </SpecularButton>
-                <SpecularButton variant="destructive" size="md" :radius="10" @click="confirmDelete">
+                <SpecularButton
+                    variant="destructive"
+                    size="md"
+                    :radius="10"
+                    @click="confirmDelete"
+                    :disabled="deleteConfirmInput.trim().toUpperCase() !== 'YES'"
+                >
                     Delete Account
                 </SpecularButton>
             </div>
@@ -2039,17 +2063,34 @@ const regenerateRecoveryKey = () => {
     <div v-if="showRevokeDeviceModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
         <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
             <h3 class="text-xl font-bold text-gray-900 mb-2">Revoke Trusted Device</h3>
-            <p class="text-gray-600 text-sm mb-6">
+            <p class="text-gray-600 text-sm mb-4">
                 Are you sure you want to revoke access for
                 <span class="font-semibold text-gray-900">{{ selectedDevice?.device_name }}</span>
                 ({{ selectedDevice?.user?.name }})?
                 All active sessions on this device will be terminated immediately.
             </p>
+            <div class="mt-4 mb-6">
+                <label class="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                </label>
+                <input
+                    v-model="revokeDeviceConfirmInput"
+                    type="text"
+                    placeholder="Type YES here"
+                    class="w-full px-3 py-2 text-sm font-mono rounded-xl border border-gray-300 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                />
+            </div>
             <div class="flex justify-end gap-3">
                 <SpecularButton variant="secondary" size="md" :radius="10" @click="showRevokeDeviceModal = false">
                     Cancel
                 </SpecularButton>
-                <SpecularButton variant="destructive" size="md" :radius="10" @click="confirmRevokeDevice">
+                <SpecularButton
+                    variant="destructive"
+                    size="md"
+                    :radius="10"
+                    @click="confirmRevokeDevice"
+                    :disabled="revokeDeviceConfirmInput.trim().toUpperCase() !== 'YES'"
+                >
                     Revoke Device
                 </SpecularButton>
             </div>
@@ -2098,6 +2139,18 @@ const regenerateRecoveryKey = () => {
                 </div>
             </div>
 
+            <div v-if="confirmOptions.confirmVariant === 'destructive'" class="mt-2 mb-5">
+                <label class="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                </label>
+                <input
+                    v-model="confirmActionInput"
+                    type="text"
+                    placeholder="Type YES here"
+                    class="w-full px-3 py-2 text-sm font-mono rounded-xl border border-gray-300 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                />
+            </div>
+
             <div class="flex justify-end gap-3">
                 <SpecularButton
                     type="button"
@@ -2114,7 +2167,7 @@ const regenerateRecoveryKey = () => {
                     size="md"
                     :radius="10"
                     @click="handleConfirmedAction"
-                    :disabled="addForm.processing || editForm.processing || enrollForm.processing"
+                    :disabled="addForm.processing || editForm.processing || enrollForm.processing || (confirmOptions.confirmVariant === 'destructive' && confirmActionInput.trim().toUpperCase() !== 'YES')"
                 >
                     <Check v-if="confirmOptions.confirmVariant !== 'destructive'" class="w-4 h-4 mr-1.5 inline" />
                     <Trash2 v-else class="w-4 h-4 mr-1.5 inline" />

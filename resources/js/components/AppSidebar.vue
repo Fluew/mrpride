@@ -14,6 +14,7 @@ import {
     Laptop,
     ShieldCheck,
     Activity,
+    Archive,
 } from '@lucide/vue';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
@@ -64,6 +65,7 @@ const operations = computed<NavItem[]>(() => {
             { title: 'Sales', href: sales(team), icon: Banknote },
             { title: 'Demand Forecasting', href: forecast(team), icon: LineChart },
             { title: 'Reports & Analytics', href: reports(team), icon: PieChart },
+            { title: 'Recycle Bin', href: `/${team}/recycle-bin`, icon: Archive },
         ];
     }
 

@@ -79,6 +79,11 @@ class ChangePasswordController extends Controller
             $history = array_slice($history, -3);
         }
 
+        $wasInitialChange = (bool) $user->must_change_password;
+        if ($wasInitialChange) {
+            session(['is_first_login' => true]);
+        }
+
         $user->forceFill([
             'password' => Hash::make($validated['password']),
             'must_change_password' => false,

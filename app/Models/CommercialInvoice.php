@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\TracksDeletions;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -9,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CommercialInvoice extends Model
 {
-    use HasFactory;
+    use HasFactory, TracksDeletions;
 
     protected $fillable = [
         'team_id',
@@ -22,6 +23,7 @@ class CommercialInvoice extends Model
         'supplier_id',
         'status',
         'notes',
+        'deleted_by_id',
     ];
 
     protected $casts = [

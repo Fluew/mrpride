@@ -266,6 +266,7 @@ const showAddEditModal = ref(false);
 const isEditing = ref(false);
 const editingProductId = ref<number | null>(null);
 const showDeleteModal = ref(false);
+const deleteConfirmInput = ref('');
 const showViewModal = ref(false);
 const showStockInModal = ref(false);
 const showStockOutModal = ref(false);
@@ -379,6 +380,7 @@ const openAddModal = () => {
     isEditing.value = false;
     editingProductId.value = null;
     formErrors.value = {};
+    isSubmitting.value = false;
     formProduct.value = {
         name: '',
         sku: `SKU-${Date.now().toString().slice(-5)}`,
@@ -399,6 +401,7 @@ const openEditModal = (product: Product) => {
     isEditing.value = true;
     editingProductId.value = product.id;
     formErrors.value = {};
+    isSubmitting.value = false;
     formProduct.value = {
         name: product.name,
         sku: product.sku,
@@ -417,12 +420,16 @@ const openEditModal = (product: Product) => {
 
 const promptSaveProduct = () => {
     formErrors.value = {};
-    if (!formProduct.value.name.trim()) {
+    if (!formProduct.value.name || !formProduct.value.name.trim()) {
         formErrors.value.name = 'Product name is required.';
         return;
     }
-    if (!formProduct.value.sku.trim()) {
+    if (!formProduct.value.sku || !formProduct.value.sku.trim()) {
         formErrors.value.sku = 'SKU is required.';
+        return;
+    }
+    if (formProduct.value.price === null || formProduct.value.price === undefined || formProduct.value.price === ('' as any) || Number(formProduct.value.price) < 0) {
+        formErrors.value.price = 'Selling price must be greater than or equal to 0.';
         return;
     }
 
@@ -434,8 +441,8 @@ const promptSaveProduct = () => {
                 { label: 'SKU', value: formProduct.value.sku },
                 { label: 'Category', value: formProduct.value.category },
                 { label: 'Selling Price', value: formatPrice(formProduct.value.price) },
-                { label: 'Current Stock', value: `${formProduct.value.stock} ${formProduct.value.unit || 'pcs'}` },
-                { label: 'Reorder Level', value: `${formProduct.value.reorder_level} ${formProduct.value.unit || 'pcs'}` },
+                { label: 'Current Stock', value: `${formProduct.value.stock ?? 0} ${formProduct.value.unit || 'pcs'}` },
+                { label: 'Reorder Level', value: `${formProduct.value.reorder_level ?? 10} ${formProduct.value.unit || 'pcs'}` },
             ],
             confirmText: 'Save Changes',
             confirmVariant: 'brand',
@@ -450,8 +457,8 @@ const promptSaveProduct = () => {
                 { label: 'SKU', value: formProduct.value.sku },
                 { label: 'Category', value: formProduct.value.category },
                 { label: 'Selling Price', value: formatPrice(formProduct.value.price) },
-                { label: 'Initial Stock', value: `${formProduct.value.stock} ${formProduct.value.unit || 'pcs'}` },
-                { label: 'Reorder Level', value: `${formProduct.value.reorder_level} ${formProduct.value.unit || 'pcs'}` },
+                { label: 'Initial Stock', value: `${formProduct.value.stock ?? 0} ${formProduct.value.unit || 'pcs'}` },
+                { label: 'Reorder Level', value: `${formProduct.value.reorder_level ?? 10} ${formProduct.value.unit || 'pcs'}` },
             ],
             confirmText: 'Add Product',
             confirmVariant: 'brand',
@@ -480,6 +487,9 @@ const saveProduct = () => {
             isSubmitting.value = false;
             showNotification('Please check the form for errors.', 'error');
         },
+        onFinish: () => {
+            isSubmitting.value = false;
+        },
     });
 };
 
@@ -503,6 +513,8 @@ const openViewModal = async (product: Product) => {
 };
 
 const openDeleteModal = (product: Product) => {
+    isSubmitting.value = false;
+    deleteConfirmInput.value = '';
     selectedProduct.value = product;
     showDeleteModal.value = true;
 };
@@ -519,7 +531,10 @@ const deleteProduct = () => {
         onError: () => {
             isSubmitting.value = false;
             showNotification('Failed to remove product.', 'error');
-        }
+        },
+        onFinish: () => {
+            isSubmitting.value = false;
+        },
     });
 };
 
@@ -527,6 +542,7 @@ const deleteProduct = () => {
 // STOCK-IN HANDLER
 // ==========================================
 const openStockInModal = (product?: Product) => {
+    isSubmitting.value = false;
     formErrors.value = {};
     formStockIn.value = {
         product_id: product ? product.id : (props.products?.data?.[0]?.id || null),
@@ -584,7 +600,10 @@ const submitStockIn = () => {
             formErrors.value = errs;
             isSubmitting.value = false;
             showNotification(errs.quantity || 'Failed to record Stock-In.', 'error');
-        }
+        },
+        onFinish: () => {
+            isSubmitting.value = false;
+        },
     });
 };
 
@@ -592,6 +611,7 @@ const submitStockIn = () => {
 // STOCK-OUT HANDLER
 // ==========================================
 const openStockOutModal = (product?: Product) => {
+    isSubmitting.value = false;
     formErrors.value = {};
     const prod = product || props.products?.data?.[0] || null;
     formStockOut.value = {
@@ -655,7 +675,10 @@ const submitStockOut = () => {
             formErrors.value = errs;
             isSubmitting.value = false;
             showNotification(errs.quantity || 'Failed to record Stock-Out.', 'error');
-        }
+        },
+        onFinish: () => {
+            isSubmitting.value = false;
+        },
     });
 };
 
@@ -668,6 +691,7 @@ const currentSelectedStockOutProduct = computed(() => {
 // STOCK ADJUSTMENT HANDLER
 // ==========================================
 const openAdjustModal = (product?: Product) => {
+    isSubmitting.value = false;
     formErrors.value = {};
     const prod = product || props.products?.data?.[0] || null;
     formAdjust.value = {
@@ -722,7 +746,10 @@ const submitAdjust = () => {
             formErrors.value = errs;
             isSubmitting.value = false;
             showNotification(errs.physical_count || 'Failed to adjust stock.', 'error');
-        }
+        },
+        onFinish: () => {
+            isSubmitting.value = false;
+        },
     });
 };
 
@@ -1441,7 +1468,7 @@ const exportLiveCsv = () => {
                 </button>
             </div>
 
-            <form @submit.prevent="promptSaveProduct" class="space-y-4">
+            <form @submit.prevent="promptSaveProduct" novalidate class="space-y-4">
                 <!-- Product Name -->
                 <div class="relative">
                     <input id="prod_name"
@@ -1635,14 +1662,16 @@ const exportLiveCsv = () => {
                         Cancel
                     </SpecularButton>
                     <SpecularButton
-                        type="submit"
+                        type="button"
                         variant="brand"
                         size="md"
                         :radius="10"
                         :disabled="isSubmitting"
+                        @click="promptSaveProduct"
                     >
-                        <Check class="w-4 h-4" />
-                        <span>{{ isEditing ? 'Update Product' : 'Save Product' }}</span>
+                        <RefreshCw v-if="isSubmitting" class="w-4 h-4 animate-spin" />
+                        <Check v-else class="w-4 h-4" />
+                        <span>{{ isSubmitting ? 'Saving...' : (isEditing ? 'Update Product' : 'Save Product') }}</span>
                     </SpecularButton>
                 </div>
             </form>
@@ -2252,10 +2281,21 @@ const exportLiveCsv = () => {
                 <Trash2 class="w-6 h-6" />
             </div>
             <h3 class="text-xl font-bold text-gray-900 mb-2">Archive / Delete Product</h3>
-            <p class="text-gray-600 text-sm mb-6 leading-relaxed">
+            <p class="text-gray-600 text-sm mb-4 leading-relaxed">
                 Are you sure you want to remove <strong class="text-gray-900">"{{ selectedProduct?.name }}"</strong> (SKU: {{ selectedProduct?.sku }})? 
                 If this item is referenced by quotations or historical sales, it will be safely archived without corrupting transaction records.
             </p>
+            <div class="mt-4 mb-6">
+                <label class="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                </label>
+                <input
+                    v-model="deleteConfirmInput"
+                    type="text"
+                    placeholder="Type YES here"
+                    class="w-full px-3 py-2 text-sm font-mono rounded-xl border border-gray-300 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                />
+            </div>
             <div class="flex justify-end gap-3">
                 <SpecularButton
                     type="button"
@@ -2272,7 +2312,7 @@ const exportLiveCsv = () => {
                     size="md"
                     :radius="10"
                     @click="deleteProduct"
-                    :disabled="isSubmitting"
+                    :disabled="isSubmitting || deleteConfirmInput.trim().toUpperCase() !== 'YES'"
                 >
                     Confirm Removal
                 </SpecularButton>

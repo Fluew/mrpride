@@ -244,7 +244,7 @@ test('can delete a delivery record by id or delivery number', function () {
 
     $response1->assertSessionHasNoErrors();
     $response1->assertSessionHas('success', 'Delivery record deleted successfully.');
-    $this->assertDatabaseMissing('deliveries', ['id' => $delivery1->id]);
+    $this->assertSoftDeleted('deliveries', ['id' => $delivery1->id]);
 
     // Delete by delivery number
     $response2 = $this->actingAs($user)
@@ -253,5 +253,5 @@ test('can delete a delivery record by id or delivery number', function () {
 
     $response2->assertSessionHasNoErrors();
     $response2->assertSessionHas('success', 'Delivery record deleted successfully.');
-    $this->assertDatabaseMissing('deliveries', ['id' => $delivery2->id]);
+    $this->assertSoftDeleted('deliveries', ['id' => $delivery2->id]);
 });

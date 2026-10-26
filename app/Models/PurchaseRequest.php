@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\TracksDeletions;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PurchaseRequest extends Model
 {
-    use HasFactory;
+    use HasFactory, TracksDeletions;
 
     protected $fillable = [
         'team_id',
@@ -23,6 +24,7 @@ class PurchaseRequest extends Model
         'requested_at',
         'ordered_at',
         'delivered_at',
+        'deleted_by_id',
     ];
 
     protected function casts(): array

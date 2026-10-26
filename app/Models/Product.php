@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\TracksDeletions;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Product extends Model
 {
-    use HasFactory;
+    use HasFactory, TracksDeletions;
 
     protected $fillable = [
         'team_id',
@@ -27,6 +28,7 @@ class Product extends Model
         'description',
         'supplier_id',
         'is_active',
+        'deleted_by_id',
     ];
 
     protected function casts(): array

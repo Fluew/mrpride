@@ -252,10 +252,11 @@ class InventoryController extends Controller
     /**
      * Update the specified product in storage.
      */
-    public function update(Request $request, Product $product): RedirectResponse
+    public function update(Request $request, mixed $current_team = null, mixed $product = null): RedirectResponse
     {
+        $product = $this->resolveProduct($product, $current_team, $request);
         $team = $request->user()->currentTeam;
-        if ($product->team_id !== $team->id) {
+        if (! $team || $product->team_id !== $team->id) {
             abort(403);
         }
 
@@ -302,10 +303,11 @@ class InventoryController extends Controller
     /**
      * Remove or archive the specified product.
      */
-    public function destroy(Request $request, Product $product): RedirectResponse
+    public function destroy(Request $request, mixed $current_team = null, mixed $product = null): RedirectResponse
     {
+        $product = $this->resolveProduct($product, $current_team, $request);
         $team = $request->user()->currentTeam;
-        if ($product->team_id !== $team->id) {
+        if (! $team || $product->team_id !== $team->id) {
             abort(403);
         }
 
@@ -835,5 +837,35 @@ class InventoryController extends Controller
             }
         }
         return -1;
+    }
+
+    /**
+     * Resolve product from route parameters.
+     */
+    protected function resolveProduct(mixed $product, mixed $fallback = null, ?Request $request = null): Product
+    {
+        if ($product instanceof Product) {
+            return $product;
+        }
+
+        $candidates = array_filter([
+            $product,
+            $fallback,
+            $request?->route('product'),
+        ], fn ($val) => $val !== null && $val !== '');
+
+        foreach ($candidates as $cand) {
+            if ($cand instanceof Product) {
+                return $cand;
+            }
+            if (is_numeric($cand)) {
+                $found = Product::find((int) $cand);
+                if ($found) {
+                    return $found;
+                }
+            }
+        }
+
+        abort(404, 'Product not found.');
     }
 }

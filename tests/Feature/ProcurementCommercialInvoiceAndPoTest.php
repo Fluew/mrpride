@@ -289,14 +289,14 @@ test('can delete commercial invoice and purchase order', function () {
         ->delete("/{$team->slug}/procurement/commercial-invoices/{$ci->id}");
 
     $ciDelete->assertSessionHasNoErrors();
-    $this->assertDatabaseMissing('commercial_invoices', ['id' => $ci->id]);
+    $this->assertSoftDeleted('commercial_invoices', ['id' => $ci->id]);
 
     $poDelete = $this->actingAs($user)
         ->withCookies($deviceData['cookies'])
         ->delete("/{$team->slug}/procurement/purchase-orders/{$po->id}");
 
     $poDelete->assertSessionHasNoErrors();
-    $this->assertDatabaseMissing('purchase_orders', ['id' => $po->id]);
+    $this->assertSoftDeleted('purchase_orders', ['id' => $po->id]);
 });
 
 test('can filter commercial invoices, purchase orders, and purchase requests', function () {

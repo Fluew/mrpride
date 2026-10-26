@@ -76,9 +76,20 @@ class SaleController extends Controller
         $team = $request->user()->currentTeam;
         abort_if(! $team, 403, 'No active team selected.');
 
+        if (is_string($request->input('items'))) {
+            $decoded = json_decode($request->input('items'), true);
+            if (is_array($decoded)) {
+                $request->merge(['items' => $decoded]);
+            }
+        }
+
         $validated = $request->validate([
             'customer' => ['required', 'string', 'max:255'],
-            'payment_method' => ['nullable', 'string', 'max:100'],
+            'payment_method' => ['required', 'string', Rule::in(['Bank Transfer', 'GCash'])],
+            'payment_reference' => ['required', 'string', 'max:100'],
+            'amount_paid' => ['required', 'numeric', 'min:0.01'],
+            'payment_date' => ['required', 'date'],
+            'proof_of_payment' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->where('team_id', $team->id)],
@@ -113,6 +124,11 @@ class SaleController extends Controller
                 ];
             }
 
+            $proofPath = null;
+            if ($request->hasFile('proof_of_payment')) {
+                $proofPath = $request->file('proof_of_payment')->store('proofs/sales', 'public');
+            }
+
             // Create the sale
             $sale = Sale::create([
                 'team_id' => $team->id,
@@ -124,7 +140,11 @@ class SaleController extends Controller
                 'tax_amount' => 0,
                 'grand_total' => $subtotal,
                 'status' => 'Completed',
-                'payment_method' => $validated['payment_method'] ?? 'Cash / Bank Transfer',
+                'payment_method' => $validated['payment_method'],
+                'payment_reference' => $validated['payment_reference'],
+                'amount_paid' => $validated['amount_paid'],
+                'payment_date' => $validated['payment_date'],
+                'proof_of_payment' => $proofPath,
                 'notes' => $validated['notes'] ?? null,
                 'processed_by_id' => $request->user()->id,
             ]);
@@ -171,8 +191,9 @@ class SaleController extends Controller
     /**
      * Show a single sale with all its items (for invoice view/print).
      */
-    public function show(Request $request, Sale $sale): Response
+    public function show(Request $request, mixed $current_team = null, mixed $sale = null): Response
     {
+        $sale = $this->resolveSale($sale, $current_team, $request);
         $team = $request->user()->currentTeam;
         abort_if(! $team || $sale->team_id !== $team->id, 403);
 
@@ -181,5 +202,35 @@ class SaleController extends Controller
         return Inertia::render('Sales/Show', [
             'sale' => $sale,
         ]);
+    }
+
+    /**
+     * Resolve sale from route parameters.
+     */
+    protected function resolveSale(mixed $sale, mixed $fallback = null, ?Request $request = null): Sale
+    {
+        if ($sale instanceof Sale) {
+            return $sale;
+        }
+
+        $candidates = array_filter([
+            $sale,
+            $fallback,
+            $request?->route('sale'),
+        ], fn ($val) => $val !== null && $val !== '');
+
+        foreach ($candidates as $cand) {
+            if ($cand instanceof Sale) {
+                return $cand;
+            }
+            if (is_numeric($cand)) {
+                $found = Sale::find((int) $cand);
+                if ($found) {
+                    return $found;
+                }
+            }
+        }
+
+        abort(404, 'Sale record not found.');
     }
 }

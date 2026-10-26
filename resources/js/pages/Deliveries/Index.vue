@@ -276,8 +276,10 @@ const submitDelivery = () => {
 const showDeleteModal = ref(false);
 const selectedDelivery = ref<DeliveryItem | null>(null);
 const isDeleting = ref(false);
+const deleteConfirmInput = ref('');
 
 const openDeleteModal = (item: DeliveryItem) => {
+    deleteConfirmInput.value = '';
     selectedDelivery.value = item;
     showDeleteModal.value = true;
 };
@@ -934,7 +936,7 @@ const executeCsvImport = () => {
                 <Trash2 class="w-6 h-6" />
             </div>
             <h3 class="text-xl font-bold text-gray-900 mb-2">Delete Delivery Record</h3>
-            <p class="text-gray-600 text-sm mb-6 leading-relaxed">
+            <p class="text-gray-600 text-sm mb-4 leading-relaxed">
                 Are you sure you want to delete delivery receipt 
                 <span class="font-bold text-gray-900 font-mono">{{ selectedDelivery?.delivery_number }}</span>
                 <span v-if="selectedDelivery?.description" class="block text-xs text-gray-500 mt-1 truncate">
@@ -942,6 +944,17 @@ const executeCsvImport = () => {
                 </span>
                 ? This action cannot be undone.
             </p>
+            <div class="mt-4 mb-6">
+                <label class="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                </label>
+                <input
+                    v-model="deleteConfirmInput"
+                    type="text"
+                    placeholder="Type YES here"
+                    class="w-full px-3 py-2 text-sm font-mono rounded-xl border border-gray-300 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                />
+            </div>
             <div class="flex justify-end gap-3">
                 <SpecularButton
                     type="button"
@@ -959,7 +972,7 @@ const executeCsvImport = () => {
                     size="md"
                     :radius="10"
                     @click="confirmDelete"
-                    :disabled="isDeleting"
+                    :disabled="isDeleting || deleteConfirmInput.trim().toUpperCase() !== 'YES'"
                 >
                     <Trash2 v-if="!isDeleting" class="w-4 h-4 mr-1 inline" />
                     <span>{{ isDeleting ? 'Deleting...' : 'Delete Delivery' }}</span>

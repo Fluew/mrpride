@@ -280,8 +280,10 @@ const submitCi = () => {
 
 const showDeleteCiModal = ref(false);
 const selectedCi = ref<CommercialInvoiceItem | null>(null);
+const deleteCiConfirmInput = ref('');
 
 const openDeleteCiModal = (ci: CommercialInvoiceItem) => {
+    deleteCiConfirmInput.value = '';
     selectedCi.value = ci;
     showDeleteCiModal.value = true;
 };
@@ -467,8 +469,10 @@ const submitPo = () => {
 
 const showDeletePoModal = ref(false);
 const selectedPo = ref<PurchaseOrderItem | null>(null);
+const deletePoConfirmInput = ref('');
 
 const openDeletePoModal = (po: PurchaseOrderItem) => {
+    deletePoConfirmInput.value = '';
     selectedPo.value = po;
     showDeletePoModal.value = true;
 };
@@ -689,7 +693,10 @@ const updateStatus = (req: PurchaseRequestItem, newStatus: string) => {
     );
 };
 
+const deleteConfirmInput = ref('');
+
 const openDeleteModal = (req: PurchaseRequestItem) => {
+    deleteConfirmInput.value = '';
     selectedRequest.value = req;
     showDeleteModal.value = true;
 };
@@ -1831,9 +1838,20 @@ const confirmDelete = () => {
     <div v-if="showDeleteCiModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
         <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
             <h3 class="text-xl font-bold text-gray-900 mb-2">Delete Commercial Invoice</h3>
-            <p class="text-gray-600 text-sm mb-6">
+            <p class="text-gray-600 text-sm mb-4">
                 Are you sure you want to delete commercial invoice <span class="font-semibold text-gray-900">{{ selectedCi?.invoice_number }}</span>?
             </p>
+            <div class="mt-4 mb-6">
+                <label class="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                </label>
+                <input
+                    v-model="deleteCiConfirmInput"
+                    type="text"
+                    placeholder="Type YES here"
+                    class="w-full px-3 py-2 text-sm font-mono rounded-xl border border-gray-300 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                />
+            </div>
             <div class="flex justify-end gap-3">
                 <SpecularButton
                     variant="secondary"
@@ -1848,6 +1866,7 @@ const confirmDelete = () => {
                     size="md"
                     :radius="10"
                     @click="confirmDeleteCi"
+                    :disabled="deleteCiConfirmInput.trim().toUpperCase() !== 'YES'"
                 >
                     Delete Invoice
                 </SpecularButton>
@@ -1861,9 +1880,20 @@ const confirmDelete = () => {
     <div v-if="showDeletePoModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
         <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
             <h3 class="text-xl font-bold text-gray-900 mb-2">Delete Purchase Order</h3>
-            <p class="text-gray-600 text-sm mb-6">
+            <p class="text-gray-600 text-sm mb-4">
                 Are you sure you want to delete purchase order <span class="font-semibold text-gray-900">{{ selectedPo?.po_number }}</span>?
             </p>
+            <div class="mt-4 mb-6">
+                <label class="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                </label>
+                <input
+                    v-model="deletePoConfirmInput"
+                    type="text"
+                    placeholder="Type YES here"
+                    class="w-full px-3 py-2 text-sm font-mono rounded-xl border border-gray-300 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                />
+            </div>
             <div class="flex justify-end gap-3">
                 <SpecularButton
                     variant="secondary"
@@ -1878,6 +1908,7 @@ const confirmDelete = () => {
                     size="md"
                     :radius="10"
                     @click="confirmDeletePo"
+                    :disabled="deletePoConfirmInput.trim().toUpperCase() !== 'YES'"
                 >
                     Delete Order
                 </SpecularButton>
@@ -1991,7 +2022,18 @@ const confirmDelete = () => {
     <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
         <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
             <h3 class="text-xl font-bold text-gray-900 mb-2">Delete Purchase Request</h3>
-            <p class="text-gray-600 text-sm mb-6">Are you sure you want to cancel and delete request <span class="font-semibold text-gray-900">{{ selectedRequest?.request_number }}</span>?</p>
+            <p class="text-gray-600 text-sm mb-4">Are you sure you want to cancel and delete request <span class="font-semibold text-gray-900">{{ selectedRequest?.request_number }}</span>?</p>
+            <div class="mt-4 mb-6">
+                <label class="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                </label>
+                <input
+                    v-model="deleteConfirmInput"
+                    type="text"
+                    placeholder="Type YES here"
+                    class="w-full px-3 py-2 text-sm font-mono rounded-xl border border-gray-300 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                />
+            </div>
             <div class="flex justify-end gap-3">
                 <SpecularButton
                     variant="secondary"
@@ -2006,6 +2048,7 @@ const confirmDelete = () => {
                     size="md"
                     :radius="10"
                     @click="confirmDelete"
+                    :disabled="deleteConfirmInput.trim().toUpperCase() !== 'YES'"
                 >
                     Delete Request
                 </SpecularButton>

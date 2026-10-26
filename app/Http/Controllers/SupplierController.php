@@ -87,8 +87,9 @@ class SupplierController extends Controller
     /**
      * Update the specified supplier.
      */
-    public function update(Request $request, Supplier $supplier): RedirectResponse
+    public function update(Request $request, mixed $current_team = null, mixed $supplier = null): RedirectResponse
     {
+        $supplier = $this->resolveSupplier($supplier, $current_team, $request);
         $team = $request->user()->currentTeam;
         abort_if(! $team || $supplier->team_id !== $team->id, 403);
 
@@ -109,8 +110,9 @@ class SupplierController extends Controller
     /**
      * Remove the specified supplier.
      */
-    public function destroy(Request $request, Supplier $supplier): RedirectResponse
+    public function destroy(Request $request, mixed $current_team = null, mixed $supplier = null): RedirectResponse
     {
+        $supplier = $this->resolveSupplier($supplier, $current_team, $request);
         $team = $request->user()->currentTeam;
         abort_if(! $team || $supplier->team_id !== $team->id, 403);
 
@@ -128,7 +130,7 @@ class SupplierController extends Controller
      * Run AHP evaluation for all active suppliers in the team.
      *
      * Uses the Analytic Hierarchy Process with pairwise comparisons
-     * across four criteria: Price, Quality, Delivery, Service.
+     * across three criteria: Price / Cost, Quality, Delivery Reliability.
      */
     public function runAhp(Request $request): RedirectResponse
     {
@@ -136,17 +138,15 @@ class SupplierController extends Controller
         abort_if(! $team, 403, 'No active team selected.');
 
         $validated = $request->validate([
-            'criteria_weights' => ['required', 'array', 'size:4'],
+            'criteria_weights' => ['required', 'array', 'size:3'],
             'criteria_weights.price' => ['required', 'numeric', 'min:0'],
             'criteria_weights.quality' => ['required', 'numeric', 'min:0'],
             'criteria_weights.delivery' => ['required', 'numeric', 'min:0'],
-            'criteria_weights.service' => ['required', 'numeric', 'min:0'],
             'supplier_scores' => ['required', 'array', 'min:1'],
             'supplier_scores.*.id' => ['required', 'integer', Rule::exists('suppliers', 'id')->where('team_id', $team->id)],
             'supplier_scores.*.price' => ['required', 'integer', 'min:1', 'max:10'],
             'supplier_scores.*.quality' => ['required', 'integer', 'min:1', 'max:10'],
             'supplier_scores.*.delivery' => ['required', 'integer', 'min:1', 'max:10'],
-            'supplier_scores.*.service' => ['required', 'integer', 'min:1', 'max:10'],
         ]);
 
         // Normalize criteria weights so they sum to 1
@@ -159,15 +159,13 @@ class SupplierController extends Controller
             'price' => $weights['price'] / $totalWeight,
             'quality' => $weights['quality'] / $totalWeight,
             'delivery' => $weights['delivery'] / $totalWeight,
-            'service' => $weights['service'] / $totalWeight,
         ];
 
         // Calculate AHP score for each supplier
         foreach ($validated['supplier_scores'] as $scores) {
             $ahpScore = ($scores['price'] / 10) * $normalizedWeights['price']
                 + ($scores['quality'] / 10) * $normalizedWeights['quality']
-                + ($scores['delivery'] / 10) * $normalizedWeights['delivery']
-                + ($scores['service'] / 10) * $normalizedWeights['service'];
+                + ($scores['delivery'] / 10) * $normalizedWeights['delivery'];
 
             Supplier::where('id', $scores['id'])
                 ->where('team_id', $team->id)
@@ -177,11 +175,40 @@ class SupplierController extends Controller
                         'price' => $scores['price'],
                         'quality' => $scores['quality'],
                         'delivery' => $scores['delivery'],
-                        'service' => $scores['service'],
                     ],
                 ]);
         }
 
         return back()->with('success', 'AHP evaluation completed successfully.');
+    }
+
+    /**
+     * Resolve supplier from route parameters.
+     */
+    protected function resolveSupplier(mixed $supplier, mixed $fallback = null, ?Request $request = null): Supplier
+    {
+        if ($supplier instanceof Supplier) {
+            return $supplier;
+        }
+
+        $candidates = array_filter([
+            $supplier,
+            $fallback,
+            $request?->route('supplier'),
+        ], fn ($val) => $val !== null && $val !== '');
+
+        foreach ($candidates as $cand) {
+            if ($cand instanceof Supplier) {
+                return $cand;
+            }
+            if (is_numeric($cand)) {
+                $found = Supplier::find((int) $cand);
+                if ($found) {
+                    return $found;
+                }
+            }
+        }
+
+        abort(404, 'Supplier not found.');
     }
 }

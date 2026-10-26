@@ -46,6 +46,7 @@ interface ConfirmActionOptions {
 }
 
 const showConfirmModal = ref(false);
+const confirmActionInput = ref('');
 const confirmOptions = ref<ConfirmActionOptions>({
     title: 'Confirm Action',
     description: 'Are you sure you want to proceed?',
@@ -56,6 +57,7 @@ const confirmOptions = ref<ConfirmActionOptions>({
 });
 
 const openConfirmModal = (options: ConfirmActionOptions) => {
+    confirmActionInput.value = '';
     confirmOptions.value = {
         confirmText: 'Confirm & Proceed',
         confirmVariant: 'destructive',
@@ -228,11 +230,23 @@ const promptRevokeOtherSessions = () => {
                 {{ confirmOptions.description }}
             </p>
 
-            <div v-if="confirmOptions.details && confirmOptions.details.length > 0" class="bg-gray-50 border border-gray-100 rounded-xl p-3.5 mb-5 space-y-2 text-xs">
+            <div v-if="confirmOptions.details && confirmOptions.details.length > 0" class="bg-gray-50 border border-gray-100 rounded-xl p-3.5 mb-4 space-y-2 text-xs">
                 <div v-for="(item, idx) in confirmOptions.details" :key="idx" class="flex justify-between items-center py-0.5 border-b border-gray-100 last:border-b-0">
                     <span class="text-gray-500 font-medium">{{ item.label }}</span>
                     <span class="font-semibold text-gray-900 text-right">{{ item.value }}</span>
                 </div>
+            </div>
+
+            <div v-if="confirmOptions.confirmVariant === 'destructive'" class="mt-2 mb-5">
+                <label class="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                </label>
+                <input
+                    v-model="confirmActionInput"
+                    type="text"
+                    placeholder="Type YES here"
+                    class="w-full px-3 py-2 text-sm font-mono rounded-xl border border-gray-300 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                />
             </div>
 
             <div class="flex justify-end gap-3">
@@ -251,6 +265,7 @@ const promptRevokeOtherSessions = () => {
                     size="md"
                     :radius="10"
                     @click="handleConfirmedAction"
+                    :disabled="confirmOptions.confirmVariant === 'destructive' && confirmActionInput.trim().toUpperCase() !== 'YES'"
                 >
                     <Check v-if="confirmOptions.confirmVariant !== 'destructive'" class="w-4 h-4 mr-1.5 inline" />
                     <Trash2 v-else class="w-4 h-4 mr-1.5 inline" />

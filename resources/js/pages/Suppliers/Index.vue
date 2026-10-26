@@ -81,6 +81,7 @@ watch(() => props.filters, (newFilters) => {
 const showAddModal = ref(false);
 const showEditModal = ref(false);
 const showDeleteModal = ref(false);
+const deleteConfirmInput = ref('');
 const showAhpModal = ref(false);
 const selectedSupplier = ref<Supplier | null>(null);
 
@@ -117,6 +118,7 @@ const openEditModal = (supplier: Supplier) => {
 
 const openDeleteModal = (supplier: Supplier) => {
     selectedSupplier.value = supplier;
+    deleteConfirmInput.value = '';
     showDeleteModal.value = true;
 };
 
@@ -217,10 +219,9 @@ const confirmDelete = () => {
 
 // AHP Evaluation State
 const ahpWeights = ref({
-    price: 45,
+    price: 50,
     quality: 30,
-    delivery: 15,
-    service: 10,
+    delivery: 20,
 });
 
 const ahpSupplierScores = ref<Array<{
@@ -229,7 +230,6 @@ const ahpSupplierScores = ref<Array<{
     price: number;
     quality: number;
     delivery: number;
-    service: number;
 }>>([]);
 
 const initAhp = () => {
@@ -239,27 +239,24 @@ const initAhp = () => {
         price: s.metrics?.price ?? 8,
         quality: s.metrics?.quality ?? 8,
         delivery: s.metrics?.delivery ?? 7,
-        service: s.metrics?.service ?? 7,
     }));
     showAhpModal.value = true;
 };
 
 const calculatedRankings = computed(() => {
-    const totalWeight = ahpWeights.value.price + ahpWeights.value.quality + ahpWeights.value.delivery + ahpWeights.value.service;
+    const totalWeight = ahpWeights.value.price + ahpWeights.value.quality + ahpWeights.value.delivery;
     if (totalWeight <= 0) return [];
 
     const normW = {
         price: ahpWeights.value.price / totalWeight,
         quality: ahpWeights.value.quality / totalWeight,
         delivery: ahpWeights.value.delivery / totalWeight,
-        service: ahpWeights.value.service / totalWeight,
     };
 
     return ahpSupplierScores.value.map(s => {
         const score = (s.price / 10) * normW.price +
                       (s.quality / 10) * normW.quality +
-                      (s.delivery / 10) * normW.delivery +
-                      (s.service / 10) * normW.service;
+                      (s.delivery / 10) * normW.delivery;
         return {
             ...s,
             calculatedScore: Number(score.toFixed(3)),
@@ -273,10 +270,9 @@ const promptSaveAhp = () => {
         title: 'Confirm AHP Criteria & Rankings',
         description: 'Are you sure you want to save and apply the analytical hierarchy process (AHP) criteria weights and supplier performance evaluations?',
         details: [
-            { label: 'Price Weight', value: `${ahpWeights.value.price}%` },
+            { label: 'Price / Cost Weight', value: `${ahpWeights.value.price}%` },
             { label: 'Quality Weight', value: `${ahpWeights.value.quality}%` },
-            { label: 'Delivery Weight', value: `${ahpWeights.value.delivery}%` },
-            { label: 'Service Weight', value: `${ahpWeights.value.service}%` },
+            { label: 'Delivery Reliability Weight', value: `${ahpWeights.value.delivery}%` },
         ],
         confirmText: 'Save Rankings',
         action: saveAhp,
@@ -595,7 +591,20 @@ const saveAhp = () => {
     <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
         <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
             <h3 class="text-xl font-bold text-gray-900 mb-2">Confirm Delete</h3>
-            <p class="text-gray-600 text-sm mb-6">Are you sure you want to delete <span class="font-semibold text-gray-900">{{ selectedSupplier?.name }}</span>? This will permanently remove the supplier record.</p>
+            <p class="text-gray-600 text-sm mb-4">Are you sure you want to delete <span class="font-semibold text-gray-900">{{ selectedSupplier?.name }}</span>? This will permanently remove the supplier record.</p>
+            
+            <div class="mt-4 mb-6">
+                <label class="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                </label>
+                <input
+                    v-model="deleteConfirmInput"
+                    type="text"
+                    placeholder="Type YES here"
+                    class="w-full px-3 py-2 text-sm font-mono rounded-xl border border-gray-300 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                />
+            </div>
+
             <div class="flex justify-end gap-3">
                 <SpecularButton
                     variant="secondary"
@@ -610,6 +619,7 @@ const saveAhp = () => {
                     size="md"
                     :radius="10"
                     @click="confirmDelete"
+                    :disabled="deleteConfirmInput.trim().toUpperCase() !== 'YES'"
                 >
                     Delete Supplier
                 </SpecularButton>
@@ -623,7 +633,7 @@ const saveAhp = () => {
             <div class="flex justify-between items-center mb-6">
                 <div>
                     <h3 class="text-2xl font-bold text-gray-900 tracking-tight">Analytic Hierarchy Process (AHP)</h3>
-                    <p class="text-gray-500 text-sm">Tune criteria weights and evaluate supplier metrics to calculate optimal vendor rankings.</p>
+                    <p class="text-gray-500 text-sm">Tune criteria weights and evaluate supplier metrics to calculate optimal vendor rankings across the 3 decision criteria.</p>
                 </div>
                 <button @click="showAhpModal = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
@@ -632,30 +642,27 @@ const saveAhp = () => {
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <div class="bg-gray-50 p-5 rounded-xl border border-gray-200">
                     <h4 class="text-gray-900 font-bold mb-3 border-b border-gray-200 pb-2 text-sm">Criteria Relative Weights (%)</h4>
-                    <div class="space-y-3">
+                    <div class="space-y-4">
                         <div>
                             <div class="flex justify-between text-xs mb-1">
-                                <span class="font-medium text-gray-700">Price / Cost ({{ ahpWeights.price }}%)</span>
+                                <span class="font-bold text-gray-800">Price / Cost ({{ ahpWeights.price }}%)</span>
                             </div>
+                            <p class="text-[11px] text-gray-500 mb-1.5">(price competitiveness of the supplier)</p>
                             <input v-model.number="ahpWeights.price" type="range" min="1" max="100" class="w-full accent-[#F8B803]" />
                         </div>
                         <div>
                             <div class="flex justify-between text-xs mb-1">
-                                <span class="font-medium text-gray-700">Quality ({{ ahpWeights.quality }}%)</span>
+                                <span class="font-bold text-gray-800">Quality ({{ ahpWeights.quality }}%)</span>
                             </div>
+                            <p class="text-[11px] text-gray-500 mb-1.5">(quality of product of the supplier evaluated by the staffs)</p>
                             <input v-model.number="ahpWeights.quality" type="range" min="1" max="100" class="w-full accent-[#F8B803]" />
                         </div>
                         <div>
                             <div class="flex justify-between text-xs mb-1">
-                                <span class="font-medium text-gray-700">Delivery Reliability ({{ ahpWeights.delivery }}%)</span>
+                                <span class="font-bold text-gray-800">Delivery Reliability ({{ ahpWeights.delivery }}%)</span>
                             </div>
+                            <p class="text-[11px] text-gray-500 mb-1.5">(reliability of supplier in terms on delivery to MR Pride)</p>
                             <input v-model.number="ahpWeights.delivery" type="range" min="1" max="100" class="w-full accent-[#F8B803]" />
-                        </div>
-                        <div>
-                            <div class="flex justify-between text-xs mb-1">
-                                <span class="font-medium text-gray-700">Service / Support ({{ ahpWeights.service }}%)</span>
-                            </div>
-                            <input v-model.number="ahpWeights.service" type="range" min="1" max="100" class="w-full accent-[#F8B803]" />
                         </div>
                     </div>
                 </div>
@@ -663,7 +670,7 @@ const saveAhp = () => {
                 <!-- Calculated Rankings -->
                 <div class="bg-gray-50 p-5 rounded-xl border border-gray-200">
                     <h4 class="text-gray-900 font-bold mb-3 border-b border-gray-200 pb-2 text-sm">Calculated Rankings</h4>
-                    <div class="space-y-2.5 max-h-[180px] overflow-y-auto pr-1">
+                    <div class="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
                         <div v-for="(sup, idx) in calculatedRankings" :key="sup.id" class="flex items-center justify-between p-2 rounded-lg bg-white border border-gray-200 text-sm">
                             <div class="flex items-center gap-2.5">
                                 <span class="w-6 h-6 rounded-full bg-[#F8B803]/20 text-[#92400e] flex items-center justify-center text-xs font-bold">{{ idx + 1 }}</span>
@@ -683,10 +690,9 @@ const saveAhp = () => {
                         <thead class="text-xs uppercase text-gray-500 border-b border-gray-200">
                             <tr>
                                 <th class="pb-2">Supplier</th>
-                                <th class="pb-2 text-center">Price (1-10)</th>
+                                <th class="pb-2 text-center">Price / Cost (1-10)</th>
                                 <th class="pb-2 text-center">Quality (1-10)</th>
-                                <th class="pb-2 text-center">Delivery (1-10)</th>
-                                <th class="pb-2 text-center">Service (1-10)</th>
+                                <th class="pb-2 text-center">Delivery Reliability (1-10)</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200">
@@ -700,9 +706,6 @@ const saveAhp = () => {
                                 </td>
                                 <td class="py-3 text-center">
                                     <input v-model.number="sup.delivery" type="number" min="1" max="10" class="w-16 text-center bg-white border border-gray-200 rounded-lg py-1 text-sm text-gray-900 focus:outline-none focus:border-[#F8B803]" />
-                                </td>
-                                <td class="py-3 text-center">
-                                    <input v-model.number="sup.service" type="number" min="1" max="10" class="w-16 text-center bg-white border border-gray-200 rounded-lg py-1 text-sm text-gray-900 focus:outline-none focus:border-[#F8B803]" />
                                 </td>
                             </tr>
                         </tbody>

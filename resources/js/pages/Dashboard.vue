@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
-import { Link } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import { computed, defineAsyncComponent, shallowRef } from 'vue';
 import PendingInvitationsModal from '@/components/PendingInvitationsModal.vue';
 import FadeContent from '@/components/vue-bits/FadeContent.vue';
@@ -107,7 +106,27 @@ const props = defineProps<{
     pendingInvitations?: DashboardInvitation[];
     stats?: DashboardStats;
     recentActivity?: ActivityItem[];
+    isFirstLogin?: boolean;
 }>();
+
+const page = usePage();
+const currentUser = computed(() => (page.props as any).auth?.user);
+
+const firstName = computed(() => {
+    if (currentUser.value?.first_name) {
+        return currentUser.value.first_name;
+    }
+    const name = currentUser.value?.name?.trim() || '';
+    if (!name) return 'User';
+    return name.split(' ')[0] || 'User';
+});
+
+const isFirstTimeLogin = computed(() => {
+    if (props.isFirstLogin !== undefined) {
+        return Boolean(props.isFirstLogin);
+    }
+    return Boolean((page.props as any).auth?.is_first_login);
+});
 
 const formatCurrency = (val?: number) => {
     return new Intl.NumberFormat('en-PH', {
@@ -156,15 +175,24 @@ defineOptions({
 
     <div class="workspace-page">
         <!-- Dashboard Header -->
-        <FadeContent class="mb-2 flex flex-col gap-1">
-            <h1
-                class="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl"
+        <FadeContent class="mb-4 flex flex-col gap-1">
+            <span
+                class="text-xs font-bold uppercase tracking-wider text-[#4b5320] dark:text-[#F8B803]"
             >
-                Workspace overview
+                WORKSPACE OVERVIEW
+            </span>
+            <h1
+                class="text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl dark:text-white"
+            >
+                Hello, {{ firstName }}!
             </h1>
-            <p class="text-gray-500">
-                Monitor inventory, review quotations, and keep daily operations
-                moving.
+            <p class="text-sm text-gray-600 dark:text-neutral-400">
+                <template v-if="isFirstTimeLogin">
+                    Welcome to MRP ElectroDesk. Let's get started.
+                </template>
+                <template v-else>
+                    Welcome back to MRP ElectroDesk.
+                </template>
             </p>
         </FadeContent>
 

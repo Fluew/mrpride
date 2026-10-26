@@ -45,7 +45,8 @@ class EnsureRole
         // Also check if any module-level shorthand was passed (e.g. 'inventory' matches 'staff_inventory')
         if (! $isAuthorized) {
             foreach ($roles as $requiredRole) {
-                if ($user->role === 'staff_' . $requiredRole || ($user->role === 'staff' && $requiredRole === 'inventory')) {
+                if ($user->role === 'staff_' . $requiredRole 
+                    || ($user->role === 'staff' && $requiredRole === 'inventory')) {
                     $isAuthorized = true;
                     break;
                 }

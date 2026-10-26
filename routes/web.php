@@ -10,6 +10,7 @@ use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\PublicQuotationController;
 use App\Http\Controllers\PurchaseRequestController;
 use App\Http\Controllers\QuotationController;
+use App\Http\Controllers\RecycleBinController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\Security\AuditLogController;
@@ -157,6 +158,14 @@ Route::prefix('{current_team}')
             Route::post('users/devices/{device}/revoke', [UserController::class, 'revokeDevice'])->name('users.devices.revoke');
             Route::delete('users/devices/{device}', [UserController::class, 'destroyDevice'])->name('users.devices.destroy');
             Route::post('users/recovery-key/regenerate', [UserController::class, 'regenerateRecoveryKey'])->name('users.recovery-key.regenerate');
+
+            // Centralized Archive / Recycle Bin Module (Admin only)
+            Route::get('recycle-bin', [RecycleBinController::class, 'index'])->name('recycle-bin.index');
+            Route::post('recycle-bin/bulk-restore', [RecycleBinController::class, 'bulkRestore'])->name('recycle-bin.bulk-restore');
+            Route::post('recycle-bin/bulk-force-delete', [RecycleBinController::class, 'bulkForceDelete'])->name('recycle-bin.bulk-force-delete');
+            Route::post('recycle-bin/empty', [RecycleBinController::class, 'emptyBin'])->name('recycle-bin.empty');
+            Route::post('recycle-bin/{type}/{id}/restore', [RecycleBinController::class, 'restore'])->name('recycle-bin.restore');
+            Route::delete('recycle-bin/{type}/{id}/force', [RecycleBinController::class, 'forceDelete'])->name('recycle-bin.force-delete');
         });
 
         // Backwards-compatible security redirects to centralized tabs

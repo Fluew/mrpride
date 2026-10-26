@@ -159,6 +159,7 @@ const showPrintModal = ref(false);
 const showStatusModal = ref(false);
 const showConvertModal = ref(false);
 const showDeleteModal = ref(false);
+const deleteConfirmInput = ref('');
 const activeQuotation = ref<Quotation | null>(null);
 
 // Create / Edit Form State
@@ -514,6 +515,7 @@ const triggerPrint = () => {
 
 // Delete
 const openDeleteModal = (quote: Quotation) => {
+    deleteConfirmInput.value = '';
     activeQuotation.value = quote;
     showDeleteModal.value = true;
 };
@@ -1767,9 +1769,20 @@ const executeCsvImport = () => {
                 <Trash2 class="w-6 h-6" />
             </div>
             <h3 class="text-xl font-bold text-gray-900 mb-2">Delete Quotation</h3>
-            <p class="text-gray-600 text-sm mb-6 leading-relaxed">
+            <p class="text-gray-600 text-sm mb-4 leading-relaxed">
                 Are you sure you want to delete quotation <strong class="text-gray-900">"{{ activeQuotation?.quotation_number }}"</strong> for {{ activeQuotation?.client_name }}? This action cannot be undone.
             </p>
+            <div class="mt-4 mb-6">
+                <label class="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                </label>
+                <input
+                    v-model="deleteConfirmInput"
+                    type="text"
+                    placeholder="Type YES here"
+                    class="w-full px-3 py-2 text-sm font-mono rounded-xl border border-gray-300 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                />
+            </div>
             <div class="flex justify-end gap-3">
                 <SpecularButton
                     type="button"
@@ -1786,6 +1799,7 @@ const executeCsvImport = () => {
                     size="md"
                     :radius="10"
                     @click="confirmDelete"
+                    :disabled="deleteConfirmInput.trim().toUpperCase() !== 'YES'"
                 >
                     Delete
                 </SpecularButton>

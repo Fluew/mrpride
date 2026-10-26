@@ -83,6 +83,28 @@ class User extends Authenticatable
     }
 
     /**
+     * The accessors to append to the model's array form.
+     *
+     * @var array<int, string>
+     */
+    protected $appends = [
+        'first_name',
+    ];
+
+    /**
+     * Get user's first name.
+     */
+    public function getFirstNameAttribute(): string
+    {
+        $name = trim($this->name ?? '');
+        if (empty($name)) {
+            return 'User';
+        }
+        $parts = explode(' ', $name);
+        return $parts[0] ?: 'User';
+    }
+
+    /**
      * All recognized staff roles mapped to their module name.
      */
     public const STAFF_ROLES = [
