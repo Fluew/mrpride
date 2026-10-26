@@ -5,6 +5,7 @@ import {
     Users,
     Package,
     Truck,
+    Building2,
     FileText,
     ShoppingCart,
     LineChart,
@@ -56,9 +57,10 @@ const operations = computed<NavItem[]>(() => {
             { title: 'Overview', href: dashboard(team), icon: LayoutGrid },
             { title: 'User Management', href: users(team), icon: Users },
             { title: 'Inventory', href: inventory(team), icon: Package },
-            { title: 'Suppliers', href: suppliers(team), icon: Truck },
+            { title: 'Suppliers', href: suppliers(team), icon: Building2 },
             { title: 'Quotations', href: quotations(team), icon: FileText },
             { title: 'Procurement', href: procurement(team), icon: ShoppingCart },
+            { title: 'Deliveries', href: `/${team}/deliveries`, icon: Truck },
             { title: 'Sales', href: sales(team), icon: Banknote },
             { title: 'Demand Forecasting', href: forecast(team), icon: LineChart },
             { title: 'Reports & Analytics', href: reports(team), icon: PieChart },
@@ -75,6 +77,9 @@ const operations = computed<NavItem[]>(() => {
     }
     if (r === 'staff_procurement') {
         return [{ title: 'Procurement', href: procurement(team), icon: ShoppingCart }];
+    }
+    if (r === 'staff_deliveries') {
+        return [{ title: 'Deliveries', href: `/${team}/deliveries`, icon: Truck }];
     }
     if (r === 'staff_sales') {
         return [{ title: 'Sales', href: sales(team), icon: Banknote }];

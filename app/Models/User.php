@@ -89,6 +89,7 @@ class User extends Authenticatable
         'staff_inventory' => 'Inventory',
         'staff_quotations' => 'Quotations',
         'staff_procurement' => 'Procurement',
+        'staff_deliveries' => 'Deliveries',
         'staff_sales' => 'Sales',
         'staff_forecast' => 'Demand Forecasting',
         'staff_suppliers' => 'Suppliers',
@@ -139,6 +140,7 @@ class User extends Authenticatable
         return match ($this->role) {
             'staff_quotations' => 'quotations',
             'staff_procurement' => 'procurement',
+            'staff_deliveries' => 'deliveries',
             'staff_sales' => 'sales',
             'staff_forecast' => 'forecast',
             'staff_suppliers' => 'suppliers',

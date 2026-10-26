@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\ChangePasswordController;
 use App\Http\Controllers\Auth\DeviceVerificationController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DeliveryController;
 use App\Http\Controllers\ForecastController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\PublicQuotationController;
@@ -190,6 +191,7 @@ Route::prefix('{current_team}')
         Route::middleware('role:admin,staff_quotations')->group(function () {
             Route::get('quotations', [QuotationController::class, 'index'])->name('admin.quotations.index');
             Route::post('quotations', [QuotationController::class, 'store'])->name('admin.quotations.store');
+            Route::post('quotations/import-csv', [QuotationController::class, 'importCsv'])->name('admin.quotations.importCsv');
             Route::put('quotations/{quotation}', [QuotationController::class, 'update'])->name('admin.quotations.update');
             Route::patch('quotations/{quotation}/status', [QuotationController::class, 'updateStatus'])->name('admin.quotations.updateStatus');
             Route::post('quotations/{quotation}/convert-to-sale', [QuotationController::class, 'convertToSale'])->name('admin.quotations.convertToSale');
@@ -202,6 +204,24 @@ Route::prefix('{current_team}')
             Route::post('procurement', [PurchaseRequestController::class, 'store'])->name('procurement.store');
             Route::patch('procurement/{purchaseRequest}/status', [PurchaseRequestController::class, 'updateStatus'])->name('procurement.updateStatus');
             Route::delete('procurement/{purchaseRequest}', [PurchaseRequestController::class, 'destroy'])->name('procurement.destroy');
+
+            // Commercial Invoices
+            Route::post('procurement/commercial-invoices', [PurchaseRequestController::class, 'storeCommercialInvoice'])->name('procurement.commercialInvoices.store');
+            Route::post('procurement/commercial-invoices/import-csv', [PurchaseRequestController::class, 'importCommercialInvoicesCsv'])->name('procurement.commercialInvoices.importCsv');
+            Route::delete('procurement/commercial-invoices/{commercialInvoice}', [PurchaseRequestController::class, 'destroyCommercialInvoice'])->name('procurement.commercialInvoices.destroy');
+
+            // Purchase Orders
+            Route::post('procurement/purchase-orders', [PurchaseRequestController::class, 'storePurchaseOrder'])->name('procurement.purchaseOrders.store');
+            Route::post('procurement/purchase-orders/import-csv', [PurchaseRequestController::class, 'importPurchaseOrdersCsv'])->name('procurement.purchaseOrders.importCsv');
+            Route::delete('procurement/purchase-orders/{purchaseOrder}', [PurchaseRequestController::class, 'destroyPurchaseOrder'])->name('procurement.purchaseOrders.destroy');
+        });
+
+        // Delivery Module (Admin, Procurement, and Inventory Staff)
+        Route::middleware('role:admin,staff_procurement,staff_inventory,staff_deliveries')->group(function () {
+            Route::get('deliveries', [DeliveryController::class, 'index'])->name('deliveries.index');
+            Route::post('deliveries', [DeliveryController::class, 'store'])->name('deliveries.store');
+            Route::post('deliveries/import-csv', [DeliveryController::class, 'importCsv'])->name('deliveries.importCsv');
+            Route::delete('deliveries/{delivery}', [DeliveryController::class, 'destroy'])->name('deliveries.destroy');
         });
 
         // Sales & POS Module (Admin and Sales Staff)

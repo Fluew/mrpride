@@ -26,7 +26,11 @@ import {
     AlertCircle,
     RotateCcw,
     Layers,
-    ArrowRight
+    ArrowRight,
+    Upload,
+    ChevronRight,
+    FileSpreadsheet,
+    FileUp
 } from '@lucide/vue';
 
 interface QuotationItem {
@@ -295,8 +299,8 @@ const openEditModal = (quote: Quotation) => {
         email: quote.email || '',
         phone: quote.phone || '',
         address: quote.address || '',
-        quotation_date: formatDate(quote.quotation_date),
-        valid_until: formatDate(quote.valid_until),
+        quotation_date: toInputDate(quote.quotation_date),
+        valid_until: toInputDate(quote.valid_until),
         status: quote.status,
         notes: quote.notes || '',
         terms_and_conditions: quote.terms_and_conditions || '',
@@ -364,7 +368,7 @@ const promptSaveQuotation = () => {
         formError.value = 'At least one line item must be added to the quotation.';
         return;
     }
-    if (formatDate(form.value.valid_until) < formatDate(form.value.quotation_date)) {
+    if (toInputDate(form.value.valid_until) < toInputDate(form.value.quotation_date)) {
         formError.value = 'Valid Until date cannot be earlier than the Quotation date.';
         return;
     }
@@ -523,15 +527,43 @@ const confirmDelete = () => {
     });
 };
 
-// Helpers
+// Date & Format Helpers
+const toInputDate = (dateStr: string | null | undefined): string => {
+    if (!dateStr) return '';
+    const clean = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.split(' ')[0];
+    const parts = clean.split('-');
+    if (parts.length === 3) {
+        if (parts[0].length === 4) return clean; // YYYY-MM-DD
+        if (parts[2].length === 4) return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`; // MM-DD-YYYY -> YYYY-MM-DD
+    }
+    return clean;
+};
+
+// Formats strictly as MONTH-DAY-YEAR (e.g. 10-25-2026 or 01-04-2023)
 const formatDate = (dateStr: string | null | undefined): string => {
     if (!dateStr) return '—';
-    return dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.split(' ')[0];
+    const clean = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.split(' ')[0];
+    const parts = clean.split('-');
+    if (parts.length === 3) {
+        if (parts[0].length === 4) {
+            // YYYY-MM-DD -> MM-DD-YYYY
+            return `${parts[1]}-${parts[2]}-${parts[0]}`;
+        }
+        return clean;
+    }
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        return `${mm}-${dd}-${yyyy}`;
+    }
+    return dateStr;
 };
 
 const isExpired = (validUntil: string | null | undefined, status: string): boolean => {
     if (!validUntil || status === 'Completed' || status === 'Cancelled') return false;
-    const cleanDate = formatDate(validUntil);
+    const cleanDate = toInputDate(validUntil);
     const today = new Date().toISOString().slice(0, 10);
     return cleanDate < today;
 };
@@ -561,6 +593,199 @@ const getStatusBadge = (status: string) => {
             return 'bg-gray-100 text-gray-700 border-gray-200';
     }
 };
+
+// Row Expansion State for Multi-Item Quotes
+const expandedQuoteIds = ref<number[]>([]);
+const toggleRowExpand = (id: number) => {
+    const idx = expandedQuoteIds.value.indexOf(id);
+    if (idx > -1) {
+        expandedQuoteIds.value.splice(idx, 1);
+    } else {
+        expandedQuoteIds.value.push(id);
+    }
+};
+const isRowExpanded = (id: number) => expandedQuoteIds.value.includes(id);
+
+const getQuoteTotalQuantity = (quote: Quotation): number => {
+    if (!quote.items || quote.items.length === 0) return 0;
+    return quote.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+};
+
+// Toast Notification
+const notification = ref<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    notification.value = { message, type };
+    setTimeout(() => {
+        notification.value = null;
+    }, 4500);
+};
+
+watch(() => (page.props as any).flash, (flash: any) => {
+    if (flash?.success) showNotification(flash.success, 'success');
+    if (flash?.error) showNotification(flash.error, 'error');
+    if (flash?.info) showNotification(flash.info, 'info');
+}, { immediate: true, deep: true });
+
+// Live Preview of Generated Quote Number in Create Modal
+const currentPreviewQuoteNumber = computed(() => {
+    if (isEditing.value && activeQuotation.value) {
+        return activeQuotation.value.quotation_number;
+    }
+    const dStr = form.value.quotation_date;
+    let mdy = '';
+    if (dStr) {
+        const parts = dStr.split('-');
+        if (parts.length === 3) {
+            // YYYY-MM-DD
+            const yy = parts[0].slice(-2);
+            const mm = parts[1].padStart(2, '0');
+            const dd = parts[2].padStart(2, '0');
+            mdy = `${mm}${dd}${yy}`;
+        }
+    }
+    if (!mdy) {
+        const now = new Date();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const yy = String(now.getFullYear()).slice(-2);
+        mdy = `${mm}${dd}${yy}`;
+    }
+    const sku = form.value.items[0]?.sku || '001';
+    const cleanSku = sku.replace(/[^A-Za-z0-9]/g, '').toUpperCase() || '001';
+    return `Q${mdy}-${cleanSku}`;
+});
+
+// CSV Import Modal State & Methods
+const showImportModal = ref(false);
+const fileInputRef = ref<HTMLInputElement | null>(null);
+const importedFile = ref<File | null>(null);
+const isDragging = ref(false);
+const importMode = ref<'append' | 'replace'>('append');
+const defaultClientName = ref('Direct Customer');
+const isValidatingCsv = ref(false);
+const isImportingCsv = ref(false);
+const csvValidationResult = ref<{
+    total_rows: number;
+    valid_count: number;
+    invalid_count: number;
+    valid_rows: any[];
+    invalid_rows: any[];
+} | null>(null);
+const csvError = ref<string | null>(null);
+
+const openImportModal = () => {
+    importedFile.value = null;
+    csvValidationResult.value = null;
+    csvError.value = null;
+    isValidatingCsv.value = false;
+    isImportingCsv.value = false;
+    showImportModal.value = true;
+};
+
+const triggerFileSelect = () => {
+    fileInputRef.value?.click();
+};
+
+const onFileInputChange = (event: Event) => {
+    const target = event.target as HTMLInputElement;
+    if (target.files && target.files[0]) {
+        processUploadedCsv(target.files[0]);
+    }
+};
+
+const onFileDrop = (event: DragEvent) => {
+    isDragging.value = false;
+    if (event.dataTransfer?.files && event.dataTransfer.files[0]) {
+        processUploadedCsv(event.dataTransfer.files[0]);
+    }
+};
+
+const processUploadedCsv = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv' && file.type !== 'application/vnd.ms-excel') {
+        csvError.value = 'Please select a valid comma-separated (.csv) file.';
+        importedFile.value = null;
+        csvValidationResult.value = null;
+        return;
+    }
+
+    importedFile.value = file;
+    csvError.value = null;
+    isValidatingCsv.value = true;
+    csvValidationResult.value = null;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('execute', '0');
+
+    const token = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
+
+    try {
+        const response = await fetch(`/${teamSlug.value}/quotations/import-csv`, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRF-TOKEN': token,
+                'Accept': 'application/json',
+            }
+        });
+        const data = await response.json();
+        if (response.ok && data.success) {
+            csvValidationResult.value = data;
+        } else {
+            csvError.value = data.message || 'Failed to validate CSV structure.';
+            csvValidationResult.value = null;
+        }
+    } catch (err: any) {
+        csvError.value = err.message || 'Failed to process CSV file.';
+        csvValidationResult.value = null;
+    } finally {
+        isValidatingCsv.value = false;
+    }
+};
+
+const downloadSampleCsv = () => {
+    const headers = 'DATE,QUOTE NUMBER,QUANTITY,DESCRIPTION,UNIT PRICE,AMOUNT\n';
+    const sampleRows = [
+        '10-25-2026,Q102526-068SSCR2,5,"0.68mm Stainless Steel Conduit Rod 2m",450.00,2250.00',
+        '10-25-2026,Q102526-042BRK01,10,"Circuit Breaker 2P 40A Rail Mounted",320.00,3200.00',
+        '01-04-2023,Q010423-068SSCR2,8,"0.68mm Stainless Steel Conduit Rod 2m",450.00,3600.00'
+    ].join('\n');
+
+    const blob = new Blob([headers + sampleRows], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'mr_pride_quotations_template.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    showNotification('Sample CSV template downloaded with required headers!', 'info');
+};
+
+const executeCsvImport = () => {
+    if (!importedFile.value || !csvValidationResult.value || csvValidationResult.value.valid_count === 0) {
+        showNotification('No valid rows available to import.', 'error');
+        return;
+    }
+
+    isImportingCsv.value = true;
+    const formData = new FormData();
+    formData.append('file', importedFile.value);
+    formData.append('mode', importMode.value);
+    formData.append('default_client_name', defaultClientName.value);
+    formData.append('execute', '1');
+
+    router.post(`/${teamSlug.value}/quotations/import-csv`, formData as any, {
+        onSuccess: () => {
+            showImportModal.value = false;
+            isImportingCsv.value = false;
+            showNotification('Quotations imported successfully!', 'success');
+        },
+        onError: (err) => {
+            isImportingCsv.value = false;
+            const msg = Object.values(err)[0] as string;
+            showNotification(msg || 'Failed to import CSV.', 'error');
+        }
+    });
+};
 </script>
 
 <template>
@@ -578,15 +803,27 @@ const getStatusBadge = (status: string) => {
                 </div>
                 <p class="text-gray-500 mt-1">Create electrical project estimates, manage client approvals, and convert quotations to sales.</p>
             </div>
-            <SpecularButton
-                variant="brand"
-                size="md"
-                :radius="12"
-                @click="openCreateModal"
-            >
-                <Plus class="w-5 h-5" />
-                <span>+ Create Quotation</span>
-            </SpecularButton>
+            <div class="flex items-center gap-2.5">
+                <SpecularButton
+                    variant="secondary"
+                    size="md"
+                    :radius="12"
+                    @click="openImportModal"
+                >
+                    <Upload class="w-4 h-4 text-[#4b5320]" />
+                    <span>Upload CSV</span>
+                </SpecularButton>
+
+                <SpecularButton
+                    variant="brand"
+                    size="md"
+                    :radius="12"
+                    @click="openCreateModal"
+                >
+                    <Plus class="w-5 h-5" />
+                    <span>+ Create Quotation</span>
+                </SpecularButton>
+            </div>
         </div>
 
         <!-- Metrics Overview Cards -->
@@ -681,110 +918,183 @@ const getStatusBadge = (status: string) => {
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wider">
-                            <th class="pb-3 font-semibold">Quotation ID</th>
-                            <th class="pb-3 font-semibold">Client / Company</th>
-                            <th class="pb-3 font-semibold">Quote Date</th>
-                            <th class="pb-3 font-semibold">Valid Until</th>
-                            <th class="pb-3 font-semibold text-right">Total Amount</th>
-                            <th class="pb-3 font-semibold text-center">Status</th>
-                            <th class="pb-3 font-semibold text-right">Actions</th>
+                            <th class="pb-3 font-semibold">DATE</th>
+                            <th class="pb-3 font-semibold">QUOTE NUMBER</th>
+                            <th class="pb-3 font-semibold text-center">QUANTITY</th>
+                            <th class="pb-3 font-semibold">DESCRIPTION</th>
+                            <th class="pb-3 font-semibold text-right">UNIT PRICE</th>
+                            <th class="pb-3 font-semibold text-right">AMOUNT</th>
+                            <th class="pb-3 font-semibold text-right">ACTIONS</th>
                         </tr>
                     </thead>
                     <tbody class="text-sm divide-y divide-gray-100">
-                        <tr v-for="quote in quotations.data" :key="quote.id" class="hover:bg-gray-50/80 transition-colors group">
-                            <!-- Quotation Number -->
-                            <td class="py-4">
-                                <div class="font-mono text-sm font-bold text-gray-900 flex items-center gap-1.5">
-                                    <span>{{ quote.quotation_number }}</span>
-                                </div>
-                                <span class="text-[11px] text-gray-400 block">{{ quote.items.length }} line {{ quote.items.length === 1 ? 'item' : 'items' }}</span>
-                            </td>
-
-                            <!-- Client -->
-                            <td class="py-4">
-                                <p class="text-gray-900 font-semibold leading-snug">{{ quote.client_name }}</p>
-                                <p v-if="quote.contact_person" class="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
-                                    <span>{{ quote.contact_person }}</span>
-                                    <span v-if="quote.phone" class="text-gray-400">&bull; {{ quote.phone }}</span>
-                                </p>
-                            </td>
-
-                            <!-- Dates -->
-                            <td class="py-4 text-gray-600 text-xs font-medium">{{ formatDate(quote.quotation_date) }}</td>
-                            <td class="py-4 text-xs font-medium">
-                                <div class="flex items-center gap-1.5">
-                                    <span :class="isExpired(quote.valid_until, quote.status) ? 'text-amber-700 font-semibold' : 'text-gray-600'">
-                                        {{ formatDate(quote.valid_until) }}
-                                    </span>
+                        <template v-for="quote in quotations.data" :key="quote.id">
+                            <tr class="hover:bg-gray-50/80 transition-colors group">
+                                <!-- DATE (MONTH-DAY-YEAR, eg 10-25-2026) -->
+                                <td class="py-4 whitespace-nowrap">
+                                    <span class="font-semibold text-gray-900 text-xs sm:text-sm">{{ formatDate(quote.quotation_date) }}</span>
                                     <span v-if="isExpired(quote.valid_until, quote.status)" 
-                                          class="px-1.5 py-0.2 rounded text-[10px] bg-amber-100 text-amber-800 font-bold">
+                                          class="ml-1.5 px-1.5 py-0.2 rounded text-[10px] bg-amber-100 text-amber-800 font-bold inline-block">
                                         Expired
                                     </span>
-                                </div>
-                            </td>
+                                </td>
 
-                            <!-- Total Amount -->
-                            <td class="py-4 text-right">
-                                <span class="text-base font-bold text-gray-900 block">{{ formatCurrency(quote.grand_total) }}</span>
-                                <span class="text-[10px] text-gray-400 block">incl. 12% VAT</span>
-                            </td>
+                                <!-- QUOTE NUMBER (eg Q010423-068SSCR2) -->
+                                <td class="py-4">
+                                    <div class="flex items-center gap-1.5">
+                                        <button v-if="quote.items && quote.items.length > 1" 
+                                                type="button"
+                                                @click="toggleRowExpand(quote.id)" 
+                                                class="p-0.5 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                                                :title="isRowExpanded(quote.id) ? 'Collapse line items' : 'Expand line items'">
+                                            <ChevronRight :class="['w-3.5 h-3.5 transition-transform duration-150', isRowExpanded(quote.id) ? 'rotate-90 text-[#4b5320]' : '']" />
+                                        </button>
+                                        <div>
+                                            <span class="font-mono text-xs sm:text-sm font-bold text-gray-900 block">{{ quote.quotation_number }}</span>
+                                            <div class="flex items-center gap-1.5 mt-0.5">
+                                                <span :class="getStatusBadge(quote.status)" class="px-2 py-0.2 rounded-full text-[10px] font-semibold border inline-flex items-center">
+                                                    {{ quote.status }}
+                                                </span>
+                                                <span class="text-[11px] text-gray-500 truncate max-w-[130px]" :title="quote.client_name">{{ quote.client_name }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
 
-                            <!-- Status -->
-                            <td class="py-4 text-center">
-                                <span :class="getStatusBadge(quote.status)" class="px-2.5 py-1 rounded-full text-xs font-medium border inline-flex items-center gap-1">
-                                    {{ quote.status }}
-                                </span>
-                                <span v-if="quote.sale" class="block text-[10px] text-blue-600 font-mono mt-1 font-semibold">
-                                    Sale: {{ quote.sale.invoice_number }}
-                                </span>
-                            </td>
+                                <!-- QUANTITY -->
+                                <td class="py-4 text-center">
+                                    <span class="font-bold text-sm text-gray-900">{{ getQuoteTotalQuantity(quote) }}</span>
+                                    <span v-if="quote.items && quote.items.length > 1" class="block text-[10px] text-gray-400">
+                                        ({{ quote.items.length }} items)
+                                    </span>
+                                </td>
 
-                            <!-- Actions -->
-                            <td class="py-4 text-right">
-                                <div class="inline-flex items-center gap-1.5">
-                                    <!-- Convert to Sale Button (Only if Approved) -->
-                                    <SpecularButton
-                                        v-if="quote.status === 'Approved' && !quote.converted_to_sale_id" 
-                                        variant="success"
-                                        size="sm"
-                                        :radius="8"
-                                        @click="openConvertModal(quote)" 
-                                        title="Convert Approved Quote to Sale"
-                                    >
-                                        <ShoppingCart class="w-3.5 h-3.5" />
-                                        <span>Convert to Sale</span>
-                                    </SpecularButton>
+                                <!-- DESCRIPTION -->
+                                <td class="py-4">
+                                    <div v-if="quote.items && quote.items.length > 0">
+                                        <p class="text-xs sm:text-sm text-gray-900 font-semibold leading-snug line-clamp-1" :title="quote.items[0].product_name">
+                                            {{ quote.items[0].product_name }}
+                                        </p>
+                                        <div class="flex items-center gap-1.5 mt-0.5">
+                                            <span class="font-mono text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.2 rounded border border-gray-200">
+                                                {{ quote.items[0].sku }}
+                                            </span>
+                                            <button v-if="quote.items.length > 1" 
+                                                    type="button"
+                                                    class="text-[11px] text-[#4b5320] font-semibold hover:underline flex items-center gap-0.5" 
+                                                    @click="toggleRowExpand(quote.id)">
+                                                <span>+{{ quote.items.length - 1 }} more</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div v-else class="text-gray-400 text-xs italic">
+                                        {{ quote.notes || '—' }}
+                                    </div>
+                                </td>
 
-                                    <!-- Update Status Quick Action -->
-                                    <button @click="openStatusModal(quote)" 
-                                            title="Update Status"
-                                            class="px-2 py-1 bg-white border border-gray-200 hover:border-[#F8B803] text-gray-700 rounded-lg text-xs transition-colors shadow-2xs">
-                                        Status
-                                    </button>
+                                <!-- UNIT PRICE -->
+                                <td class="py-4 text-right whitespace-nowrap">
+                                    <div v-if="quote.items && quote.items.length === 1">
+                                        <span class="text-xs sm:text-sm font-semibold text-gray-800">
+                                            {{ formatCurrency(quote.items[0].unit_price) }}
+                                        </span>
+                                    </div>
+                                    <div v-else-if="quote.items && quote.items.length > 1">
+                                        <span class="text-xs font-semibold text-gray-700 block">
+                                            {{ formatCurrency(quote.items[0].unit_price) }}
+                                        </span>
+                                        <span class="text-[10px] text-gray-400 block font-normal">(first item)</span>
+                                    </div>
+                                    <div v-else class="text-gray-400 text-xs">—</div>
+                                </td>
 
-                                    <!-- Print / Preview -->
-                                    <button @click="openPrintModal(quote)" 
-                                            title="Print / Preview Quotation"
-                                            class="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
-                                        <Printer class="w-4 h-4 text-[#4b5320]" />
-                                    </button>
+                                <!-- AMOUNT -->
+                                <td class="py-4 text-right whitespace-nowrap">
+                                    <span class="text-sm sm:text-base font-bold text-gray-900 block">{{ formatCurrency(quote.grand_total || quote.subtotal) }}</span>
+                                    <span v-if="quote.sale" class="block text-[10px] text-blue-600 font-mono font-semibold">
+                                        Sale: {{ quote.sale.invoice_number }}
+                                    </span>
+                                </td>
 
-                                    <!-- Edit -->
-                                    <button @click="openEditModal(quote)" 
-                                            title="Edit Quotation"
-                                            class="p-1.5 text-gray-600 hover:text-[#4b5320] hover:bg-[#F8B803]/10 rounded-lg transition-colors">
-                                        <Pencil class="w-4 h-4" />
-                                    </button>
+                                <!-- ACTIONS -->
+                                <td class="py-4 text-right whitespace-nowrap">
+                                    <div class="inline-flex items-center gap-1.5">
+                                        <!-- Convert to Sale Button (Only if Approved) -->
+                                        <SpecularButton
+                                            v-if="quote.status === 'Approved' && !quote.converted_to_sale_id" 
+                                            variant="success"
+                                            size="sm"
+                                            :radius="8"
+                                            @click="openConvertModal(quote)" 
+                                            title="Convert Approved Quote to Sale"
+                                        >
+                                            <ShoppingCart class="w-3.5 h-3.5" />
+                                            <span>Convert to Sale</span>
+                                        </SpecularButton>
 
-                                    <!-- Delete (Only Draft/Cancelled/Rejected) -->
-                                    <button @click="openDeleteModal(quote)" 
-                                            title="Delete Quotation"
-                                            class="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
-                                        <Trash2 class="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
+                                        <!-- Update Status Quick Action -->
+                                        <button @click="openStatusModal(quote)" 
+                                                title="Update Status"
+                                                class="px-2 py-1 bg-white border border-gray-200 hover:border-[#F8B803] text-gray-700 rounded-lg text-xs transition-colors shadow-2xs">
+                                            Status
+                                        </button>
+
+                                        <!-- Print / Preview -->
+                                        <button @click="openPrintModal(quote)" 
+                                                title="Print / Preview Quotation"
+                                                class="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+                                            <Printer class="w-4 h-4 text-[#4b5320]" />
+                                        </button>
+
+                                        <!-- Edit -->
+                                        <button @click="openEditModal(quote)" 
+                                                title="Edit Quotation"
+                                                class="p-1.5 text-gray-600 hover:text-[#4b5320] hover:bg-[#F8B803]/10 rounded-lg transition-colors">
+                                            <Pencil class="w-4 h-4" />
+                                        </button>
+
+                                        <!-- Delete (Only Draft/Cancelled/Rejected) -->
+                                        <button @click="openDeleteModal(quote)" 
+                                                title="Delete Quotation"
+                                                class="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
+                                            <Trash2 class="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+
+                            <!-- Expanded Details for Multi-Item Quotes -->
+                            <tr v-if="isRowExpanded(quote.id)" class="bg-gray-50/70 border-b border-gray-100">
+                                <td colspan="7" class="p-3 pl-8">
+                                    <div class="rounded-xl border border-gray-200 bg-white p-3.5 shadow-2xs">
+                                        <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                            <span>Quotation Line Items ({{ quote.items.length }})</span>
+                                            <span class="text-gray-400 font-mono text-[10px]">{{ quote.quotation_number }}</span>
+                                        </div>
+                                        <table class="w-full text-left text-xs">
+                                            <thead>
+                                                <tr class="text-gray-400 border-b border-gray-100 pb-1 text-[11px]">
+                                                    <th class="pb-1 font-medium">SKU</th>
+                                                    <th class="pb-1 font-medium">Description</th>
+                                                    <th class="pb-1 font-medium text-center">Quantity</th>
+                                                    <th class="pb-1 font-medium text-right">Unit Price</th>
+                                                    <th class="pb-1 font-medium text-right">Amount</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-gray-50">
+                                                <tr v-for="(item, idx) in quote.items" :key="idx" class="hover:bg-gray-50/50">
+                                                    <td class="py-1.5 font-mono text-gray-600 text-[11px]">{{ item.sku }}</td>
+                                                    <td class="py-1.5 text-gray-900 font-medium">{{ item.product_name }}</td>
+                                                    <td class="py-1.5 text-center font-bold text-gray-800">{{ item.quantity }}</td>
+                                                    <td class="py-1.5 text-right text-gray-700">{{ formatCurrency(item.unit_price) }}</td>
+                                                    <td class="py-1.5 text-right font-bold text-gray-900">{{ formatCurrency(item.subtotal || (item.quantity * item.unit_price)) }}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
 
                         <!-- Empty State -->
                         <tr v-if="quotations.data.length === 0">
@@ -949,6 +1259,15 @@ const getStatusBadge = (status: string) => {
 
                 <!-- Section 2: Quotation Metadata -->
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <!-- Quotation Number Badge Preview -->
+                    <div class="sm:col-span-3 px-3.5 py-2 rounded-xl border border-amber-200/80 bg-amber-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-[#4b5320]">Quotation Number:</span>
+                            <span class="font-mono text-sm font-black text-gray-900 bg-white px-2 py-0.5 rounded border border-amber-200">{{ currentPreviewQuoteNumber }}</span>
+                        </div>
+                        <span class="text-[11px] text-gray-500">Format: Q&lt;MMDDYY&gt;-&lt;PRODUCT_ID&gt; (eg Q010423-068SSCR2)</span>
+                    </div>
+
                     <!-- Quotation Date -->
                     <div class="relative">
                         <input id="q_date"
@@ -1515,6 +1834,202 @@ const getStatusBadge = (status: string) => {
                 </SpecularButton>
             </div>
         </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- CSV IMPORT MODAL -->
+    <!-- ========================================================================= -->
+    <div v-if="showImportModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+        <div class="bg-white border border-gray-200 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-150">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/70">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 bg-[#F8B803]/20 text-[#4b5320] rounded-lg">
+                        <FileSpreadsheet class="w-6 h-6" />
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-900">Import Quotations via CSV</h3>
+                        <p class="text-xs text-gray-500">Upload proposal estimates and line items in bulk</p>
+                    </div>
+                </div>
+                <button @click="showImportModal = false" class="text-gray-400 hover:text-gray-600 p-1.5 rounded-lg hover:bg-gray-100">
+                    <X class="w-5 h-5" />
+                </button>
+            </div>
+
+            <!-- Modal Content -->
+            <div class="p-6 overflow-y-auto space-y-4 text-sm">
+                <!-- CSV Headers & Format Notice -->
+                <div class="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2 text-xs text-amber-900">
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold flex items-center gap-1.5">
+                            <AlertCircle class="w-4 h-4 text-amber-600" />
+                            Required CSV Column Headers
+                        </span>
+                        <button type="button" @click="downloadSampleCsv" class="font-semibold text-[#4b5320] hover:underline flex items-center gap-1">
+                            <Download class="w-3.5 h-3.5" />
+                            Download Sample Template
+                        </button>
+                    </div>
+                    <div class="font-mono bg-white p-2 rounded-lg border border-amber-200 text-[11px] text-gray-800 overflow-x-auto whitespace-nowrap shadow-2xs">
+                        DATE, QUOTE NUMBER, QUANTITY, DESCRIPTION, UNIT PRICE, AMOUNT
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px] text-gray-700">
+                        <div>
+                            <span class="font-semibold text-gray-900">DATE Format:</span> MONTH-DAY-YEAR <span class="text-gray-500 font-mono">(eg 10-25-2026)</span>
+                        </div>
+                        <div>
+                            <span class="font-semibold text-gray-900">QUOTE NUMBER:</span> Q&lt;MMDDYY&gt;-&lt;PRODUCT_ID&gt; <span class="text-gray-500 font-mono">(eg Q010423-068SSCR2)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dropzone -->
+                <div 
+                    @dragover.prevent="isDragging = true" 
+                    @dragleave.prevent="isDragging = false" 
+                    @drop.prevent="onFileDrop"
+                    @click="triggerFileSelect"
+                    :class="[
+                        'border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all',
+                        isDragging ? 'border-[#4b5320] bg-[#4b5320]/5' : 'border-gray-300 hover:border-[#F8B803] bg-gray-50/40'
+                    ]"
+                >
+                    <input ref="fileInputRef" type="file" accept=".csv,text/csv" class="hidden" @change="onFileInputChange" />
+                    <FileUp class="w-10 h-10 text-[#4b5320] mx-auto mb-2 opacity-80" />
+                    <p class="font-semibold text-gray-800 text-sm">
+                        {{ importedFile ? importedFile.name : 'Click to select or drag and drop your CSV file here' }}
+                    </p>
+                    <p class="text-xs text-gray-400 mt-1">
+                        {{ importedFile ? `${(importedFile.size / 1024).toFixed(1)} KB` : 'CSV files with comma or tab delimited headers' }}
+                    </p>
+                </div>
+
+                <!-- Validation Status / Spinner -->
+                <div v-if="isValidatingCsv" class="p-4 bg-gray-50 rounded-xl text-center text-gray-500 text-xs flex items-center justify-center gap-2">
+                    <Clock class="w-4 h-4 animate-spin text-[#4b5320]" />
+                    <span>Validating CSV structure and required headers...</span>
+                </div>
+
+                <!-- Error Message -->
+                <div v-if="csvError" class="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-xs text-rose-800">
+                    <AlertCircle class="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                        <strong class="font-bold block">CSV Parsing / Validation Notice</strong>
+                        <span>{{ csvError }}</span>
+                    </div>
+                </div>
+
+                <!-- Validation Preview Summary -->
+                <div v-if="csvValidationResult" class="space-y-3">
+                    <div class="grid grid-cols-3 gap-2">
+                        <div class="p-2.5 rounded-xl border border-gray-200 bg-gray-50 text-center">
+                            <span class="text-[10px] uppercase font-semibold text-gray-400 block">Total Rows</span>
+                            <span class="text-base font-black text-gray-800">{{ csvValidationResult.total_rows }}</span>
+                        </div>
+                        <div class="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/60 text-center">
+                            <span class="text-[10px] uppercase font-semibold text-emerald-600 block">Valid Rows</span>
+                            <span class="text-base font-black text-emerald-700">{{ csvValidationResult.valid_count }}</span>
+                        </div>
+                        <div class="p-2.5 rounded-xl border border-rose-200 bg-rose-50/60 text-center">
+                            <span class="text-[10px] uppercase font-semibold text-rose-600 block">Invalid Rows</span>
+                            <span class="text-base font-black text-rose-700">{{ csvValidationResult.invalid_count }}</span>
+                        </div>
+                    </div>
+
+                    <!-- Configuration Options -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">Import Mode Strategy</label>
+                            <select v-model="importMode" class="w-full text-xs p-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#4b5320]">
+                                <option value="append">Append (Assign unique suffix if quote number exists)</option>
+                                <option value="replace">Replace (Overwrite existing quote with CSV items)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">Default Customer / Client Name</label>
+                            <input v-model="defaultClientName" type="text" placeholder="e.g. Direct Customer" class="w-full text-xs p-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#4b5320]" />
+                        </div>
+                    </div>
+
+                    <!-- Live Valid Rows Preview Table -->
+                    <div v-if="csvValidationResult.valid_rows && csvValidationResult.valid_rows.length > 0" class="border border-gray-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase tracking-wider text-[10px]">
+                                <tr>
+                                    <th class="p-2 font-semibold">DATE</th>
+                                    <th class="p-2 font-semibold">QUOTE NUMBER</th>
+                                    <th class="p-2 font-semibold text-center">QTY</th>
+                                    <th class="p-2 font-semibold">DESCRIPTION</th>
+                                    <th class="p-2 font-semibold text-right">UNIT PRICE</th>
+                                    <th class="p-2 font-semibold text-right">AMOUNT</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <tr v-for="(vRow, idx) in csvValidationResult.valid_rows" :key="idx" class="hover:bg-gray-50/50">
+                                    <td class="p-2 font-semibold text-gray-900 whitespace-nowrap">{{ vRow.display_date }}</td>
+                                    <td class="p-2 font-mono text-[11px] font-bold text-gray-800 whitespace-nowrap">{{ vRow.quote_number }}</td>
+                                    <td class="p-2 text-center font-bold text-gray-700">{{ vRow.quantity }}</td>
+                                    <td class="p-2 text-gray-900 truncate max-w-[160px]" :title="vRow.description">{{ vRow.description }}</td>
+                                    <td class="p-2 text-right text-gray-600 whitespace-nowrap">{{ formatCurrency(vRow.unit_price) }}</td>
+                                    <td class="p-2 text-right font-bold text-gray-900 whitespace-nowrap">{{ formatCurrency(vRow.amount) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Invalid Rows Listing -->
+                    <div v-if="csvValidationResult.invalid_rows && csvValidationResult.invalid_rows.length > 0" class="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-1">
+                        <span class="text-xs font-bold text-rose-800 block">Errors in Uploaded CSV:</span>
+                        <div class="text-[11px] text-rose-700 max-h-24 overflow-y-auto space-y-1">
+                            <div v-for="(inv, i) in csvValidationResult.invalid_rows" :key="i">
+                                Row {{ inv.row_number }}: {{ inv.errors?.join(', ') }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
+                <button type="button" @click="downloadSampleCsv" class="text-xs font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1.5">
+                    <Download class="w-3.5 h-3.5 text-[#4b5320]" />
+                    <span>Download CSV Template</span>
+                </button>
+                <div class="flex items-center gap-2">
+                    <SpecularButton variant="secondary" size="md" :radius="10" @click="showImportModal = false">
+                        Cancel
+                    </SpecularButton>
+                    <SpecularButton 
+                        variant="brand" 
+                        size="md" 
+                        :radius="10" 
+                        :disabled="!importedFile || isImportingCsv || !csvValidationResult || csvValidationResult.valid_count === 0"
+                        @click="executeCsvImport"
+                    >
+                        <Clock v-if="isImportingCsv" class="w-4 h-4 animate-spin mr-1.5" />
+                        <Upload v-else class="w-4 h-4 mr-1.5" />
+                        <span>{{ isImportingCsv ? 'Importing...' : 'Execute Import' }}</span>
+                    </SpecularButton>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Toast Notification -->
+    <div v-if="notification" class="fixed top-5 right-5 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg border text-sm transition-all animate-in fade-in slide-in-from-top-3 duration-200"
+         :class="{
+             'bg-emerald-50 border-emerald-200 text-emerald-800': notification.type === 'success',
+             'bg-rose-50 border-rose-200 text-rose-800': notification.type === 'error',
+             'bg-amber-50 border-amber-200 text-amber-800': notification.type === 'info'
+         }">
+        <CheckCircle2 v-if="notification.type === 'success'" class="w-4 h-4 text-emerald-600 shrink-0" />
+        <AlertCircle v-else-if="notification.type === 'error'" class="w-4 h-4 text-rose-600 shrink-0" />
+        <Clock v-else class="w-4 h-4 text-amber-600 shrink-0" />
+        <span class="font-medium">{{ notification.message }}</span>
+        <button @click="notification = null" class="ml-2 text-gray-400 hover:text-gray-600">
+            <X class="w-3.5 h-3.5" />
+        </button>
     </div>
 </template>
 

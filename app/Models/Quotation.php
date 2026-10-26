@@ -75,16 +75,27 @@ class Quotation extends Model
     }
 
     /**
-     * Generate next sequential quotation number for team.
+     * Generate quotation number in format: Q<MONTH><DAY><YEAR>-<PRODUCT_UNIQUE_ID>
+     * Example: Q010423-068SSCR2
      */
-    public static function generateNumber(int $teamId): string
+    public static function generateNumber(int $teamId, ?string $productSku = null, mixed $date = null): string
     {
-        $year = date('Y');
-        $count = static::where('team_id', $teamId)
-            ->whereYear('created_at', $year)
-            ->count();
+        $carbonDate = $date ? \Illuminate\Support\Carbon::parse($date) : now();
+        $datePart = $carbonDate->format('mdy'); // 2-digit month, 2-digit day, 2-digit year (e.g. 010423 or 102526)
+        $skuPart = !empty($productSku)
+            ? preg_replace('/[^A-Za-z0-9]/', '', strtoupper($productSku))
+            : 'PROD';
 
-        return sprintf('QT-%s-%04d', $year, $count + 1);
+        $baseNumber = sprintf('Q%s-%s', $datePart, $skuPart);
+        $candidate = $baseNumber;
+        $counter = 1;
+
+        while (static::where('team_id', $teamId)->where('quotation_number', $candidate)->exists()) {
+            $candidate = sprintf('%s-%02d', $baseNumber, $counter);
+            $counter++;
+        }
+
+        return $candidate;
     }
 
     /**

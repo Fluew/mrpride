@@ -11,8 +11,10 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\StockMovement;
 use App\Models\Team;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -92,7 +94,8 @@ class QuotationController extends Controller
             ->get(['id', 'company_name', 'contact_person', 'email', 'phone', 'address']);
 
         // Default next quotation number
-        $nextNumber = Quotation::generateNumber($team->id);
+        $firstSku = $products->first()?->sku;
+        $nextNumber = Quotation::generateNumber($team->id, $firstSku);
 
         return Inertia::render('Quotations/AdminIndex', [
             'quotations' => $quotations,
@@ -183,7 +186,8 @@ class QuotationController extends Controller
             $taxAmount = round($taxableAmount * ($taxRate / 100), 2);
             $grandTotal = $taxableAmount + $taxAmount;
 
-            $quotationNumber = Quotation::generateNumber($team->id);
+            $firstSku = $validated['items'][0]['sku'] ?? null;
+            $quotationNumber = Quotation::generateNumber($team->id, $firstSku, $validated['quotation_date']);
 
             $quotation = Quotation::create([
                 'team_id' => $team->id,
@@ -493,5 +497,331 @@ class QuotationController extends Controller
              . "3. Delivery: Within 5-7 business days upon receipt of purchase order and down payment.\n"
              . "4. Warranty: 1-Year standard manufacturer warranty against factory defects.\n"
              . "5. Acceptance: To confirm this quote, please sign and return a copy via email.";
+    }
+
+    /**
+     * Process CSV Import for Quotations.
+     * Required headers: DATE, QUOTE NUMBER, QUANTITY, DESCRIPTION, UNIT PRICE, AMOUNT
+     */
+    public function importCsv(Request $request): JsonResponse|RedirectResponse
+    {
+        $team = $this->getTeam($request);
+        abort_if(! $team, 404, 'Team not found.');
+
+        $request->validate([
+            'file' => ['required', 'file', 'extensions:csv,txt'],
+            'mode' => ['nullable', 'in:append,replace'],
+            'execute' => ['nullable', 'boolean'],
+            'default_client_name' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $file = $request->file('file');
+        $filePath = $file->getRealPath() ?: $file->getPathname();
+        $content = file_get_contents($filePath);
+        $rawLines = preg_split('/\r\n|\n|\r/', trim($content));
+
+        if (empty($rawLines) || count($rawLines) < 2) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The uploaded CSV file is empty or missing headers.',
+                'valid_rows' => [],
+                'invalid_rows' => [],
+            ], 422);
+        }
+
+        // Determine delimiter from first line (support tab, comma, semicolon)
+        $firstLine = $rawLines[0];
+        $delimiter = ',';
+        if (substr_count($firstLine, "\t") > substr_count($firstLine, ',')) {
+            $delimiter = "\t";
+        } elseif (substr_count($firstLine, ';') > substr_count($firstLine, ',')) {
+            $delimiter = ';';
+        }
+
+        $lines = [];
+        foreach ($rawLines as $rawLine) {
+            if (trim($rawLine) === '') {
+                continue;
+            }
+            $row = str_getcsv($rawLine, $delimiter);
+            if (! empty(array_filter($row, fn ($v) => $v !== null && trim((string) $v) !== ''))) {
+                $lines[] = $row;
+            }
+        }
+
+        if (count($lines) < 2) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The uploaded CSV file contains no data rows.',
+                'valid_rows' => [],
+                'invalid_rows' => [],
+            ], 422);
+        }
+
+        // Clean headers (remove UTF-8 BOM, trim, lowercase, strip non-alphanumeric)
+        $rawHeaders = $lines[0];
+        $headers = array_map(function ($h) {
+            $cleaned = preg_replace('/^\xEF\xBB\xBF/', '', (string) $h);
+            return preg_replace('/[^a-z0-9]/', '', strtolower($cleaned));
+        }, $rawHeaders);
+
+        $dateIdx = $this->findHeaderIndex($headers, ['date', 'quotedate', 'quotationdate']);
+        $quoteNumIdx = $this->findHeaderIndex($headers, ['quotenumber', 'quoteno', 'quotationnumber', 'quote', 'quotation']);
+        $qtyIdx = $this->findHeaderIndex($headers, ['quantity', 'qty', 'count']);
+        $descIdx = $this->findHeaderIndex($headers, ['description', 'productname', 'itemname', 'product', 'item', 'desc']);
+        $priceIdx = $this->findHeaderIndex($headers, ['unitprice', 'price', 'rate', 'cost', 'unitcost']);
+        $amountIdx = $this->findHeaderIndex($headers, ['amount', 'total', 'subtotal', 'totalamount', 'linetotal']);
+
+        if ($dateIdx === -1 || $qtyIdx === -1 || $descIdx === -1 || $priceIdx === -1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Required column headers missing. CSV must include headers: DATE, QUOTE NUMBER, QUANTITY, DESCRIPTION, UNIT PRICE, AMOUNT.',
+                'valid_rows' => [],
+                'invalid_rows' => [],
+            ], 422);
+        }
+
+        $validRows = [];
+        $invalidRows = [];
+
+        for ($i = 1; $i < count($lines); $i++) {
+            $row = $lines[$i];
+            if (empty(array_filter($row))) {
+                continue;
+            }
+
+            $rowNumber = $i + 1;
+            $errors = [];
+
+            // 1. DATE parsing (support MONTH-DAY-YEAR e.g. 10-25-2026, 01-04-2023, MM/DD/YYYY, YYYY-MM-DD)
+            $rawDate = isset($row[$dateIdx]) ? trim($row[$dateIdx]) : '';
+            $parsedDate = null;
+            $displayDate = $rawDate;
+
+            if ($rawDate === '') {
+                $errors[] = 'Date is required.';
+            } else {
+                if (preg_match('/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/', $rawDate, $m)) {
+                    $month = (int) $m[1];
+                    $day = (int) $m[2];
+                    $year = (int) $m[3];
+                    if (checkdate($month, $day, $year)) {
+                        $parsedDate = sprintf('%04d-%02d-%02d', $year, $month, $day);
+                        $displayDate = sprintf('%02d-%02d-%04d', $month, $day, $year);
+                    } else {
+                        $errors[] = "Invalid calendar date: '{$rawDate}'.";
+                    }
+                } else {
+                    try {
+                        $carbon = Carbon::parse($rawDate);
+                        $parsedDate = $carbon->toDateString();
+                        $displayDate = $carbon->format('m-d-Y');
+                    } catch (\Throwable $e) {
+                        $errors[] = "Invalid date format: '{$rawDate}'. Expected MONTH-DAY-YEAR (eg 10-25-2026).";
+                    }
+                }
+            }
+
+            // 2. QUANTITY
+            $rawQty = isset($row[$qtyIdx]) ? preg_replace('/[^0-9]/', '', (string) $row[$qtyIdx]) : '0';
+            $qty = is_numeric($rawQty) ? (int) $rawQty : 0;
+            if ($qty <= 0) {
+                $errors[] = 'Quantity must be at least 1.';
+            }
+
+            // 3. DESCRIPTION
+            $desc = isset($row[$descIdx]) ? trim($row[$descIdx]) : '';
+            if ($desc === '') {
+                $errors[] = 'Description is required.';
+            }
+
+            // 4. UNIT PRICE
+            $rawPrice = isset($row[$priceIdx]) ? preg_replace('/[^0-9.-]/', '', (string) $row[$priceIdx]) : '0';
+            $unitPrice = is_numeric($rawPrice) ? (float) $rawPrice : 0.00;
+            if ($unitPrice < 0) {
+                $errors[] = 'Unit price cannot be negative.';
+            }
+
+            // 5. AMOUNT
+            $rawAmount = $amountIdx !== -1 && isset($row[$amountIdx]) ? preg_replace('/[^0-9.-]/', '', (string) $row[$amountIdx]) : '';
+            $amount = (is_numeric($rawAmount) && (float) $rawAmount > 0)
+                ? (float) $rawAmount
+                : round($qty * $unitPrice, 2);
+
+            // 6. QUOTE NUMBER (e.g. Q010423-068SSCR2)
+            $rawQuoteNum = $quoteNumIdx !== -1 && isset($row[$quoteNumIdx]) ? trim($row[$quoteNumIdx]) : '';
+            $extractedSku = null;
+
+            if ($rawQuoteNum !== '') {
+                if (preg_match('/^[Qq]\d{6,8}-([A-Za-z0-9_-]+)$/', $rawQuoteNum, $skuMatch)) {
+                    $extractedSku = strtoupper($skuMatch[1]);
+                } elseif (str_contains($rawQuoteNum, '-')) {
+                    $parts = explode('-', $rawQuoteNum, 2);
+                    $extractedSku = strtoupper(trim($parts[1]));
+                }
+            } else {
+                $extractedSku = 'PROD';
+                $rawQuoteNum = Quotation::generateNumber($team->id, $extractedSku, $parsedDate);
+            }
+
+            if (! empty($errors)) {
+                $invalidRows[] = [
+                    'row_number' => $rowNumber,
+                    'date' => $rawDate,
+                    'quote_number' => $rawQuoteNum,
+                    'quantity' => $rawQty,
+                    'description' => $desc,
+                    'unit_price' => $rawPrice,
+                    'amount' => $rawAmount,
+                    'errors' => $errors,
+                ];
+            } else {
+                $validRows[] = [
+                    'row_number' => $rowNumber,
+                    'date' => $parsedDate,
+                    'display_date' => $displayDate,
+                    'quote_number' => $rawQuoteNum,
+                    'sku' => $extractedSku ?: 'SKU-' . strtoupper(substr(md5($desc), 0, 6)),
+                    'quantity' => $qty,
+                    'description' => $desc,
+                    'unit_price' => $unitPrice,
+                    'amount' => $amount,
+                ];
+            }
+        }
+
+        // Preview validation mode
+        if (! $request->boolean('execute')) {
+            return response()->json([
+                'success' => true,
+                'total_rows' => count($lines) - 1,
+                'valid_count' => count($validRows),
+                'invalid_count' => count($invalidRows),
+                'valid_rows' => array_slice($validRows, 0, 50),
+                'invalid_rows' => $invalidRows,
+            ]);
+        }
+
+        if (empty($validRows)) {
+            return back()->withErrors(['error' => 'No valid rows found to import from the CSV.']);
+        }
+
+        $mode = $request->input('mode', 'append');
+        $defaultClientName = $request->input('default_client_name') ?: 'Direct Customer';
+
+        // Group items by Quote Number
+        $grouped = [];
+        foreach ($validRows as $item) {
+            $qNum = $item['quote_number'];
+            $grouped[$qNum][] = $item;
+        }
+
+        DB::transaction(function () use ($team, $grouped, $mode, $defaultClientName, $request) {
+            $client = Client::firstOrCreate(
+                [
+                    'team_id' => $team->id,
+                    'company_name' => $defaultClientName,
+                ],
+                [
+                    'contact_person' => 'Direct Quotation Contact',
+                ]
+            );
+
+            foreach ($grouped as $quoteNumber => $items) {
+                $first = $items[0];
+                $qDate = $first['date'];
+                $validUntil = Carbon::parse($qDate)->addDays(30)->toDateString();
+                $totalAmount = array_sum(array_column($items, 'amount'));
+
+                $existing = Quotation::where('team_id', $team->id)->where('quotation_number', $quoteNumber)->first();
+
+                if ($existing && $mode === 'replace') {
+                    $quotation = $existing;
+                    $quotation->update([
+                        'quotation_date' => $qDate,
+                        'valid_until' => $validUntil,
+                        'subtotal' => $totalAmount,
+                        'grand_total' => $totalAmount,
+                        'status' => QuotationStatus::Pending,
+                    ]);
+                    $quotation->items()->delete();
+                } else {
+                    $finalQuoteNumber = $quoteNumber;
+                    if ($existing && $mode === 'append') {
+                        $counter = 1;
+                        do {
+                            $finalQuoteNumber = sprintf('%s-%02d', $quoteNumber, $counter);
+                            $counter++;
+                        } while (Quotation::where('team_id', $team->id)->where('quotation_number', $finalQuoteNumber)->exists());
+                    }
+
+                    $quotation = Quotation::create([
+                        'team_id' => $team->id,
+                        'quotation_number' => $finalQuoteNumber,
+                        'client_id' => $client->id,
+                        'client_name' => $client->company_name,
+                        'quotation_date' => $qDate,
+                        'valid_until' => $validUntil,
+                        'subtotal' => $totalAmount,
+                        'discount' => 0.00,
+                        'tax_rate' => 0.00,
+                        'tax_amount' => 0.00,
+                        'grand_total' => $totalAmount,
+                        'status' => QuotationStatus::Pending,
+                        'notes' => 'Imported via CSV file with headers: DATE, QUOTE NUMBER, QUANTITY, DESCRIPTION, UNIT PRICE, AMOUNT',
+                        'terms_and_conditions' => $this->defaultTerms(),
+                        'prepared_by_id' => $request->user()?->id,
+                    ]);
+                }
+
+                foreach ($items as $item) {
+                    $matchedProduct = Product::where('team_id', $team->id)
+                        ->where(function ($q) use ($item) {
+                            $q->where('sku', $item['sku'])
+                              ->orWhere('name', $item['description']);
+                        })->first();
+
+                    $quotation->items()->create([
+                        'product_id' => $matchedProduct?->id,
+                        'sku' => $matchedProduct?->sku ?? $item['sku'],
+                        'product_name' => $item['description'],
+                        'quantity' => $item['quantity'],
+                        'unit_price' => $item['unit_price'],
+                        'discount' => 0.00,
+                        'subtotal' => $item['amount'],
+                    ]);
+                }
+            }
+        });
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Successfully imported ' . count($grouped) . ' quotation(s) with ' . count($validRows) . ' line item(s).',
+            ]);
+        }
+
+        return back()->with('success', 'Successfully imported ' . count($grouped) . ' quotation(s) with ' . count($validRows) . ' line item(s).');
+    }
+
+    /**
+     * Helper to find matching header index.
+     */
+    protected function findHeaderIndex(array $headers, array $candidates): int
+    {
+        foreach ($candidates as $cand) {
+            $idx = array_search($cand, $headers, true);
+            if ($idx !== false) {
+                return (int) $idx;
+            }
+        }
+        foreach ($candidates as $cand) {
+            foreach ($headers as $idx => $h) {
+                if (str_contains($h, $cand)) {
+                    return (int) $idx;
+                }
+            }
+        }
+        return -1;
     }
 }

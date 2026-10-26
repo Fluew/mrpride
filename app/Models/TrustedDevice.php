@@ -27,9 +27,6 @@ class TrustedDevice extends Model
         'approved_at',
         'enrollment_token',
         'enrollment_token_expires_at',
-        'verification_code',
-        'verification_code_expires_at',
-        'verification_attempts',
         'last_used_at',
     ];
 
@@ -41,9 +38,7 @@ class TrustedDevice extends Model
             'enrollment_code_expires_at' => 'datetime',
             'approved_at' => 'datetime',
             'enrollment_token_expires_at' => 'datetime',
-            'verification_code_expires_at' => 'datetime',
             'last_used_at' => 'datetime',
-            'verification_attempts' => 'integer',
         ];
     }
 
