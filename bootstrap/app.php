@@ -25,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
             SetTeamUrlDefaults::class,
             \App\Http\Middleware\EnforceInactivityTimeout::class,
             \App\Http\Middleware\SecurityHeaders::class,
+            \App\Http\Middleware\CheckMaintenanceMode::class,
         ]);
 
         $middleware->alias([

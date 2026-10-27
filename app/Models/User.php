@@ -208,11 +208,19 @@ class User extends Authenticatable
     }
 
     /**
-     * Check if user account is active.
+     * Check if user account is active or pending first-time activation.
      */
     public function isActive(): bool
     {
-        return ($this->status ?? 'active') === 'active';
+        return in_array($this->status ?? 'active', ['active', 'pending_activation'], true);
+    }
+
+    /**
+     * Determine if account is pending initial activation and password change.
+     */
+    public function isPendingActivation(): bool
+    {
+        return ($this->status ?? '') === 'pending_activation';
     }
 
     /**

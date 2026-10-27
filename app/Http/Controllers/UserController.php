@@ -7,11 +7,13 @@ use App\Models\AuditLog;
 use App\Models\TrustedDevice;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\ResendService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -73,8 +75,10 @@ class UserController extends Controller
                 'email' => $user->email,
                 'role' => $user->roleLabel(),
                 'raw_role' => $user->role,
-                'status' => ucfirst($user->status ?? 'active'),
-                'is_active' => $user->isActive(),
+                'status' => $user->status === 'pending_activation' ? 'Pending Activation' : ucfirst($user->status ?? 'active'),
+                'raw_status' => $user->status ?? 'active',
+                'is_active' => ($user->status ?? 'active') === 'active',
+                'is_pending_activation' => $user->status === 'pending_activation',
                 'must_change_password' => (bool) $user->must_change_password,
                 'password_changed_at' => $user->password_changed_at?->format('M d, Y'),
                 'last_login_at' => $user->last_login_at?->format('M d, Y H:i') ?? 'Never',
@@ -192,7 +196,7 @@ class UserController extends Controller
                     'last_used_at' => $d->last_used_at?->diffForHumans() ?? 'Never',
                     'created_at' => $d->created_at?->format('M d, Y'),
                     'enrollment_code' => $enrollmentCode,
-                    'enrollment_link' => $enrollmentCode ? url("/device/enroll?code={$enrollmentCode}") : null,
+                    'enrollment_link' => $d->enrollment_token ? url("/device/enroll/{$d->enrollment_token}") : ($enrollmentCode ? url("/device/enroll?code={$enrollmentCode}") : null),
                     'is_enrollment_expired' => $isEnrollmentExpired,
                     'user' => $d->user ? [
                         'id' => $d->user->id,
@@ -273,8 +277,10 @@ class UserController extends Controller
                 'email' => $u->email,
                 'role' => $u->roleLabel(),
                 'raw_role' => $u->role,
-                'status' => ucfirst($u->status ?? 'active'),
-                'is_active' => $u->isActive(),
+                'status' => $u->status === 'pending_activation' ? 'Pending Activation' : ucfirst($u->status ?? 'active'),
+                'raw_status' => $u->status ?? 'active',
+                'is_active' => ($u->status ?? 'active') === 'active',
+                'is_pending_activation' => $u->status === 'pending_activation',
                 'trusted_devices_count' => $u->trustedDevices()->count(),
                 'is_superadmin' => false,
             ]);
@@ -307,7 +313,6 @@ class UserController extends Controller
                 ['value' => 'staff_forecast', 'label' => 'Staff - Demand Forecasting'],
                 ['value' => 'staff_suppliers', 'label' => 'Staff - Suppliers'],
                 ['value' => 'staff_reports', 'label' => 'Staff - Reports & Analytics'],
-                ['value' => 'user', 'label' => 'Regular Customer'],
             ],
             'temporaryPasswordNotice' => session('temporaryPasswordNotice'),
             'enrollmentNotice' => session('enrollmentNotice'),
@@ -368,7 +373,7 @@ class UserController extends Controller
             'name' => $fullName,
             'email' => $validated['email'],
             'role' => $validated['role'],
-            'status' => 'active',
+            'status' => 'pending_activation',
             'password' => Hash::make($rawPassword),
             'must_change_password' => true,
             'password_changed_at' => now(),
@@ -380,18 +385,18 @@ class UserController extends Controller
 
         AuditLogger::audit(
             'account.created',
-            "Administrator {$currentUser->email} created user {$user->email} with role '{$user->roleLabel()}'. Initial password set to (Firstname)1234.",
+            "Administrator {$currentUser->email} created user {$user->email} with role '{$user->roleLabel()}'. Status set to Pending Activation. Initial temporary password set to (Firstname)1234.",
             $currentUser,
             $user,
-            ['role' => $user->role, 'must_change_password' => true],
+            ['role' => $user->role, 'status' => 'pending_activation', 'must_change_password' => true],
             'success',
             $request
         );
 
-        $temporaryPasswordNotice = "Account created for {$fullName}. The initial temporary password for their first login is: {$rawPassword}. They are required to change it upon first login.";
+        $temporaryPasswordNotice = "Staff account created for {$fullName}. Status: Pending Activation. Initial temporary password: {$rawPassword}. Issue a 10-minute device enrollment invitation to activate their workstation.";
 
         return back()
-            ->with('success', "User account created successfully. Initial password: {$rawPassword}")
+            ->with('success', "Staff account created (Pending Activation). Initial temporary password: {$rawPassword}")
             ->with('temporaryPasswordNotice', $temporaryPasswordNotice);
     }
 
@@ -641,15 +646,23 @@ class UserController extends Controller
             'authorized_user_ids.*' => ['exists:users,id'],
             'device_name' => ['nullable', 'string', 'max:100'],
             'direct_approve' => ['nullable', 'boolean'],
+            'expires_in_minutes' => ['nullable', 'integer', 'min:1', 'max:10080'],
             'expires_in_hours' => ['nullable', 'integer', 'min:1', 'max:168'],
         ]);
 
         $assignmentType = $validated['assignment_type'];
         $directApprove = (bool) ($validated['direct_approve'] ?? false);
-        $expiresInHours = (int) ($validated['expires_in_hours'] ?? 24);
+
+        $minutes = 5;
+        if (! empty($validated['expires_in_minutes'])) {
+            $minutes = max(1, min(60, (int) $validated['expires_in_minutes']));
+        } elseif (! empty($validated['expires_in_hours'])) {
+            $minutes = (int) $validated['expires_in_hours'] * 60;
+        }
+
         $enrollmentCode = TrustedDevice::generateEnrollmentCode();
         $token = Str::random(48);
-        $expiresAt = now()->addHours($expiresInHours);
+        $expiresAt = now()->addMinutes($minutes);
         $deviceUuid = (string) Str::uuid();
 
         $targetUser = null;
@@ -676,14 +689,31 @@ class UserController extends Controller
             'last_used_at' => $directApprove ? now() : null,
         ]);
 
-        $enrollmentLink = $directApprove ? null : url("/device/enroll?code={$enrollmentCode}");
+        $targetEmail = $targetUser?->email;
+        $emailParam = $targetEmail ? ('?email=' . urlencode($targetEmail)) : '';
+        $enrollmentLink = $directApprove ? null : url("/device/enroll/{$token}{$emailParam}");
+
+        // Dispatch invitation email to the employee's registered email
+        if (! $directApprove && $targetUser && $targetUser->email) {
+            try {
+                app(ResendService::class)->sendDeviceEnrollmentInvitation(
+                    $targetUser->email,
+                    $targetUser->name,
+                    $enrollmentCode,
+                    $enrollmentLink,
+                    $minutes
+                );
+            } catch (\Throwable $e) {
+                Log::warning("Could not dispatch device enrollment invitation email: " . $e->getMessage());
+            }
+        }
 
         AuditLogger::audit(
             $directApprove ? 'device.directly_approved' : 'device.enrollment_initiated',
-            "Administrator {$currentUser->email} created device enrollment for '{$device->device_name}' (Policy: " . ($device->is_shared ? 'Shared Workstation' : 'Single Account') . ").",
+            "Administrator {$currentUser->email} created device enrollment invitation for '{$device->device_name}' (Policy: " . ($device->is_shared ? 'Shared Workstation' : 'Single Account') . ", Expires: {$minutes}m).",
             $currentUser,
             $targetUser,
-            ['device_id' => $device->id, 'device_uuid' => $deviceUuid, 'code' => $enrollmentCode],
+            ['device_id' => $device->id, 'device_uuid' => $deviceUuid, 'code' => $enrollmentCode, 'expires_in_minutes' => $minutes],
             'success',
             $request
         );
@@ -698,8 +728,9 @@ class UserController extends Controller
             'user_email' => $targetUser?->email ?? 'Multiple Authorized Staff',
             'code' => $enrollmentCode,
             'link' => $enrollmentLink,
-            'expires_at' => $expiresAt->format('M d, Y H:i'),
-        ])->with('success', "Device enrollment code created: {$enrollmentCode}");
+            'expires_at' => $expiresAt->format('h:i A') . ' (5 minutes only)',
+            'expires_in_minutes' => $minutes,
+        ])->with('success', "Device enrollment code created: {$enrollmentCode}. Link expires in {$minutes} minutes.");
     }
 
     /**

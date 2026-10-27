@@ -94,7 +94,11 @@ class LoginResponse implements LoginResponseContract
             session(['is_first_login' => true]);
         }
 
-        $user->update(['last_login_at' => now()]);
+        $userUpdates = ['last_login_at' => now()];
+        if ($user->status === 'pending_activation') {
+            $userUpdates['status'] = 'active';
+        }
+        $user->update($userUpdates);
         $device->updateQuietly([
             'last_used_at' => now(),
             'ip_address' => $request->ip(),

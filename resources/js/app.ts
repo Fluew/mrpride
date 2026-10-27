@@ -13,6 +13,7 @@ createInertiaApp({
         switch (true) {
             case name === 'Welcome':
             case name === 'NotFound':
+            case name === 'Maintenance':
             case name === 'Products/Index':
             case name === 'Company/Index':
             case name === 'Contact/Index':
@@ -20,6 +21,8 @@ createInertiaApp({
                 return null;
             case name.startsWith('auth/'):
                 return AuthLayout;
+            case name === 'settings/Maintenance':
+                return AppLayout;
             case name.startsWith('settings/'):
             case name.startsWith('teams/'):
                 return [AppLayout, SettingsLayout];

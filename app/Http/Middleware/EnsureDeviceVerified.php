@@ -36,9 +36,19 @@ class EnsureDeviceVerified
                 }
 
                 AuditLogger::security(
-                    'auth.device.unregistered_blocked',
-                    "Blocked request from unregistered or revoked device for {$user->email}.",
+                    'auth.threat.unregistered_device',
+                    "Threat Blocked: Access attempt from unregistered or revoked workstation for {$user->email}.",
                     $user,
+                    'danger',
+                    ['ip' => $request->ip(), 'path' => $request->path()],
+                    'blocked',
+                    $request
+                );
+            } else {
+                AuditLogger::security(
+                    'auth.threat.unregistered_device',
+                    "Threat Blocked: Unregistered workstation attempted access to /{$request->path()}.",
+                    null,
                     'warning',
                     ['ip' => $request->ip(), 'path' => $request->path()],
                     'blocked',

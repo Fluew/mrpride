@@ -86,6 +86,7 @@ class ChangePasswordController extends Controller
 
         $user->forceFill([
             'password' => Hash::make($validated['password']),
+            'status' => 'active',
             'must_change_password' => false,
             'password_changed_at' => now(),
             'password_history' => $history,

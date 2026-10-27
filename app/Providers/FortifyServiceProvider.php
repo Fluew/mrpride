@@ -147,6 +147,16 @@ class FortifyServiceProvider extends ServiceProvider
             $device = TrustedDevice::findActiveByCredential($request);
 
             if (! $device) {
+                AuditLogger::security(
+                    'auth.threat.unregistered_device',
+                    'Threat Blocked: Unregistered workstation attempted access to /login.',
+                    null,
+                    'warning',
+                    ['ip' => $request->ip(), 'path' => $request->path()],
+                    'blocked',
+                    $request
+                );
+
                 return Inertia::render('NotFound')
                     ->toResponse($request)
                     ->setStatusCode(404);
@@ -214,13 +224,33 @@ class FortifyServiceProvider extends ServiceProvider
     private function configureSecurityListeners(): void
     {
         Event::listen(Failed::class, function (Failed $event) {
+            $email = $event->credentials['email'] ?? 'unknown';
+            $ip = request()->ip();
+            $cacheKey = "failed_logins:{$ip}:" . strtolower((string) $email);
+            $attempts = 1;
+            try {
+                $attempts = (int) cache()->increment($cacheKey, 1);
+                if ($attempts === 1) {
+                    cache()->put($cacheKey, 1, now()->addMinutes(15));
+                }
+            } catch (\Throwable) {
+                // cache fallback
+            }
+
+            $isThreat = $attempts >= 3;
+            $severity = $isThreat ? 'danger' : 'warning';
+            $outcome = $attempts >= 5 ? 'throttled' : 'failure';
+            $description = $isThreat
+                ? "Threat Detected: Multiple repeated failed login attempts ({$attempts} attempts) for email '{$email}'."
+                : 'Failed login attempt for email: ' . $email;
+
             AuditLogger::security(
-                'auth.login.failed',
-                'Failed login attempt for email: ' . ($event->credentials['email'] ?? 'unknown'),
+                $isThreat ? 'auth.threat.brute_force' : 'auth.login.failed',
+                $description,
                 $event->user,
-                'warning',
-                ['email' => $event->credentials['email'] ?? null],
-                'failure'
+                $severity,
+                ['email' => $email, 'attempts' => $attempts, 'ip' => $ip],
+                $outcome
             );
         });
 

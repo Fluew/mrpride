@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link, router } from '@inertiajs/vue3';
-import { LogOut, Settings } from '@lucide/vue';
+import { LogOut, Settings, Wrench } from '@lucide/vue';
+import { computed } from 'vue';
 import {
     DropdownMenuGroup,
     DropdownMenuItem,
@@ -16,11 +17,13 @@ type Props = {
     user: User;
 };
 
+const props = defineProps<Props>();
+
+const isAdmin = computed(() => ['admin', 'superadmin', 'owner'].includes(props.user?.role));
+
 const handleLogout = () => {
     router.flushAll();
 };
-
-defineProps<Props>();
 </script>
 
 <template>
@@ -35,6 +38,12 @@ defineProps<Props>();
             <Link class="block w-full cursor-pointer" :href="edit()" prefetch>
                 <Settings class="mr-2 h-4 w-4" />
                 Settings
+            </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem v-if="isAdmin" :as-child="true">
+            <Link class="block w-full cursor-pointer" href="/settings/maintenance" prefetch>
+                <Wrench class="mr-2 h-4 w-4" />
+                System Maintenance
             </Link>
         </DropdownMenuItem>
     </DropdownMenuGroup>

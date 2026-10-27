@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import SpecularButton from '@/components/ui/SpecularButton.vue';
 import {
     Users,
@@ -39,6 +39,7 @@ interface UserAccount {
     raw_role: string;
     status: string;
     is_active: boolean;
+    is_pending_activation?: boolean;
     must_change_password: boolean;
     password_changed_at?: string;
     last_login_at: string;
@@ -197,14 +198,33 @@ const applyFilter = () => {
     }, 300);
 };
 
-// Copy helper
+// Copy helpers
 const copiedKey = ref(false);
-const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    copiedKey.value = true;
-    setTimeout(() => {
-        copiedKey.value = false;
-    }, 2000);
+const copiedCode = ref(false);
+const copiedLink = ref(false);
+
+const copyToClipboard = async (text: string, type: 'key' | 'code' | 'link' = 'key') => {
+    try {
+        await navigator.clipboard.writeText(text);
+    } catch {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+    }
+
+    if (type === 'code') {
+        copiedCode.value = true;
+        setTimeout(() => { copiedCode.value = false; }, 2500);
+    } else if (type === 'link') {
+        copiedLink.value = true;
+        setTimeout(() => { copiedLink.value = false; }, 2500);
+    } else {
+        copiedKey.value = true;
+        setTimeout(() => { copiedKey.value = false; }, 2500);
+    }
 };
 
 // Modals State
@@ -243,9 +263,36 @@ const enrollForm = useForm({
     user_id: '' as string | number,
     authorized_user_ids: [] as number[],
     device_name: '',
-    expires_in_hours: 24,
+    expires_in_minutes: 5,
     direct_approve: false,
 });
+
+const showEnrollmentResultModal = ref(false);
+const activeEnrollmentResult = ref<{
+    device_name?: string;
+    user_name: string;
+    user_email: string;
+    code?: string;
+    link: string;
+    expires_at: string;
+    expires_in_minutes?: number;
+} | null>(null);
+
+
+
+const dismissedEnrollmentNotice = ref(false);
+
+watch(
+    () => props.enrollmentNotice,
+    (notice) => {
+        if (notice && (notice.code || notice.link)) {
+            activeEnrollmentResult.value = notice;
+            dismissedEnrollmentNotice.value = false;
+            showEnrollmentResultModal.value = true;
+        }
+    },
+    { immediate: true }
+);
 
 const renameDeviceForm = useForm({
     device_name: '',
@@ -289,7 +336,7 @@ const openEnrollModal = (user?: UserAccount) => {
     enrollForm.user_id = user ? user.id : '';
     enrollForm.authorized_user_ids = [];
     enrollForm.device_name = user ? `${user.name}'s Device` : '';
-    enrollForm.expires_in_hours = 24;
+    enrollForm.expires_in_minutes = 5;
     enrollForm.direct_approve = false;
     showEnrollModal.value = true;
 };
@@ -507,14 +554,20 @@ const promptEnrollDevice = () => {
         ? `Shared Workstation (${enrollForm.authorized_user_ids.length} authorized accounts)`
         : `Single Account: ${targetUser?.name || 'Selected User'}`;
 
+    const lifespanLabel = enrollForm.expires_in_minutes === 5
+        ? '5 Minutes (Strict / Single-use)'
+        : enrollForm.expires_in_minutes >= 60
+            ? `${enrollForm.expires_in_minutes / 60} Hour(s)`
+            : `${enrollForm.expires_in_minutes} Minutes`;
+
     openConfirmModal({
-        title: 'Confirm Workstation Enrollment',
-        description: `Generate a trusted device registration code for "${deviceLabel}"?`,
+        title: 'Confirm Workstation Enrollment Invitation',
+        description: `Generate a one-time enrollment link for "${deviceLabel}"?`,
         details: [
             { label: 'Workstation Policy', value: policyLabel },
             { label: 'Device Identifier', value: deviceLabel },
-            { label: 'Enrollment Code Lifespan', value: `${enrollForm.expires_in_hours} Hours (Single-use)` },
-            { label: 'Mode', value: enrollForm.direct_approve ? 'Immediate Direct Approval' : 'Cryptographic Enrollment Code' },
+            { label: 'Invitation Lifespan', value: lifespanLabel },
+            { label: 'Mode', value: enrollForm.direct_approve ? 'Immediate Direct Approval' : 'One-Time Enrollment Link' },
         ],
         confirmText: 'Generate Enrollment Code',
         confirmVariant: 'brand',
@@ -682,17 +735,6 @@ const regenerateRecoveryKey = () => {
                     <Plus class="w-4 h-4 mr-1.5 inline" />
                     Add Account
                 </SpecularButton>
-
-                <SpecularButton
-                    v-if="activeTab === 'devices'"
-                    variant="brand"
-                    size="md"
-                    :radius="10"
-                    @click="openEnrollModal()"
-                >
-                    <Plus class="w-4 h-4 mr-1.5 inline" />
-                    Enroll Device
-                </SpecularButton>
             </div>
         </div>
 
@@ -711,35 +753,88 @@ const regenerateRecoveryKey = () => {
             </div>
         </div>
 
+        <!-- Combined Single-Use Device Enrollment Notice Banner (Top Level) -->
         <div
-            v-if="enrollmentNotice"
-            class="mb-4 rounded-2xl border border-emerald-300 bg-emerald-50/90 p-4 shadow-sm flex items-start justify-between gap-3"
+            v-if="enrollmentNotice && !dismissedEnrollmentNotice"
+            class="mb-5 rounded-2xl border border-emerald-300 bg-emerald-50/95 p-4 sm:p-5 shadow-xs transition-all animate-in fade-in duration-200"
         >
-            <div class="flex items-start gap-3">
-                <div class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white">
-                    <Laptop class="size-4" />
-                </div>
-                <div>
-                    <h4 class="text-xs font-bold text-emerald-950 uppercase tracking-wider">Single-Use Device Enrollment Invitation</h4>
-                    <p class="text-sm text-emerald-900 mt-0.5 font-medium">
-                        Send this link to <strong class="text-emerald-950">{{ enrollmentNotice.user_name }}</strong> ({{ enrollmentNotice.user_email }}). Must be opened on their authorized device before {{ enrollmentNotice.expires_at }}.
-                    </p>
-                    <div class="mt-2 flex items-center gap-2">
-                        <input
-                            type="text"
-                            readonly
-                            :value="enrollmentNotice.link"
-                            class="bg-white border border-emerald-300 rounded-lg px-2.5 py-1 text-xs text-gray-700 w-96 max-w-full font-mono select-all"
-                        />
-                        <button
-                            @click="copyToClipboard(enrollmentNotice.link)"
-                            class="inline-flex items-center gap-1 px-3 py-1 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors"
-                        >
-                            <Copy class="w-3.5 h-3.5" />
-                            {{ copiedKey ? 'Copied!' : 'Copy Link' }}
-                        </button>
+            <div class="flex items-start justify-between gap-3">
+                <div class="flex items-start gap-3.5 flex-1 min-w-0">
+                    <div class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-xs">
+                        <Laptop class="size-4.5" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h4 class="text-xs font-bold text-emerald-950 uppercase tracking-wider">
+                                Active Workstation Enrollment Invitation
+                            </h4>
+                            <span class="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">
+                                <Clock class="size-3" />
+                                5 Minutes Only
+                            </span>
+                        </div>
+                        <p class="text-sm text-emerald-900 mt-1 font-medium leading-relaxed">
+                            Send this invitation to <strong class="text-emerald-950 font-bold">{{ enrollmentNotice.user_name }}</strong>
+                            (<span class="text-emerald-800">{{ enrollmentNotice.user_email }}</span>).
+                            Must be opened on their authorized device before <strong class="text-emerald-950">{{ enrollmentNotice.expires_at }}</strong>.
+                        </p>
+
+                        <!-- Controls Row: Code + Link -->
+                        <div class="mt-3.5 flex flex-wrap items-center gap-3">
+                            <!-- Code section -->
+                            <div v-if="enrollmentNotice.code" class="flex items-center gap-1.5 bg-white border border-emerald-300 rounded-xl p-1 shadow-2xs">
+                                <span class="text-[11px] font-semibold text-emerald-800 uppercase px-2">Code</span>
+                                <code class="px-2.5 py-1 bg-emerald-50 text-emerald-950 rounded-lg text-sm font-mono font-bold tracking-wider select-all border border-emerald-200">
+                                    {{ enrollmentNotice.code }}
+                                </code>
+                                <button
+                                    type="button"
+                                    @click="copyToClipboard(enrollmentNotice.code, 'code')"
+                                    class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-800 hover:text-emerald-950 hover:bg-emerald-100/70 rounded-lg transition-colors cursor-pointer"
+                                    title="Copy Code"
+                                >
+                                    <Check v-if="copiedCode" class="size-3.5 text-emerald-600" />
+                                    <Copy v-else class="size-3.5 text-emerald-700" />
+                                    <span>{{ copiedCode ? 'Copied!' : 'Copy Code' }}</span>
+                                </button>
+                            </div>
+
+                            <!-- Link section -->
+                            <div v-if="enrollmentNotice.link" class="flex items-center gap-1.5 bg-white border border-emerald-300 rounded-xl p-1 shadow-2xs flex-1 min-w-[280px] max-w-xl">
+                                <input
+                                    type="text"
+                                    readonly
+                                    :value="enrollmentNotice.link"
+                                    class="flex-1 bg-transparent border-0 px-2.5 py-1 text-xs text-gray-700 font-mono select-all focus:outline-none"
+                                />
+                                <button
+                                    type="button"
+                                    @click="copyToClipboard(enrollmentNotice.link, 'link')"
+                                    class="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-2xs transition-colors shrink-0 cursor-pointer"
+                                >
+                                    <Check v-if="copiedLink" class="size-3.5 text-white" />
+                                    <Copy v-else class="size-3.5 text-white" />
+                                    <span>{{ copiedLink ? 'Copied!' : 'Copy Link' }}</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Footer details -->
+                        <p class="text-[11px] text-emerald-700 mt-2 font-medium">
+                            Workstation: {{ enrollmentNotice.device_name || 'Terminal' }} • Account: {{ enrollmentNotice.user_name }} • Expires: {{ enrollmentNotice.expires_at }} (Single-use, locked to registered email)
+                        </p>
                     </div>
                 </div>
+
+                <!-- Dismiss button -->
+                <button
+                    type="button"
+                    @click="dismissedEnrollmentNotice = true"
+                    class="p-1 text-emerald-700 hover:text-emerald-950 hover:bg-emerald-200/60 rounded-lg transition-colors cursor-pointer"
+                    title="Dismiss Banner"
+                >
+                    <X class="size-4" />
+                </button>
             </div>
         </div>
 
@@ -908,10 +1003,15 @@ const regenerateRecoveryKey = () => {
                                     <span
                                         :class="[
                                             'px-2.5 py-1 rounded-full text-xs font-semibold border inline-flex items-center gap-1',
-                                            user.is_active ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
+                                            user.is_pending_activation
+                                                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                                : (user.is_active ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200')
                                         ]"
                                     >
-                                        <span :class="user.is_active ? 'bg-green-500' : 'bg-red-500'" class="size-1.5 rounded-full"></span>
+                                        <span
+                                            :class="user.is_pending_activation ? 'bg-amber-500' : (user.is_active ? 'bg-green-500' : 'bg-red-500')"
+                                            class="size-1.5 rounded-full"
+                                        ></span>
                                         {{ user.status }}
                                     </span>
                                 </td>
@@ -931,9 +1031,9 @@ const regenerateRecoveryKey = () => {
                                     <div class="inline-flex items-center gap-2">
                                         <!-- Superadmin Enroll Device shortcut -->
                                         <button
-                                            v-if="isSuperAdmin && (user.raw_role === 'admin' || user.raw_role === 'staff')"
+                                            v-if="isSuperAdmin && (user.raw_role === 'admin' || user.raw_role.startsWith('staff'))"
                                             @click="openEnrollModal(user)"
-                                            title="Enroll Trusted Device"
+                                            title="Send Device Enrollment Invitation"
                                             class="p-1.5 text-gray-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
                                         >
                                             <Laptop class="size-4" />
@@ -1134,47 +1234,7 @@ const regenerateRecoveryKey = () => {
                 </div>
             </div>
 
-            <!-- Enrollment Notice Card -->
-            <div
-                v-if="enrollmentNotice"
-                class="mb-5 rounded-2xl border border-emerald-300 bg-emerald-50/90 p-5 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4"
-            >
-                <div class="space-y-1">
-                    <div class="flex items-center gap-2">
-                        <ShieldCheck class="size-5 text-emerald-600" />
-                        <h3 class="text-sm font-bold text-emerald-950">
-                            Active Workstation Enrollment Code
-                        </h3>
-                    </div>
-                    <p class="text-xs text-emerald-800">
-                        Open <span class="font-mono font-semibold">/device/enroll</span> on candidate browser and submit this code:
-                    </p>
-                    <div class="mt-2 flex flex-wrap items-center gap-2.5">
-                        <code class="px-3.5 py-1.5 bg-white border border-emerald-300 rounded-xl text-base font-mono font-bold text-emerald-950 shadow-xs tracking-wider">
-                            {{ enrollmentNotice.code }}
-                        </code>
-                        <button
-                            v-if="enrollmentNotice.code"
-                            @click="copyToClipboard(enrollmentNotice.code)"
-                            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-emerald-300 rounded-lg text-xs font-semibold text-emerald-900 hover:bg-emerald-100 shadow-2xs transition-colors cursor-pointer"
-                        >
-                            <Copy class="size-3.5" />
-                            {{ copiedKey ? 'Copied!' : 'Copy Code' }}
-                        </button>
-                        <button
-                            v-if="enrollmentNotice.link"
-                            @click="copyToClipboard(enrollmentNotice.link)"
-                            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 shadow-2xs transition-colors cursor-pointer"
-                        >
-                            <ExternalLink class="size-3.5" />
-                            Copy Link
-                        </button>
-                    </div>
-                    <p class="text-[11px] text-emerald-700 mt-1">
-                        Workstation: {{ enrollmentNotice.device_name || 'Terminal' }} • Account Policy: {{ enrollmentNotice.user_name }} • Expires: {{ enrollmentNotice.expires_at }} (Single-use)
-                    </p>
-                </div>
-            </div>
+
 
             <!-- Filters & Actions -->
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
@@ -1680,11 +1740,11 @@ const regenerateRecoveryKey = () => {
                         <option value="staff_inventory">Staff - Inventory</option>
                         <option value="staff_quotations">Staff - Quotations</option>
                         <option value="staff_procurement">Staff - Procurement</option>
+                        <option value="staff_deliveries">Staff - Deliveries</option>
                         <option value="staff_sales">Staff - Sales</option>
                         <option value="staff_forecast">Staff - Demand Forecasting</option>
                         <option value="staff_suppliers">Staff - Suppliers</option>
                         <option value="staff_reports">Staff - Reports & Analytics</option>
-                        <option value="user">Regular Customer</option>
                     </select>
                     <label
                         for="add-role"
@@ -1745,11 +1805,11 @@ const regenerateRecoveryKey = () => {
                         <option value="staff_inventory">Staff - Inventory</option>
                         <option value="staff_quotations">Staff - Quotations</option>
                         <option value="staff_procurement">Staff - Procurement</option>
+                        <option value="staff_deliveries">Staff - Deliveries</option>
                         <option value="staff_sales">Staff - Sales</option>
                         <option value="staff_forecast">Staff - Demand Forecasting</option>
                         <option value="staff_suppliers">Staff - Suppliers</option>
                         <option value="staff_reports">Staff - Reports & Analytics</option>
-                        <option value="user">Regular Customer</option>
                     </select>
                     <label
                         for="edit-role"
@@ -1945,18 +2005,22 @@ const regenerateRecoveryKey = () => {
                     </label>
                 </div>
 
-                <!-- Code Expiration Selection -->
-                <div class="space-y-1">
-                    <label class="text-xs font-semibold text-gray-700">Code Validity Duration</label>
+                <!-- Code Expiration / Lifespan Option -->
+                <div v-if="!enrollForm.direct_approve" class="space-y-1.5">
+                    <label class="text-xs font-semibold text-gray-700">One-Time Link Lifespan</label>
                     <select
-                        v-model="enrollForm.expires_in_hours"
+                        v-model="enrollForm.expires_in_minutes"
                         class="block w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-900 focus:border-[#4b5320] focus:outline-none"
                     >
-                        <option :value="1">1 Hour</option>
-                        <option :value="24">24 Hours (Default)</option>
-                        <option :value="72">72 Hours</option>
-                        <option :value="168">7 Days</option>
+                        <option :value="5">5 Minutes (Default / Recommended)</option>
+                        <option :value="10">10 Minutes</option>
+                        <option :value="30">30 Minutes</option>
+                        <option :value="60">1 Hour</option>
+                        <option :value="1440">24 Hours</option>
                     </select>
+                    <p class="text-[11px] text-gray-500">
+                        The employee must open this link on their device within 5 minutes to verify identity and enroll their browser.
+                    </p>
                 </div>
 
                 <!-- Direct Approval Option -->
@@ -2172,6 +2236,118 @@ const regenerateRecoveryKey = () => {
                     <Check v-if="confirmOptions.confirmVariant !== 'destructive'" class="w-4 h-4 mr-1.5 inline" />
                     <Trash2 v-else class="w-4 h-4 mr-1.5 inline" />
                     <span>{{ confirmOptions.confirmText || 'Confirm & Proceed' }}</span>
+                </SpecularButton>
+            </div>
+        </div>
+    </div>
+
+    <!-- Enrollment Result Modal (Displays Code + Copyable 5-Minute Link) -->
+    <div v-if="showEnrollmentResultModal && activeEnrollmentResult" class="fixed inset-0 z-[75] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div class="flex items-start justify-between mb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700">
+                        <Laptop class="w-5 h-5" />
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-900">Workstation Enrollment Created</h3>
+                        <p class="text-xs text-gray-500">Invitation dispatched to registered employee</p>
+                    </div>
+                </div>
+                <button
+                    @click="showEnrollmentResultModal = false"
+                    class="p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                >
+                    <X class="w-5 h-5" />
+                </button>
+            </div>
+
+            <!-- 5-minute Lifespan Notice Banner -->
+            <div class="mb-5 rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 flex items-start gap-3">
+                <Clock class="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div class="text-xs text-amber-900 leading-relaxed">
+                    <div class="font-semibold text-amber-950 flex items-center gap-1.5">
+                        <span>Strict 5-Minute Lifespan</span>
+                        <span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-200 text-amber-900 uppercase">Single-Use</span>
+                    </div>
+                    <p class="mt-0.5">
+                        This enrollment link and code can only be opened for <strong>5 minutes</strong>. It is locked strictly to <strong>{{ activeEnrollmentResult.user_email }}</strong> and cannot be opened by anyone else even if forwarded.
+                    </p>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <!-- Enrollment Code Display -->
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1.5">
+                        One-Time Enrollment Code
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <div class="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 font-mono text-lg font-bold tracking-wider text-gray-900 text-center select-all">
+                            {{ activeEnrollmentResult.code }}
+                        </div>
+                        <button
+                            type="button"
+                            @click="copyToClipboard(activeEnrollmentResult.code || '', 'code')"
+                            class="px-4 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
+                        >
+                            <Check v-if="copiedCode" class="w-4 h-4 text-emerald-600" />
+                            <Copy v-else class="w-4 h-4 text-gray-500" />
+                            <span>{{ copiedCode ? 'Copied!' : 'Copy Code' }}</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Copyable Link Display -->
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1.5">
+                        Copyable 5-Minute Enrollment Link
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <input
+                            type="text"
+                            readonly
+                            :value="activeEnrollmentResult.link"
+                            class="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-mono text-gray-700 select-all focus:outline-none"
+                        />
+                        <button
+                            type="button"
+                            @click="copyToClipboard(activeEnrollmentResult.link, 'link')"
+                            class="px-4 py-2 rounded-xl bg-[#4b5320] hover:bg-[#3d441a] text-white text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
+                        >
+                            <Check v-if="copiedLink" class="w-4 h-4 text-white" />
+                            <Copy v-else class="w-4 h-4 text-white" />
+                            <span>{{ copiedLink ? 'Copied!' : 'Copy Link' }}</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Recipient Info Card -->
+                <div class="rounded-xl border border-gray-100 bg-gray-50 p-3 text-xs space-y-1">
+                    <div class="flex justify-between">
+                        <span class="text-gray-500">Intended Employee:</span>
+                        <span class="font-semibold text-gray-900">{{ activeEnrollmentResult.user_name }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-500">Registered Email:</span>
+                        <span class="font-semibold text-gray-900">{{ activeEnrollmentResult.user_email }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-500">Expires At:</span>
+                        <span class="font-semibold text-rose-600">{{ activeEnrollmentResult.expires_at }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end mt-6 pt-3 border-t border-gray-100">
+                <SpecularButton
+                    type="button"
+                    variant="brand"
+                    size="md"
+                    :radius="10"
+                    @click="showEnrollmentResultModal = false"
+                >
+                    Done & Close
                 </SpecularButton>
             </div>
         </div>

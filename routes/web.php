@@ -58,7 +58,7 @@ Route::get('/access-denied', [DeviceVerificationController::class, 'accessDenied
 Route::get('/device/enroll', [DeviceVerificationController::class, 'showEnroll'])->name('device.enroll');
 Route::post('/device/enroll', [DeviceVerificationController::class, 'processEnroll'])->middleware('throttle:10,1')->name('device.enroll-submit');
 Route::get('/device/access/{token}', [DeviceVerificationController::class, 'authorizeDevice'])->name('device.access');
-Route::get('/device/enroll/{token}', [DeviceVerificationController::class, 'authorizeDevice'])->name('device.enroll-token');
+Route::get('/device/enroll/{token}', [DeviceVerificationController::class, 'showEnrollWithToken'])->name('device.enroll-token');
 
 // Admin role route convention
 Route::prefix('admin')->middleware(['device_verified'])->group(function () {

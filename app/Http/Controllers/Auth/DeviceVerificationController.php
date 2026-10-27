@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\TrustedDevice;
+use App\Models\User;
 use App\Services\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -15,42 +17,142 @@ class DeviceVerificationController extends Controller
 {
     /**
      * Show device enrollment page.
+     * Route is only accessible when opened via an active, unexpired enrollment code or invitation link.
      */
-    public function showEnroll(Request $request): Response
+    public function showEnroll(Request $request): \Symfony\Component\HttpFoundation\Response
     {
+        $code = trim((string) ($request->query('token') ?: $request->query('code')));
+
+        // /device/enroll is closed unless accessed via an active generated invitation link or code
+        if (empty($code)) {
+            abort(404);
+        }
+
+        $device = TrustedDevice::where('enrollment_token', $code)
+            ->orWhere('enrollment_code', strtoupper($code))
+            ->with('user:id,name,email,role')
+            ->first();
+
+        if (! $device) {
+            abort(404);
+        }
+
+        $expiresAt = $device->enrollment_token_expires_at ?? $device->enrollment_code_expires_at;
+        if (! $expiresAt || $expiresAt->isPast()) {
+            return Inertia::render('auth/AccessDenied', [
+                'title' => 'Invitation Expired',
+                'message' => 'This device enrollment link has expired. Workstation invitations are valid for 5 minutes only. Please request a new invitation from your administrator.',
+                'canEnroll' => false,
+            ])->toResponse($request)->setStatusCode(410);
+        }
+
+        // Forwarding protection: only works on the email registered by the Admin
+        if ($device->user && $request->filled('email')) {
+            $queryEmail = strtolower(trim((string) $request->query('email')));
+            if ($queryEmail !== strtolower($device->user->email)) {
+                return Inertia::render('auth/AccessDenied', [
+                    'title' => 'Access Restricted',
+                    'message' => "This invitation link is strictly restricted to {$device->user->email}. It cannot be accessed by other accounts even if forwarded.",
+                    'canEnroll' => false,
+                ])->toResponse($request)->setStatusCode(403);
+            }
+        }
+
         return Inertia::render('auth/EnrollDevice', [
-            'initialCode' => $request->query('code', ''),
+            'initialCode' => '',
+            'token' => $device->enrollment_token,
+            'expectedCode' => $device->enrollment_code,
+            'assignedUser' => $device->user ? [
+                'name' => $device->user->name,
+                'email' => $device->user->email,
+            ] : null,
+            'expiresAt' => $expiresAt->diffForHumans(),
+            'isInvitation' => true,
             'status' => session('status'),
-        ]);
+        ])->toResponse($request);
     }
 
     /**
-     * Process enrollment code submitted by candidate browser.
+     * Show enrollment page for a specific one-time invitation token.
+     */
+    public function showEnrollWithToken(Request $request, string $token): \Symfony\Component\HttpFoundation\Response
+    {
+        $device = TrustedDevice::where('enrollment_token', $token)
+            ->with('user:id,name,email,role')
+            ->first();
+
+        if (! $device) {
+            abort(404);
+        }
+
+        if ($device->enrollment_token_expires_at && $device->enrollment_token_expires_at->isPast()) {
+            return Inertia::render('auth/AccessDenied', [
+                'title' => 'Invitation Expired',
+                'message' => 'This device enrollment link has expired. Workstation invitations are valid for 5 minutes only. Please request a new invitation from your administrator.',
+                'canEnroll' => false,
+            ])->toResponse($request)->setStatusCode(410);
+        }
+
+        // Forwarding protection: only works on the email registered by the Admin
+        if ($device->user && $request->filled('email')) {
+            $queryEmail = strtolower(trim((string) $request->query('email')));
+            if ($queryEmail !== strtolower($device->user->email)) {
+                return Inertia::render('auth/AccessDenied', [
+                    'title' => 'Access Restricted',
+                    'message' => "This invitation link is strictly restricted to {$device->user->email}. It cannot be accessed by other accounts even if forwarded.",
+                    'canEnroll' => false,
+                ])->toResponse($request)->setStatusCode(403);
+            }
+        }
+
+        return Inertia::render('auth/EnrollDevice', [
+            'initialCode' => '',
+            'token' => $token,
+            'expectedCode' => $device->enrollment_code,
+            'assignedUser' => $device->user ? [
+                'name' => $device->user->name,
+                'email' => $device->user->email,
+            ] : null,
+            'expiresAt' => $device->enrollment_token_expires_at?->diffForHumans(),
+            'isInvitation' => true,
+            'status' => session('status'),
+        ])->toResponse($request);
+    }
+
+    /**
+     * Process enrollment code/token submitted by candidate browser with employee identity verification.
      */
     public function processEnroll(Request $request): RedirectResponse
     {
         $rawCode = $request->input('code') ?: $request->input('enrollment_code');
-        if ($rawCode) {
-            $request->merge(['code' => $rawCode]);
-        }
+        $rawToken = $request->input('token');
 
         $validated = $request->validate([
             'code' => ['required', 'string', 'max:64'],
+            'token' => ['nullable', 'string', 'max:64'],
             'device_name' => ['nullable', 'string', 'max:100'],
+            'email' => ['nullable', 'email'],
+            'password' => ['nullable', 'string'],
         ]);
 
         $inputCode = strtoupper(trim($validated['code']));
+        $inputToken = trim((string) ($validated['token'] ?? ''));
 
-        // Find device by enrollment_code or enrollment_token
-        $device = TrustedDevice::where(function ($q) use ($inputCode) {
-            $q->where('enrollment_code', $inputCode)
-                ->orWhere('enrollment_token', $inputCode);
-        })->first();
+        // Locate device invitation
+        $device = null;
+        if (! empty($inputToken)) {
+            $device = TrustedDevice::where('enrollment_token', $inputToken)->first();
+        }
+        if (! $device) {
+            $device = TrustedDevice::where('enrollment_code', $inputCode)
+                ->orWhere('enrollment_token', $inputCode)
+                ->first();
+        }
 
         if (! $device) {
             AuditLogger::security(
                 'auth.device.enrollment_failed',
-                "Device enrollment failed: Invalid code '{$inputCode}'.",
+                "Device enrollment failed: Invalid code/token '{$inputCode}'.",
                 null,
                 'warning',
                 ['ip' => $request->ip(), 'input_code' => $inputCode],
@@ -59,23 +161,31 @@ class DeviceVerificationController extends Controller
             );
 
             return back()->withErrors([
-                'code' => 'The enrollment code is invalid. Please double-check the code or contact your administrator.',
-                'enrollment_code' => 'The enrollment code is invalid. Please double-check the code or contact your administrator.',
+                'code' => 'The enrollment link or code is invalid. Please double-check or ask your administrator for a new invitation.',
             ]);
         }
 
-        // Check expiration
+        // If device has an enrollment_code and a token was used, verify code matches
+        if ($device->enrollment_code && ! empty($inputToken)) {
+            if ($inputCode !== strtoupper($device->enrollment_code)) {
+                return back()->withErrors([
+                    'code' => 'The enrollment code entered does not match your invitation. Please check your email.',
+                ]);
+            }
+        }
+
+        // Check 5-minute expiration
         $isExpired = false;
         if ($device->enrollment_code === $inputCode && $device->enrollment_code_expires_at) {
             $isExpired = $device->enrollment_code_expires_at->isPast();
-        } elseif ($device->enrollment_token === $inputCode && $device->enrollment_token_expires_at) {
-            $isExpired = $device->enrollment_token_expires_at->isPast();
+        } elseif ($device->enrollment_token && ($device->enrollment_token === $inputToken || $device->enrollment_token === $inputCode)) {
+            $isExpired = $device->enrollment_token_expires_at ? $device->enrollment_token_expires_at->isPast() : false;
         }
 
         if ($isExpired) {
             AuditLogger::security(
                 'auth.device.enrollment_expired',
-                "Device enrollment failed: Expired code '{$inputCode}' for device ID {$device->id}.",
+                "Device enrollment failed: Expired invitation for device ID {$device->id}.",
                 $device->user,
                 'warning',
                 ['ip' => $request->ip(), 'device_id' => $device->id],
@@ -84,9 +194,55 @@ class DeviceVerificationController extends Controller
             );
 
             return back()->withErrors([
-                'code' => 'This enrollment code has expired. Please ask your administrator to generate a new code.',
-                'enrollment_code' => 'This enrollment code has expired. Please ask your administrator to generate a new code.',
+                'code' => 'This enrollment link has expired (links are strictly valid for 5 minutes only). Please ask your administrator to generate a new invitation.',
             ]);
+        }
+
+        // Employee registered email check (Forwarding protection)
+        $targetUser = $device->user;
+        if ($targetUser) {
+            $registeredEmail = strtolower($targetUser->email);
+            if (! empty($validated['email'])) {
+                $submittedEmail = strtolower(trim((string) $validated['email']));
+                if ($submittedEmail !== $registeredEmail) {
+                    return back()->withErrors([
+                        'email' => "Access Restricted: This invitation is strictly registered to {$targetUser->email}. It cannot be used with any other email even if forwarded.",
+                    ]);
+                }
+            }
+        }
+
+        // Verify password if provided
+        if ($targetUser && ! empty($validated['password'])) {
+            if (! Hash::check($validated['password'], $targetUser->password)) {
+                AuditLogger::security(
+                    'auth.device.identity_verification_failed',
+                    "Identity verification failed during enrollment for email '{$targetUser->email}'.",
+                    $targetUser,
+                    'warning',
+                    ['ip' => $request->ip(), 'email' => $targetUser->email, 'device_id' => $device->id],
+                    'failure',
+                    $request
+                );
+
+                return back()->withErrors([
+                    'password' => 'Incorrect temporary password or account password. Please verify credentials.',
+                ]);
+            }
+        }
+
+        // Activate account if pending activation
+        if ($targetUser && $targetUser->status === 'pending_activation') {
+            $targetUser->update(['status' => 'active']);
+            AuditLogger::audit(
+                'account.activated',
+                "User {$targetUser->email} verified identity and activated account during workstation enrollment.",
+                $targetUser,
+                $targetUser,
+                ['device_id' => $device->id],
+                'success',
+                $request
+            );
         }
 
         // Generate high-entropy secret token & uuid
@@ -97,6 +253,7 @@ class DeviceVerificationController extends Controller
             : ($device->device_name ?: $this->parseDeviceName($request));
 
         $device->update([
+            'user_id' => $targetUser?->id ?? $device->user_id,
             'device_uuid' => $deviceUuid,
             'device_name' => $deviceName,
             'credential_hash' => hash('sha256', $rawCredential),
@@ -118,8 +275,8 @@ class DeviceVerificationController extends Controller
 
         AuditLogger::security(
             'auth.device.enrolled',
-            "Browser enrolled as trusted workstation '{$deviceName}' ({$deviceUuid}).",
-            $device->user,
+            "Browser enrolled as trusted workstation '{$deviceName}' ({$deviceUuid})" . ($targetUser ? " for {$targetUser->email}" : "") . ".",
+            $targetUser,
             'info',
             ['device_id' => $device->id, 'device_uuid' => $deviceUuid, 'ip' => $request->ip()],
             'success',
@@ -128,7 +285,7 @@ class DeviceVerificationController extends Controller
 
         return redirect()->route('login')->with(
             'status',
-            "Workstation '{$deviceName}' successfully registered! You can now log in using your authorized account."
+            "Workstation successfully registered and identity verified! You can now log in using your authorized account."
         );
     }
 
@@ -180,6 +337,8 @@ class DeviceVerificationController extends Controller
             'ip_address' => $request->ip(),
             'status' => 'approved',
             'approved_at' => now(),
+            'enrollment_code' => null,
+            'enrollment_code_expires_at' => null,
             'enrollment_token' => null,
             'enrollment_token_expires_at' => null,
             'last_used_at' => now(),

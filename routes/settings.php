@@ -42,4 +42,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('settings/teams/{team}/invitations', [TeamInvitationController::class, 'store'])->name('teams.invitations.store');
         Route::delete('settings/teams/{team}/invitations/{invitation}', [TeamInvitationController::class, 'destroy'])->name('teams.invitations.destroy');
     });
+
+    // Maintenance Mode (Admin only)
+    Route::middleware(['role:admin'])->group(function () {
+        Route::get('settings/maintenance', [\App\Http\Controllers\Settings\MaintenanceController::class, 'index'])->name('settings.maintenance');
+        Route::post('settings/maintenance/enable', [\App\Http\Controllers\Settings\MaintenanceController::class, 'enable'])->name('settings.maintenance.enable');
+        Route::post('settings/maintenance/disable', [\App\Http\Controllers\Settings\MaintenanceController::class, 'disable'])->name('settings.maintenance.disable');
+        Route::match(['GET', 'POST'], 'settings/maintenance/verify', [\App\Http\Controllers\Settings\MaintenanceController::class, 'verify'])->name('settings.maintenance.verify');
+    });
 });

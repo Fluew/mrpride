@@ -46,8 +46,20 @@ test('guest accessing staff dashboard route receives 404 page not found', functi
     );
 });
 
-test('candidate device can view enrollment page', function () {
-    $this->get('/device/enroll')->assertSuccessful();
+test('direct access to enrollment page without invitation returns 404', function () {
+    $this->get('/device/enroll')->assertNotFound();
+});
+
+test('candidate device can view enrollment page with valid code or link', function () {
+    $device = TrustedDevice::create([
+        'device_uuid' => (string) Str::uuid(),
+        'device_name' => 'Pending Workstation',
+        'status' => 'pending',
+        'enrollment_code' => 'MRP-VIEW01',
+        'enrollment_code_expires_at' => now()->addMinutes(5),
+    ]);
+
+    $this->get('/device/enroll?code=MRP-VIEW01')->assertSuccessful();
 });
 
 test('submitting an invalid enrollment code is rejected', function () {
@@ -353,3 +365,101 @@ test('only authenticated admins can enroll or manage trusted devices', function 
 
     $response->assertNotFound(); // role:admin middleware blocks non-admins with 404
 });
+
+test('end-to-end flow: admin creates pending staff, issues 10-minute invitation, staff verifies identity, enrolls browser, accesses login, and authenticates', function () {
+    $admin = User::factory()->create([
+        'role' => 'admin',
+        'status' => 'active',
+        'password_changed_at' => now(),
+    ]);
+    $team = $admin->personalTeam() ?? \App\Models\Team::factory()->create();
+    $adminDevice = createTrustedDeviceFor($admin);
+
+    // 1. Admin creates staff account (status: pending_activation, temp password: Maria1234)
+    $response = $this->actingAs($admin)
+        ->withCookies($adminDevice['cookies'])
+        ->post("/{$team->slug}/users", [
+            'first_name' => 'Maria',
+            'last_name' => 'Santos',
+            'email' => 'maria.santos@mrpride.com',
+            'role' => 'staff_inventory',
+        ]);
+
+    $response->assertSessionHasNoErrors();
+    $staff = User::where('email', 'maria.santos@mrpride.com')->firstOrFail();
+    expect($staff->status)->toBe('pending_activation');
+    expect($staff->isPendingActivation())->toBeTrue();
+    expect($staff->isActive())->toBeTrue(); // allowed to activate
+    expect(Hash::check('Maria1234', $staff->password))->toBeTrue();
+
+    // 2. Admin creates 10-minute device enrollment invitation
+    $inviteResponse = $this->actingAs($admin)
+        ->withCookies($adminDevice['cookies'])
+        ->post("/{$team->slug}/users/devices/enroll", [
+            'assignment_type' => 'single',
+            'user_id' => $staff->id,
+            'device_name' => "Maria's Inventory Laptop",
+            'expires_in_minutes' => 10,
+        ]);
+
+    $inviteResponse->assertSessionHasNoErrors();
+    $inviteResponse->assertSessionHas('enrollmentNotice');
+    $device = TrustedDevice::where('user_id', $staff->id)->firstOrFail();
+    expect($device->status)->toBe('pending');
+    expect($device->enrollment_token)->not->toBeNull();
+    expect($device->enrollment_token_expires_at->diffInMinutes(now()))->toBeLessThanOrEqual(10);
+
+    // 3. Before enrollment, unauthenticated/unregistered candidate browser gets 404 on /login
+    auth()->logout();
+    $this->flushSession();
+    $this->defaultCookies = [];
+    $this->get('/login')->assertNotFound();
+
+    // 4. Staff opens one-time enrollment link on new browser (with bound email)
+    $tokenPageResponse = $this->get("/device/enroll/{$device->enrollment_token}?email=" . urlencode('maria.santos@mrpride.com'));
+    $tokenPageResponse->assertSuccessful();
+
+    // 4b. Forwarded link opened with another email is rejected (403 Forbidden)
+    $forwardedResponse = $this->get("/device/enroll/{$device->enrollment_token}?email=" . urlencode('other.person@mrpride.com'));
+    $forwardedResponse->assertForbidden();
+
+    // 5. Staff verifies identity with enrollment code + email + temporary password
+    $enrollResponse = $this->post('/device/enroll', [
+        'token' => $device->enrollment_token,
+        'code' => $device->enrollment_code,
+        'email' => 'maria.santos@mrpride.com',
+        'password' => 'Maria1234',
+        'device_name' => "Maria's Work Laptop",
+    ]);
+
+    $enrollResponse->assertRedirect('/login');
+    $enrollResponse->assertCookie('mrpride_device_credential');
+    $enrollResponse->assertCookie('mrpride_device_uuid');
+
+    // Cookies issued and account activated
+    $staff->refresh();
+    expect($staff->status)->toBe('active');
+    $device->refresh();
+    expect($device->status)->toBe('approved');
+    expect($device->enrollment_token)->toBeNull(); // single-use token consumed
+
+    // 6. /login is now accessible with the enrolled cookies!
+    $deviceCookies = [
+        'mrpride_device_uuid' => $enrollResponse->getCookie('mrpride_device_uuid')->getValue(),
+        'mrpride_device_credential' => $enrollResponse->getCookie('mrpride_device_credential')->getValue(),
+    ];
+
+    $loginPage = $this->withCookies($deviceCookies)->get('/login');
+    $loginPage->assertSuccessful();
+
+    // 7. Staff authenticates with Email + Temporary Password
+    $authResponse = $this->withCookies($deviceCookies)->post('/login', [
+        'email' => 'maria.santos@mrpride.com',
+        'password' => 'Maria1234',
+    ]);
+
+    // Redirected to mandatory password change because must_change_password is true
+    $authResponse->assertRedirect('/password/change');
+    $this->assertAuthenticatedAs($staff);
+});
+
