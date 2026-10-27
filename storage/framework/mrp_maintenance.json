@@ -1,8 +1,0 @@
-{
-    "enabled": true,
-    "reason": "Database updates, system upgrades, deployment, or scheduled server maintenance.",
-    "expected_return_time": "06:27 AM (approx. 30 minutes)",
-    "enabled_at": "2026-10-27 05:57:55",
-    "enabled_by": "admin@example.com",
-    "admin_id": 1
-}
