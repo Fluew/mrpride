@@ -20,11 +20,16 @@ class PublicQuotationController extends Controller
      */
     public function create(): Response
     {
-        $products = Product::where('is_active', true)
-            ->select('id', 'name', 'sku', 'category', 'unit', 'description', 'price')
-            ->orderBy('category')
-            ->orderBy('name')
-            ->get();
+        $products = [];
+        try {
+            $products = Product::where('is_active', true)
+                ->select('id', 'name', 'sku', 'category', 'unit', 'description', 'price')
+                ->orderBy('category')
+                ->orderBy('name')
+                ->get();
+        } catch (\Throwable $e) {
+            $products = [];
+        }
 
         return Inertia::render('Quotations/Create', [
             'products' => $products,
@@ -32,7 +37,7 @@ class PublicQuotationController extends Controller
     }
 
     /**
-     * Store public quotation request with multi-product items and unlisted materials.
+     * Store public quotation request with multi-brand items and unlisted materials.
      */
     public function store(Request $request): RedirectResponse
     {
@@ -44,7 +49,8 @@ class PublicQuotationController extends Controller
             'projectType' => ['nullable', 'string', 'max:100'],
             'timeline' => ['nullable', 'string', 'max:100'],
             'items' => ['nullable', 'array'],
-            'items.*.product_id' => ['nullable', 'integer', 'exists:products,id'],
+            'items.*.brand' => ['nullable', 'string', 'max:255'],
+            'items.*.product_id' => ['nullable'],
             'items.*.quantity' => ['nullable', 'integer', 'min:1'],
             'items.*.specifications' => ['nullable', 'string', 'max:500'],
             'hasOtherMaterials' => ['nullable', 'boolean'],
@@ -52,20 +58,26 @@ class PublicQuotationController extends Controller
             'additionalRequirements' => ['nullable', 'string', 'max:3000'],
         ]);
 
-        // Custom validation: at least 1 valid catalog item OR non-empty otherMaterials
+        // Custom validation: at least 1 valid catalog brand partner OR non-empty otherMaterials
         $validItems = collect($request->input('items', []))->filter(function ($item) {
-            return ! empty($item['product_id']) && (int) ($item['quantity'] ?? 0) >= 1;
+            return filled(trim((string) ($item['brand'] ?? ''))) || ! empty($item['product_id']);
         });
 
         $hasOther = $request->boolean('hasOtherMaterials') && filled(trim((string) $request->input('otherMaterials', '')));
 
         if ($validItems->isEmpty() && ! $hasOther) {
             return back()->withErrors([
-                'items' => 'Please select at least one product from our catalog or describe unlisted materials in the section below.',
+                'items' => 'Please select at least one brand or describe unlisted brands in the section below.',
             ])->withInput();
         }
 
-        $team = Team::first();
+        $team = Team::first() ?? Team::firstOrCreate([
+            'slug' => 'mr-pride',
+        ], [
+            'name' => 'MR-Pride Electrical Supplies',
+            'personal_team' => false,
+        ]);
+
         if ($team) {
             $client = Client::firstOrCreate(
                 [
@@ -86,7 +98,7 @@ class PublicQuotationController extends Controller
             $notes .= "Expected Timeline: " . ($validated['timeline'] ?? 'Flexible') . "\n";
 
             if ($hasOther) {
-                $notes .= "\n--- Unlisted Materials Requested ---\n" . trim((string) $request->input('otherMaterials')) . "\n";
+                $notes .= "\n--- Unlisted Brands / Materials Requested ---\n" . trim((string) $request->input('otherMaterials')) . "\n";
             }
 
             if (! empty($request->input('additionalRequirements'))) {
@@ -114,27 +126,29 @@ class PublicQuotationController extends Controller
 
             $subtotal = 0.00;
 
-            // Create QuotationItem records for each selected catalog item
+            // Create QuotationItem records for each selected brand partner / item
             foreach ($validItems as $item) {
-                $product = Product::find($item['product_id']);
-                if (! $product) {
-                    continue;
+                $brand = trim((string) ($item['brand'] ?? ''));
+                $productId = ! empty($item['product_id']) ? (int) $item['product_id'] : null;
+                $product = $productId ? Product::find($productId) : null;
+
+                $brandName = $brand ?: ($product ? $product->name : 'Brand Partner');
+                $displayName = $brandName;
+                if (! empty($item['specifications'])) {
+                    $displayName .= ' (' . trim((string) $item['specifications']) . ')';
                 }
 
                 $qty = max(1, (int) ($item['quantity'] ?? 1));
-                $unitPrice = (float) ($product->price ?? 0);
+                $unitPrice = $product ? (float) ($product->price ?? 0) : 0.00;
                 $itemSubtotal = $unitPrice * $qty;
                 $subtotal += $itemSubtotal;
 
-                $productName = $product->name;
-                if (! empty($item['specifications'])) {
-                    $productName .= ' (' . trim((string) $item['specifications']) . ')';
-                }
+                $sku = $product ? $product->sku : ('BRAND-' . strtoupper(Str::slug($brandName)));
 
                 $quotation->items()->create([
-                    'product_id' => $product->id,
-                    'sku' => $product->sku,
-                    'product_name' => $productName,
+                    'product_id' => $product?->id,
+                    'sku' => $sku,
+                    'product_name' => $displayName,
                     'quantity' => $qty,
                     'unit_price' => $unitPrice,
                     'discount' => 0.00,
@@ -148,7 +162,7 @@ class PublicQuotationController extends Controller
                 $quotation->items()->create([
                     'product_id' => null,
                     'sku' => 'CUSTOM-REQ',
-                    'product_name' => 'Custom / Unlisted Materials: ' . Str::limit($otherDesc, 75),
+                    'product_name' => 'Custom / Unlisted Brands: ' . Str::limit($otherDesc, 75),
                     'quantity' => 1,
                     'unit_price' => 0.00,
                     'discount' => 0.00,
@@ -169,6 +183,6 @@ class PublicQuotationController extends Controller
             ]);
         }
 
-        return back()->with('success', 'Thank you! Your quotation request has been received. Our team will review your requested materials and get in touch shortly.');
+        return back()->with('success', 'Thank you! Your quotation request has been received. Our team will review your requested brands and get in touch shortly.');
     }
 }

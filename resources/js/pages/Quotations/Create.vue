@@ -8,11 +8,7 @@ import {
     MapPin,
     Plus,
     Trash2,
-    Package,
     AlertCircle,
-    Info,
-    Layers,
-    FileText,
 } from '@lucide/vue';
 import { nextTick, ref, computed } from 'vue';
 import FadeContent from '@/components/vue-bits/FadeContent.vue';
@@ -20,26 +16,64 @@ import SpotlightCard from '@/components/vue-bits/SpotlightCard.vue';
 import SpecularButton from '@/components/ui/SpecularButton.vue';
 import PublicLayout from '@/layouts/PublicLayout.vue';
 import { store } from '@/routes/quotations';
+import {
+    hardwarePartners,
+    electricalPartners,
+    pipePartners,
+    safetyPartners,
+} from '@/components/products/brandPartnersData';
 
-interface CatalogProduct {
-    id: number;
+interface BrandPartnerOption {
     name: string;
-    sku: string;
+    alt?: string;
+    src?: string;
+}
+
+interface BrandCategory {
     category: string;
-    unit: string | null;
-    description: string | null;
-    price: number;
+    code: string;
+    brands: BrandPartnerOption[];
 }
 
 interface QuotationItemRow {
-    product_id: number | null;
-    quantity: number;
+    brand: string;
     specifications: string;
 }
 
-const props = defineProps<{
-    products?: CatalogProduct[];
-}>();
+const brandCategories: BrandCategory[] = [
+    {
+        category: 'Hardware & Machinery',
+        code: 'A',
+        brands: hardwarePartners,
+    },
+    {
+        category: 'Electrical Materials',
+        code: 'B',
+        brands: electricalPartners,
+    },
+    {
+        category: 'Pipes & Conduits',
+        code: 'C',
+        brands: pipePartners,
+    },
+    {
+        category: 'Safety Products',
+        code: 'D',
+        brands: safetyPartners,
+    },
+];
+
+const allBrandPartners = computed<BrandPartnerOption[]>(() => [
+    ...hardwarePartners,
+    ...electricalPartners,
+    ...pipePartners,
+    ...safetyPartners,
+]);
+
+function getBrandByName(name: string): BrandPartnerOption | undefined {
+    if (!name) return undefined;
+    return allBrandPartners.value.find((b) => b.name === name);
+}
 
 const form = useForm({
     company: '',
@@ -49,7 +83,7 @@ const form = useForm({
     projectType: 'Commercial Building',
     timeline: '1-3 months',
     items: [
-        { product_id: null, quantity: 1, specifications: '' },
+        { brand: '', specifications: '' },
     ] as QuotationItemRow[],
     hasOtherMaterials: false,
     otherMaterials: '',
@@ -96,46 +130,27 @@ const fields = [
     },
 ] as const;
 
-// Group catalog products by category for organized dropdown selection
-const productsByCategory = computed(() => {
-    const groups: Record<string, CatalogProduct[]> = {};
-    (props.products || []).forEach((p) => {
-        const cat = p.category || 'General Electrical Supplies';
-        if (!groups[cat]) {
-            groups[cat] = [];
-        }
-        groups[cat].push(p);
-    });
-    return groups;
-});
-
-// Helper to look up product metadata
-function getProductById(id: number | null): CatalogProduct | undefined {
-    if (!id || !props.products) return undefined;
-    return props.products.find((p) => p.id === id);
-}
-
-// Check if a product has already been chosen in another row
-function isProductSelectedElsewhere(
-    productId: number,
+// Check if a brand partner has already been chosen in another row
+function isBrandSelectedElsewhere(
+    brandName: string,
     currentRowIndex: number,
 ): boolean {
+    if (!brandName) return false;
     return form.items.some(
-        (item, idx) => idx !== currentRowIndex && item.product_id === productId,
+        (item, idx) => idx !== currentRowIndex && item.brand === brandName,
     );
 }
 
-// Add a new product row
+// Add a new brand partner row
 function addItemRow() {
     itemsValidationError.value = null;
     form.items.push({
-        product_id: null,
-        quantity: 1,
+        brand: '',
         specifications: '',
     });
 }
 
-// Remove a product row
+// Remove a brand partner row
 function removeItemRow(index: number) {
     itemsValidationError.value = null;
     if (form.items.length > 1) {
@@ -143,21 +158,20 @@ function removeItemRow(index: number) {
     } else {
         // Reset single remaining row
         form.items[0] = {
-            product_id: null,
-            quantity: 1,
+            brand: '',
             specifications: '',
         };
     }
 }
 
-// Validate that either catalog products or unlisted materials are requested
+// Validate that either brand partners or unlisted brands are requested
 const hasValidRequirements = computed(() => {
-    const hasCatalogItems = form.items.some(
-        (i) => i.product_id !== null && Number(i.quantity) >= 1,
+    const hasBrandItems = form.items.some(
+        (i) => i.brand && i.brand.trim().length > 0,
     );
     const hasUnlisted =
         form.hasOtherMaterials && form.otherMaterials.trim().length > 0;
-    return hasCatalogItems || hasUnlisted;
+    return hasBrandItems || hasUnlisted;
 });
 
 function submit() {
@@ -169,7 +183,7 @@ function submit() {
 
     if (!hasValidRequirements.value) {
         itemsValidationError.value =
-            'Please select at least one product from our catalog or describe the unlisted materials you need.';
+            'Please select at least one brand partner or describe unlisted brands in the section below.';
         return;
     }
 
@@ -180,7 +194,7 @@ function submit() {
             submittedSuccess.value = true;
             form.reset();
             form.items = [
-                { product_id: null, quantity: 1, specifications: '' },
+                { brand: '', specifications: '' },
             ];
             form.hasOtherMaterials = false;
             form.otherMaterials = '';
@@ -214,9 +228,9 @@ function submit() {
                     >
                 </h1>
                 <p class="mt-6 text-base leading-8 text-gray-600">
-                    Tell us about your project and the materials you need. Our
+                    Tell us about your project and the brands you need. Our
                     team will review your requirements and help you find the
-                    right products.
+                    right products from our trusted brand partners.
                 </p>
                 <details
                     class="mt-7 rounded-xl border border-gray-200 bg-white p-4"
@@ -231,12 +245,12 @@ function submit() {
                             v-for="(step, index) in [
                                 {
                                     title: 'Share your requirements',
-                                    text: 'Select catalog products, specify quantities, or list custom items.',
+                                    text: 'Select our brand partners or describe custom brands and specifications.',
                                     icon: ClipboardList,
                                 },
                                 {
                                     title: 'Our team reviews your request',
-                                    text: 'We assess your materials list and prepare verified pricing.',
+                                    text: 'We assess your brand list and prepare verified pricing.',
                                     icon: CheckCircle2,
                                 },
                                 {
@@ -272,9 +286,6 @@ function submit() {
             </FadeContent>
             <SpotlightCard class="p-6 shadow-sm sm:p-9">
                 <h2 class="text-xl font-bold">Request a quotation</h2>
-                <p class="mt-2 text-sm text-gray-500">
-                    Fields marked * are required.
-                </p>
                 <div
                     v-if="submittedSuccess"
                     ref="successMessage"
@@ -284,7 +295,7 @@ function submit() {
                 >
                     <p class="font-bold">Your request has been received.</p>
                     <p>
-                        Our team will review your required materials and contact
+                        Our team will review your requested brand partners and contact
                         you shortly with an official itemized quotation.
                     </p>
                 </div>
@@ -391,13 +402,11 @@ function submit() {
                         </div>
                     </div>
 
-                    <!-- ═════════════════════════════════════════════════════ -->
-                    <!-- IMPROVED MATERIALS & PROJECT REQUIREMENTS SECTION      -->
-                    <!-- ═════════════════════════════════════════════════════ -->
+                    <!-- Materials & Products Section -->
                     <div
                         class="space-y-5 rounded-2xl border border-gray-200 bg-gray-50/50 p-5"
                     >
-                        <!-- 1. Multi-Product Catalog Selection -->
+                        <!-- 1. Catalog Brand Partner Selection -->
                         <div>
                             <div
                                 class="mb-3 flex flex-col justify-between gap-1 sm:flex-row sm:items-center"
@@ -409,8 +418,7 @@ function submit() {
                                         Materials &amp; Products
                                     </label>
                                     <p class="mt-0.5 text-xs text-gray-500">
-                                        Select products from our inventory
-                                        catalog and specify needed quantities.
+                                        Select from our authorized brand partners across hardware, electrical, conduits, and safety.
                                     </p>
                                 </div>
                                 <span
@@ -418,28 +426,15 @@ function submit() {
                                 >
                                     {{
                                         form.items.filter(
-                                            (i) => i.product_id !== null,
+                                            (i) => i.brand,
                                         ).length
                                     }}
-                                    item(s) selected
+                                    brand(s) selected
                                 </span>
                             </div>
 
-                            <!-- Empty Catalog State Fallback -->
-                            <div
-                                v-if="!products || products.length === 0"
-                                class="rounded-xl border border-gray-200 bg-white p-4 text-center text-xs text-gray-500"
-                            >
-                                <Info
-                                    class="mx-auto mb-1 size-4 text-gray-400"
-                                />
-                                Catalog products are currently loading or
-                                unavailable. You can specify needed materials
-                                using the unlisted materials section below.
-                            </div>
-
-                            <!-- Product Rows List -->
-                            <div v-else class="space-y-3">
+                            <!-- Brand Partner Rows List -->
+                            <div class="space-y-3">
                                 <div
                                     v-for="(item, index) in form.items"
                                     :key="index"
@@ -448,45 +443,40 @@ function submit() {
                                     <div
                                         class="grid grid-cols-1 items-start gap-3 sm:grid-cols-12"
                                     >
-                                        <!-- Product Selector -->
-                                        <div class="sm:col-span-7">
+                                        <!-- Brand Selector -->
+                                        <div class="sm:col-span-11">
                                             <label
                                                 class="mb-1 block text-[11px] font-semibold tracking-wider text-gray-500 uppercase"
                                             >
-                                                Product #{{ index + 1 }}
+                                                Brand #{{ index + 1 }}
                                             </label>
                                             <select
-                                                v-model="item.product_id"
+                                                v-model="item.brand"
                                                 class="field-control px-3 py-2 text-sm"
                                             >
-                                                <option :value="null">
-                                                    -- Select a catalog product
-                                                    --
+                                                <option value="">
+                                                    Select brand
                                                 </option>
                                                 <optgroup
-                                                    v-for="(
-                                                        catProds, catName
-                                                    ) in productsByCategory"
-                                                    :key="catName"
-                                                    :label="catName"
+                                                    v-for="cat in brandCategories"
+                                                    :key="cat.code"
+                                                    :label="cat.category"
                                                 >
                                                     <option
-                                                        v-for="p in catProds"
-                                                        :key="p.id"
-                                                        :value="p.id"
+                                                        v-for="brand in cat.brands"
+                                                        :key="brand.name"
+                                                        :value="brand.name"
                                                         :disabled="
-                                                            isProductSelectedElsewhere(
-                                                                p.id,
+                                                            isBrandSelectedElsewhere(
+                                                                brand.name,
                                                                 index,
                                                             )
                                                         "
                                                     >
-                                                        {{ p.name }} ({{
-                                                            p.sku
-                                                        }})
+                                                        {{ brand.name }}
                                                         {{
-                                                            isProductSelectedElsewhere(
-                                                                p.id,
+                                                            isBrandSelectedElsewhere(
+                                                                brand.name,
                                                                 index,
                                                             )
                                                                 ? '— [Already Added]'
@@ -496,55 +486,18 @@ function submit() {
                                                 </optgroup>
                                             </select>
 
-                                            <!-- Selected Product Specifications / Meta Info -->
+                                            <!-- Selected Brand Partner Details -->
                                             <p
                                                 v-if="
-                                                    item.product_id &&
-                                                    getProductById(
-                                                        item.product_id,
-                                                    )?.description
+                                                    item.brand &&
+                                                    getBrandByName(item.brand)?.alt
                                                 "
                                                 class="mt-1 line-clamp-1 text-[11px] text-gray-500 italic"
                                             >
                                                 {{
-                                                    getProductById(
-                                                        item.product_id,
-                                                    )?.description
+                                                    getBrandByName(item.brand)?.alt
                                                 }}
                                             </p>
-                                        </div>
-
-                                        <!-- Quantity Input + Unit Badge -->
-                                        <div class="sm:col-span-4">
-                                            <label
-                                                class="mb-1 block text-[11px] font-semibold tracking-wider text-gray-500 uppercase"
-                                            >
-                                                Quantity
-                                            </label>
-                                            <div
-                                                class="flex items-center gap-1.5"
-                                            >
-                                                <input
-                                                    v-model.number="
-                                                        item.quantity
-                                                    "
-                                                    type="number"
-                                                    min="1"
-                                                    step="1"
-                                                    placeholder="1"
-                                                    class="field-control w-full px-3 py-2 text-sm"
-                                                />
-                                                <span
-                                                    class="shrink-0 rounded-lg border border-gray-200 bg-gray-100 px-2.5 py-2 text-xs font-semibold whitespace-nowrap text-gray-700"
-                                                    title="Unit of Measurement"
-                                                >
-                                                    {{
-                                                        getProductById(
-                                                            item.product_id,
-                                                        )?.unit || 'pcs'
-                                                    }}
-                                                </span>
-                                            </div>
                                         </div>
 
                                         <!-- Remove Row Button -->
@@ -556,10 +509,10 @@ function submit() {
                                                 @click="removeItemRow(index)"
                                                 :disabled="
                                                     form.items.length === 1 &&
-                                                    !item.product_id
+                                                    !item.brand
                                                 "
                                                 class="cursor-pointer rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:pointer-events-none disabled:opacity-30"
-                                                title="Remove this product"
+                                                title="Remove this brand"
                                                 aria-label="Remove item"
                                             >
                                                 <Trash2 class="size-4" />
@@ -589,16 +542,14 @@ function submit() {
                                                         : ''
                                                 "
                                             >
-                                                Optional item notes (e.g. cut
-                                                length, voltage rating, brand
-                                                preference, or color)
+                                                Optional notes (e.g. models, specifications, sizes, or details)
                                             </label>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Add Another Product Action -->
+                            <!-- Add Another Brand Action -->
                             <div class="mt-3 flex items-center justify-between">
                                 <button
                                     type="button"
@@ -606,12 +557,12 @@ function submit() {
                                     class="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-bold text-gray-700 shadow-2xs transition-all hover:border-[#4b5320] hover:bg-[#4b5320]/5 hover:text-[#4b5320]"
                                 >
                                     <Plus class="size-3.5" />
-                                    <span>Add Another Product</span>
+                                    <span>Add Another Brand</span>
                                 </button>
                             </div>
                         </div>
 
-                        <!-- 2. Other Materials / Unlisted Products -->
+                        <!-- 2. Other Brands / Unlisted Brands -->
                         <div class="border-t border-gray-200 pt-4">
                             <label
                                 class="flex cursor-pointer items-center gap-2.5 select-none"
@@ -624,12 +575,11 @@ function submit() {
                                 <span
                                     class="text-xs font-semibold text-gray-800"
                                 >
-                                    I'm looking for materials not listed in the
-                                    catalog
+                                    I'm looking for brands not listed in the catalog
                                 </span>
                             </label>
 
-                            <!-- Collapsible Other Materials Textarea with Floating Label -->
+                            <!-- Collapsible Other Brands Textarea with Floating Label -->
                             <div
                                 v-if="form.hasOtherMaterials"
                                 class="mt-3 animate-in space-y-1.5 duration-200 fade-in"
@@ -652,16 +602,14 @@ function submit() {
                                                 : ''
                                         "
                                     >
-                                        Other Materials or Products (Names,
-                                        quantities, sizes, brands, specs)
+                                        Other Brands (Brand names, specifications, details)
                                     </label>
                                 </div>
                                 <div
                                     class="flex justify-between text-[11px] text-gray-400"
                                 >
                                     <span
-                                        >Include quantities and preferred brands
-                                        where applicable.</span
+                                        >Include preferred brands and specifications where applicable.</span
                                     >
                                     <span
                                         >{{
@@ -669,41 +617,6 @@ function submit() {
                                         }}/3000</span
                                     >
                                 </div>
-                            </div>
-                        </div>
-
-                        <!-- 3. Additional Project Requirements & Instructions with Floating Label -->
-                        <div class="border-t border-gray-200 pt-4">
-                            <div class="relative">
-                                <textarea
-                                    id="additionalRequirements"
-                                    v-model="form.additionalRequirements"
-                                    rows="3"
-                                    maxlength="3000"
-                                    placeholder=" "
-                                    class="peer block w-full resize-y rounded-xl border border-gray-200 bg-white px-3.5 pt-6 pb-2.5 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
-                                ></textarea>
-                                <label
-                                    for="additionalRequirements"
-                                    class="pointer-events-none absolute top-4 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
-                                    :class="
-                                        form.additionalRequirements
-                                            ? '-translate-y-2.5 scale-75 text-[#4b5320]'
-                                            : ''
-                                    "
-                                >
-                                    Additional Requirements &amp; Instructions
-                                    (Delivery dates, logistics, certifications)
-                                </label>
-                            </div>
-                            <div
-                                class="mt-1 flex justify-end text-[11px] text-gray-400"
-                            >
-                                <span
-                                    >{{
-                                        form.additionalRequirements.length
-                                    }}/3000</span
-                                >
                             </div>
                         </div>
 
