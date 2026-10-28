@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
+import { useCanDelete } from '@/composables/useCanDelete';
 import { ref, computed, watch } from 'vue';
 import SpecularButton from '@/components/ui/SpecularButton.vue';
+import StatusBadge from '@/components/ui/StatusBadge.vue';
 import { Search, Plus, SlidersHorizontal, Trash2, Pencil, X, Check, CheckCircle2, Building2, Phone, Mail, Award } from '@lucide/vue';
 
 interface SupplierMetrics {
@@ -39,6 +41,7 @@ const props = defineProps<{
 }>();
 
 const page = usePage();
+const canDelete = useCanDelete();
 const teamSlug = computed(() => (page.props as any).currentTeam?.slug || (page.props as any).team?.slug || '');
 
 // Search & Filter
@@ -303,16 +306,16 @@ const saveAhp = () => {
 
     <div class="workspace-page">
         <!-- Header -->
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-4">
             <div>
-                <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Supplier Management</h1>
-                <p class="text-gray-500 mt-1">Manage vendor contact information, contracts, and AHP evaluations.</p>
+                <h1 class="page-title">Supplier Management</h1>
+                <p class="page-subtitle">Supplier contacts, contracts and AHP evaluations.</p>
             </div>
-            <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+            <div class="flex flex-wrap items-center justify-start lg:justify-end gap-2.5 w-full lg:w-auto">
                 <SpecularButton
                     variant="secondary"
                     size="md"
-                    :radius="10"
+                    :radius="12"
                     @click="initAhp"
                 >
                     <SlidersHorizontal class="w-4 h-4 mr-1.5 inline" />
@@ -321,7 +324,7 @@ const saveAhp = () => {
                 <SpecularButton
                     variant="brand"
                     size="md"
-                    :radius="10"
+                    :radius="12"
                     @click="openAddModal"
                 >
                     <Plus class="w-4 h-4 mr-1.5 inline" />
@@ -339,7 +342,7 @@ const saveAhp = () => {
                     @input="applySearch"
                     type="text"
                     placeholder="Search by supplier name, contact, phone..."
-                    class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-[#F8B803] shadow-sm"
+                    class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-[#F8B803]"
                 />
             </div>
 
@@ -347,7 +350,7 @@ const saveAhp = () => {
                 <select
                     v-model="selectedStatus"
                     @change="applyFilter"
-                    class="w-full py-2 px-3 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:border-[#F8B803] shadow-sm cursor-pointer"
+                    class="w-full py-2 px-3 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:border-[#F8B803] cursor-pointer"
                 >
                     <option value="All">All Statuses</option>
                     <option value="Active">Active</option>
@@ -359,7 +362,7 @@ const saveAhp = () => {
                 <select
                     v-model="selectedSort"
                     @change="applyFilter"
-                    class="w-full py-2 px-3 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:border-[#F8B803] shadow-sm cursor-pointer"
+                    class="w-full py-2 px-3 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-900 focus:outline-none focus:border-[#F8B803] cursor-pointer"
                 >
                     <option value="ahp_desc">Highest AHP Score</option>
                     <option value="name_asc">Name (A-Z)</option>
@@ -369,7 +372,7 @@ const saveAhp = () => {
         </div>
 
         <!-- Suppliers Table -->
-        <div class="flex-1 rounded-2xl bg-white border border-gray-200 p-6 shadow-sm">
+        <div class="flex-1 rounded-xl bg-white border border-gray-200 p-6">
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead>
@@ -405,20 +408,35 @@ const saveAhp = () => {
                                 </div>
                             </td>
                             <td class="py-4">
-                                <span v-if="supplier.ahp_score !== null && supplier.ahp_score !== undefined" class="text-[#F8B803] font-bold text-base flex items-center gap-1">
+                                <span v-if="supplier.ahp_score !== null && supplier.ahp_score !== undefined" class="text-[#F8B803] font-semibold text-base flex items-center gap-1">
                                     <Award class="w-4 h-4 text-[#F8B803]" />
                                     {{ Number(supplier.ahp_score).toFixed(3) }}
                                 </span>
                                 <span v-else class="text-gray-400 text-xs">Unranked</span>
                             </td>
                             <td class="py-4">
-                                <span :class="supplier.status === 'Active' ? 'text-green-600 bg-green-50 border-green-200' : 'text-gray-500 bg-gray-50 border-gray-200'" class="px-2.5 py-1 rounded-full text-xs font-medium border">
-                                    {{ supplier.status }}
-                                </span>
+                                <StatusBadge :status="supplier.status" size="sm" />
                             </td>
                             <td class="py-4 text-right">
-                                <button @click="openEditModal(supplier)" class="text-gray-500 hover:text-gray-900 mr-3 text-xs font-medium">Edit</button>
-                                <button @click="openDeleteModal(supplier)" class="text-red-500 hover:text-red-700 text-xs font-medium">Delete</button>
+                                <div class="inline-flex items-center justify-end gap-1.5">
+                                    <SpecularButton
+                                        variant="secondary"
+                                        size="sm"
+                                        :radius="8"
+                                        @click="openEditModal(supplier)"
+                                    >
+                                        Edit
+                                    </SpecularButton>
+                                    <SpecularButton
+                                        v-if="canDelete"
+                                        variant="danger"
+                                        size="sm"
+                                        :radius="8"
+                                        @click="openDeleteModal(supplier)"
+                                    >
+                                        Delete
+                                    </SpecularButton>
+                                </div>
                             </td>
                         </tr>
                     </tbody>
@@ -439,7 +457,7 @@ const saveAhp = () => {
                         v-html="link.label"
                         :class="[
                             'px-3 py-1 text-xs rounded-lg border transition-colors',
-                            link.active ? 'bg-[#F8B803] text-white border-[#F8B803] font-bold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50',
+                            link.active ? 'bg-[#F8B803] text-white border-[#F8B803] font-semibold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50',
                             !link.url ? 'opacity-50 cursor-not-allowed' : ''
                         ]"
                     />
@@ -449,10 +467,10 @@ const saveAhp = () => {
     </div>
 
     <!-- Add / Edit Modal -->
-    <div v-if="showAddModal || showEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-lg shadow-2xl">
+    <div v-if="showAddModal || showEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-lg shadow-xl">
             <div class="flex justify-between items-center mb-5">
-                <h3 class="text-xl font-bold text-gray-900">{{ showEditModal ? 'Edit Supplier' : 'Add Supplier' }}</h3>
+                <h3 class="text-xl font-semibold text-gray-900">{{ showEditModal ? 'Edit Supplier' : 'Add Supplier' }}</h3>
                 <button @click="showAddModal = false; showEditModal = false" class="text-gray-400 hover:text-gray-600">&times;</button>
             </div>
 
@@ -588,14 +606,14 @@ const saveAhp = () => {
     </div>
 
     <!-- Delete Confirmation Modal -->
-    <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
-            <h3 class="text-xl font-bold text-gray-900 mb-2">Confirm Delete</h3>
+    <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl">
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">Confirm Delete</h3>
             <p class="text-gray-600 text-sm mb-4">Are you sure you want to delete <span class="font-semibold text-gray-900">{{ selectedSupplier?.name }}</span>? This will permanently remove the supplier record.</p>
             
             <div class="mt-4 mb-6">
                 <label class="block text-xs font-semibold text-gray-700 mb-1.5">
-                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                    Type <span class="font-mono font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
                 </label>
                 <input
                     v-model="deleteConfirmInput"
@@ -628,11 +646,11 @@ const saveAhp = () => {
     </div>
 
     <!-- AHP Evaluation Modal -->
-    <div v-if="showAhpModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl">
+    <div v-if="showAhpModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-xl">
             <div class="flex justify-between items-center mb-6">
                 <div>
-                    <h3 class="text-2xl font-bold text-gray-900 tracking-tight">Analytic Hierarchy Process (AHP)</h3>
+                    <h3 class="text-2xl font-semibold text-gray-900 tracking-tight">Analytic Hierarchy Process (AHP)</h3>
                     <p class="text-gray-500 text-sm">Tune criteria weights and evaluate supplier metrics to calculate optimal vendor rankings across the 3 decision criteria.</p>
                 </div>
                 <button @click="showAhpModal = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
@@ -641,25 +659,25 @@ const saveAhp = () => {
             <!-- Criteria Weights -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <div class="bg-gray-50 p-5 rounded-xl border border-gray-200">
-                    <h4 class="text-gray-900 font-bold mb-3 border-b border-gray-200 pb-2 text-sm">Criteria Relative Weights (%)</h4>
+                    <h4 class="text-gray-900 font-semibold mb-3 border-b border-gray-200 pb-2 text-sm">Criteria Relative Weights (%)</h4>
                     <div class="space-y-4">
                         <div>
                             <div class="flex justify-between text-xs mb-1">
-                                <span class="font-bold text-gray-800">Price / Cost ({{ ahpWeights.price }}%)</span>
+                                <span class="font-semibold text-gray-800">Price / Cost ({{ ahpWeights.price }}%)</span>
                             </div>
                             <p class="text-[11px] text-gray-500 mb-1.5">(price competitiveness of the supplier)</p>
                             <input v-model.number="ahpWeights.price" type="range" min="1" max="100" class="w-full accent-[#F8B803]" />
                         </div>
                         <div>
                             <div class="flex justify-between text-xs mb-1">
-                                <span class="font-bold text-gray-800">Quality ({{ ahpWeights.quality }}%)</span>
+                                <span class="font-semibold text-gray-800">Quality ({{ ahpWeights.quality }}%)</span>
                             </div>
                             <p class="text-[11px] text-gray-500 mb-1.5">(quality of product of the supplier evaluated by the staffs)</p>
                             <input v-model.number="ahpWeights.quality" type="range" min="1" max="100" class="w-full accent-[#F8B803]" />
                         </div>
                         <div>
                             <div class="flex justify-between text-xs mb-1">
-                                <span class="font-bold text-gray-800">Delivery Reliability ({{ ahpWeights.delivery }}%)</span>
+                                <span class="font-semibold text-gray-800">Delivery Reliability ({{ ahpWeights.delivery }}%)</span>
                             </div>
                             <p class="text-[11px] text-gray-500 mb-1.5">(reliability of supplier in terms on delivery to MR Pride)</p>
                             <input v-model.number="ahpWeights.delivery" type="range" min="1" max="100" class="w-full accent-[#F8B803]" />
@@ -669,14 +687,14 @@ const saveAhp = () => {
 
                 <!-- Calculated Rankings -->
                 <div class="bg-gray-50 p-5 rounded-xl border border-gray-200">
-                    <h4 class="text-gray-900 font-bold mb-3 border-b border-gray-200 pb-2 text-sm">Calculated Rankings</h4>
+                    <h4 class="text-gray-900 font-semibold mb-3 border-b border-gray-200 pb-2 text-sm">Calculated Rankings</h4>
                     <div class="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
                         <div v-for="(sup, idx) in calculatedRankings" :key="sup.id" class="flex items-center justify-between p-2 rounded-lg bg-white border border-gray-200 text-sm">
                             <div class="flex items-center gap-2.5">
-                                <span class="w-6 h-6 rounded-full bg-[#F8B803]/20 text-[#92400e] flex items-center justify-center text-xs font-bold">{{ idx + 1 }}</span>
+                                <span class="w-6 h-6 rounded-full bg-[#F8B803]/20 text-[#92400e] flex items-center justify-center text-xs font-semibold">{{ idx + 1 }}</span>
                                 <span class="font-medium text-gray-900">{{ sup.name }}</span>
                             </div>
-                            <span class="font-bold text-[#F8B803]">{{ sup.calculatedScore.toFixed(3) }}</span>
+                            <span class="font-semibold text-[#F8B803]">{{ sup.calculatedScore.toFixed(3) }}</span>
                         </div>
                     </div>
                 </div>
@@ -684,10 +702,10 @@ const saveAhp = () => {
 
             <!-- Detailed Performance Matrix -->
             <div class="bg-gray-50 rounded-xl border border-gray-200 p-5 mb-6">
-                <h4 class="text-gray-900 font-bold mb-3 text-sm">Rate Supplier Performance (1 = Poor, 10 = Excellent)</h4>
+                <h4 class="text-gray-900 font-semibold mb-3 text-sm">Rate Supplier Performance (1 = Poor, 10 = Excellent)</h4>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-sm text-gray-600">
-                        <thead class="text-xs uppercase text-gray-500 border-b border-gray-200">
+                        <thead class="text-xs text-gray-500 border-b border-gray-200">
                             <tr>
                                 <th class="pb-2">Supplier</th>
                                 <th class="pb-2 text-center">Price / Cost (1-10)</th>
@@ -737,12 +755,12 @@ const saveAhp = () => {
     </div>
 
     <!-- Action Confirmation Modal -->
-    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl animate-in fade-in duration-150">
             <div class="w-11 h-11 rounded-full bg-amber-50 text-[#F8B803] flex items-center justify-center mb-4 border border-amber-100">
                 <CheckCircle2 class="w-6 h-6" />
             </div>
-            <h3 class="text-xl font-bold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
+            <h3 class="text-xl font-semibold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
             <p class="text-gray-600 text-sm mb-4 leading-relaxed">
                 {{ confirmOptions.description }}
             </p>

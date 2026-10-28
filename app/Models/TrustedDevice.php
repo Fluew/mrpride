@@ -67,8 +67,16 @@ class TrustedDevice extends Model
         return $this->status === 'revoked';
     }
 
+    /** Device id used by the local-development bypass (SKIP_DEVICE_VERIFICATION, APP_ENV=local only). */
+    public const LOCAL_DEV_UUID = 'local-development-workstation';
+
     /**
      * Check if a specific user account is authorized to use this workstation.
+     *
+     * One device, one account: a device only authorizes the account it is bound to. Legacy
+     * "shared workstation" rows (is_shared / authorized_user_ids) no longer grant access to other
+     * accounts; those users need their own enrolled device. The only exception is the local
+     * development bypass device, which exists only while the bypass is active.
      */
     public function isAuthorizedForUser(User $user): bool
     {
@@ -76,15 +84,51 @@ class TrustedDevice extends Model
             return false;
         }
 
-        if ($this->is_shared) {
-            $authorized = is_array($this->authorized_user_ids)
-                ? array_map('intval', $this->authorized_user_ids)
-                : [];
-
-            return in_array((int) $user->id, $authorized, true) || ($this->user_id && (int) $this->user_id === (int) $user->id);
+        if ($this->device_uuid === self::LOCAL_DEV_UUID && self::bypassActive()) {
+            return true;
         }
 
         return $this->user_id && (int) $this->user_id === (int) $user->id;
+    }
+
+    /** Whether the local-development device bypass is on (never outside APP_ENV=local). */
+    public static function bypassActive(): bool
+    {
+        return (bool) config('auth.skip_device_verification', false) && app()->isLocal();
+    }
+
+    /**
+     * Enrollment codes and link tokens are stored as SHA-256 hashes, never in plain text.
+     * (They are high-entropy and short-lived, so a fast hash is enough and allows lookups.)
+     */
+    public static function hashSecret(string $secret): string
+    {
+        return hash('sha256', $secret);
+    }
+
+    /** Find the pending invitation for a raw link token. */
+    public static function findByEnrollmentToken(string $rawToken): ?self
+    {
+        return $rawToken === '' ? null : self::where('enrollment_token', self::hashSecret($rawToken))->first();
+    }
+
+    /** Whether this invitation's link and code are past their expiry time. */
+    public function enrollmentExpired(): bool
+    {
+        $expiresAt = $this->enrollment_token_expires_at ?? $this->enrollment_code_expires_at;
+
+        return ! $expiresAt || $expiresAt->isPast();
+    }
+
+    /** Make the invitation unusable (after success, expiry, or too many wrong codes). */
+    public function clearEnrollment(): void
+    {
+        $this->forceFill([
+            'enrollment_code' => null,
+            'enrollment_code_expires_at' => null,
+            'enrollment_token' => null,
+            'enrollment_token_expires_at' => null,
+        ])->save();
     }
 
     /**
@@ -92,6 +136,26 @@ class TrustedDevice extends Model
      */
     public static function findActiveByCredential(Request $request): ?self
     {
+        // Dev convenience only: the bypass is ignored outside APP_ENV=local, so a forgotten
+        // SKIP_DEVICE_VERIFICATION=true can't switch off device checks in production.
+        // (Read via config(), not env(), so it also works when config is cached.)
+        if (self::bypassActive()) {
+            $device = self::where('device_uuid', self::LOCAL_DEV_UUID)->first();
+            if (! $device) {
+                $device = self::create([
+                    'device_uuid' => self::LOCAL_DEV_UUID,
+                    'device_name' => 'Local Development Workstation',
+                    'status' => 'approved',
+                    'is_shared' => true,
+                    'authorized_user_ids' => null,
+                    'approved_at' => now(),
+                    'last_used_at' => now(),
+                ]);
+            }
+
+            return $device;
+        }
+
         $uuid = $request->cookie('mrpride_device_uuid') ?: $request->cookie('mrpride_device_id');
         $credential = $request->cookie('mrpride_device_credential');
 
@@ -134,11 +198,11 @@ class TrustedDevice extends Model
      */
     public static function generateEnrollmentCode(): string
     {
+        // Str::random() uses random_bytes(), a cryptographically secure source.
         do {
-            $code = 'MRP-' . strtoupper(Str::random(6));
-        } while (self::where('enrollment_code', $code)->exists());
+            $code = 'MRP-'.strtoupper(Str::random(6));
+        } while (self::where('enrollment_code', self::hashSecret($code))->exists());
 
         return $code;
     }
 }
-

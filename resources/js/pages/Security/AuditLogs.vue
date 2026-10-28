@@ -88,11 +88,11 @@ const getEventColor = (event: string) => {
             <!-- Header Section -->
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                    <h1 class="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
+                    <h1 class="page-title">
                         Security Audit Logs
                     </h1>
-                    <p class="text-sm text-gray-500 mt-1">
-                        Cryptographically untampered record of authentication, access, device, and privilege events.
+                    <p class="page-subtitle">
+                        Sign-in, access, device and permission events.
                     </p>
                 </div>
             </div>
@@ -106,7 +106,7 @@ const getEventColor = (event: string) => {
                         @input="applyFilters"
                         type="text"
                         placeholder="Search logs by email, IP address, description..."
-                        class="h-11 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 text-sm text-gray-900 shadow-xs focus:border-[#4b5320] focus:ring-2 focus:ring-[#4b5320]/20"
+                        class="h-11 w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 text-sm text-gray-900 focus:border-[#4b5320] focus:ring-2 focus:ring-[#4b5320]/20"
                     />
                 </div>
 
@@ -114,7 +114,7 @@ const getEventColor = (event: string) => {
                     <select
                         v-model="selectedEvent"
                         @change="applyFilters"
-                        class="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 shadow-xs focus:border-[#4b5320] focus:ring-2 focus:ring-[#4b5320]/20 cursor-pointer"
+                        class="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:border-[#4b5320] focus:ring-2 focus:ring-[#4b5320]/20 cursor-pointer"
                     >
                         <option value="all">All Security Events</option>
                         <option v-for="evt in availableEvents" :key="evt" :value="evt">
@@ -125,10 +125,10 @@ const getEventColor = (event: string) => {
             </div>
 
             <!-- Audit Logs Table -->
-            <div class="rounded-2xl border border-gray-200 bg-white shadow-xs overflow-hidden">
+            <div class="rounded-xl border border-gray-200 bg-white overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-sm text-gray-600">
-                        <thead class="bg-gray-50/80 border-b border-gray-200 text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        <thead class="bg-gray-50/80 border-b border-gray-200 text-xs font-semibold text-gray-700">
                             <tr>
                                 <th class="px-6 py-4">Timestamp</th>
                                 <th class="px-6 py-4">Event Type</th>
@@ -146,7 +146,7 @@ const getEventColor = (event: string) => {
 
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <span
-                                        class="inline-flex items-center rounded-md px-2.5 py-1 text-[11px] font-bold border"
+                                        class="inline-flex items-center rounded-md px-2.5 py-1 text-[11px] font-semibold border"
                                         :class="getEventColor(log.event)"
                                     >
                                         {{ log.event }}

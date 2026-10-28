@@ -373,47 +373,38 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
 
     <div class="workspace-page">
         <!-- ─── Header ─────────────────────────────────────────── -->
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-4">
             <div>
-                <div class="flex items-center gap-2">
-                    <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Demand Forecasting</h1>
-                    <span v-if="productWindow" class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#4b5320]/10 text-[#4b5320] border border-[#4b5320]/20">
-                        Item Mode
-                    </span>
-                    <span v-else-if="categoryWindow" class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#F8B803]/15 text-[#92400e] border border-[#F8B803]/30">
-                        Category Mode
-                    </span>
-                </div>
-                <p class="text-gray-500 mt-1 text-sm">
-                    SMA predictive analytics per category and item based on historical sales and stock movements.
-                </p>
+                <h1 class="page-title">Demand Forecasting</h1>
+                <p class="page-subtitle">Moving-average (SMA) forecasts per category and item, from past sales.</p>
             </div>
-            <SpecularButton
-                variant="secondary"
-                size="md"
-                :radius="10"
-                class="w-full md:w-auto shrink-0"
-                @click="exportForecast"
-            >
-                <Download class="w-4 h-4 mr-1.5 inline" />
-                Export CSV
-            </SpecularButton>
+            <div class="flex flex-wrap items-center justify-start lg:justify-end gap-2.5 w-full lg:w-auto">
+                <SpecularButton
+                    variant="secondary"
+                    size="md"
+                    :radius="12"
+                    class="w-full sm:w-auto shrink-0"
+                    @click="exportForecast"
+                >
+                    <Download class="w-4 h-4 mr-1.5 inline" />
+                    Export CSV
+                </SpecularButton>
+            </div>
         </div>
 
         <!-- ─── Filter Controls (Category, Item, Date Range, SMA) ─── -->
-        <div class="bg-white border border-gray-200 rounded-2xl p-4 mb-6 shadow-sm">
+        <div class="bg-white border border-gray-200 rounded-xl p-4">
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3.5 items-end">
 
                 <!-- Category Selector -->
                 <div class="lg:col-span-3 flex flex-col gap-1">
-                    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
-                        <Layers class="w-3.5 h-3.5 text-[#4b5320]" />
+                    <label class="text-xs font-semibold text-gray-500 flex items-center gap-1.5">
                         Category
                     </label>
                     <select
                         v-model="localCategory"
                         @change="onCategoryChange"
-                        class="bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none shadow-sm font-medium"
+                        class="bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:border-gray-400 focus:outline-none font-medium"
                     >
                         <option value="All">All Categories</option>
                         <option v-for="cat in categories" :key="cat" :value="cat">
@@ -424,9 +415,8 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
 
                 <!-- Product / Item Selector -->
                 <div class="lg:col-span-3 flex flex-col gap-1">
-                    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center justify-between">
+                    <label class="text-xs font-semibold text-gray-500 flex items-center justify-between">
                         <span class="flex items-center gap-1.5">
-                            <Package class="w-3.5 h-3.5 text-[#4b5320]" />
                             Product Window
                         </span>
                         <button
@@ -440,7 +430,7 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
                     <select
                         v-model="localProductId"
                         @change="onProductChange"
-                        class="bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none shadow-sm font-medium"
+                        class="bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:border-gray-400 focus:outline-none font-medium"
                     >
                         <option value="All">All Items (Aggregated)</option>
                         <option
@@ -455,8 +445,7 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
 
                 <!-- From Date -->
                 <div class="lg:col-span-2 flex flex-col gap-1">
-                    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
-                        <Calendar class="w-3.5 h-3.5" />
+                    <label class="text-xs font-semibold text-gray-500 flex items-center gap-1">
                         From
                     </label>
                     <input
@@ -465,14 +454,13 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
                         :min="minDate"
                         :max="localToDate || maxDate"
                         @change="onFromDateChange"
-                        class="bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none shadow-sm font-medium"
+                        class="bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:border-gray-400 focus:outline-none font-medium"
                     />
                 </div>
 
                 <!-- To Date -->
                 <div class="lg:col-span-2 flex flex-col gap-1">
-                    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
-                        <Calendar class="w-3.5 h-3.5" />
+                    <label class="text-xs font-semibold text-gray-500 flex items-center gap-1">
                         To
                     </label>
                     <input
@@ -481,14 +469,13 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
                         :min="localFromDate || minDate"
                         :max="maxDate"
                         @change="onToDateChange"
-                        class="bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none shadow-sm font-medium"
+                        class="bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 focus:border-gray-400 focus:outline-none font-medium"
                     />
                 </div>
 
                 <!-- SMA Interval & Actions -->
                 <div class="lg:col-span-2 flex flex-col gap-1">
-                    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
-                        <SlidersHorizontal class="w-3.5 h-3.5" />
+                    <label class="text-xs font-semibold text-gray-500 flex items-center gap-1">
                         SMA Window
                     </label>
                     <div class="flex gap-1">
@@ -497,9 +484,9 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
                             :key="opt.val"
                             @click="localSma = opt.val"
                             :class="[
-                                'flex-1 py-2 rounded-xl text-xs font-semibold border transition-all text-center',
+                                'flex-1 py-2 rounded-xl text-xs font-semibold border transition-colors text-center',
                                 localSma === opt.val
-                                    ? 'bg-[#F8B803] text-white border-[#F8B803] shadow-sm'
+                                    ? 'bg-[#F8B803] text-white border-[#F8B803]'
                                     : 'bg-white text-gray-600 border-gray-200 hover:border-[#F8B803] hover:text-[#92400e]'
                             ]"
                         >
@@ -544,16 +531,16 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
         </div>
 
         <!-- ─── DEDICATED PRODUCT WINDOW FOR FORECASTING ────────── -->
-        <div v-if="productWindow" class="mb-6 bg-gradient-to-r from-emerald-900/5 via-[#4b5320]/5 to-[#F8B803]/10 border border-[#4b5320]/25 rounded-2xl p-5 shadow-sm">
+        <div v-if="productWindow" class="bg-white border border-gray-200 rounded-xl p-5">
             <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4 pb-4 border-b border-gray-200/70">
                 <div class="flex items-start sm:items-center gap-3">
-                    <div class="w-11 h-11 rounded-xl bg-[#4b5320] text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <div class="w-11 h-11 rounded-xl bg-[#4b5320] text-white flex items-center justify-center shrink-0">
                         <Package class="w-6 h-6 text-[#F8B803]" />
                     </div>
                     <div>
                         <div class="flex flex-wrap items-center gap-2">
-                            <h2 class="text-lg font-bold text-gray-900 tracking-tight">{{ productWindow.name }}</h2>
-                            <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200">
+                            <h2 class="text-lg font-semibold text-gray-900 tracking-tight">{{ productWindow.name }}</h2>
+                            <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200">
                                 {{ productWindow.sku }}
                             </span>
                             <span class="text-xs font-semibold px-2 py-0.5 rounded bg-[#4b5320]/10 text-[#4b5320]">
@@ -561,7 +548,7 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
                             </span>
                             <span
                                 :class="[
-                                    'text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider',
+                                    'text-xs font-semibold px-2.5 py-0.5 rounded-full',
                                     productWindow.urgency === 'Out of Stock' ? 'bg-red-100 text-red-700 border border-red-200' :
                                     productWindow.urgency === 'Critical Low' ? 'bg-rose-100 text-rose-800 border border-rose-200' :
                                     productWindow.urgency === 'Needs Reorder' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
@@ -601,18 +588,18 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
             <!-- Product Window Metrics Grid -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3.5">
                 <!-- Stock vs Reorder Level -->
-                <div class="bg-white/90 backdrop-blur-sm rounded-xl p-3.5 border border-gray-200 shadow-xs">
-                    <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+                <div class="bg-white/90 rounded-xl p-3.5 border border-gray-200">
+                    <div class="text-[11px] font-semibold text-gray-500 mb-1 flex items-center justify-between">
                         <span>On-Hand Stock</span>
                         <span class="text-[10px] text-gray-400">Min: {{ productWindow.threshold }}</span>
                     </div>
-                    <div class="text-2xl font-black text-gray-900 tracking-tight">
+                    <div class="text-2xl font-semibold text-gray-900 tracking-tight">
                         {{ productWindow.stock }} <span class="text-xs font-medium text-gray-500">{{ productWindow.unit }}</span>
                     </div>
                     <div class="mt-2 w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
                         <div
                             :class="[
-                                'h-full transition-all duration-500',
+                                'h-full transition-colors duration-500',
                                 productWindow.stock <= 0 ? 'w-0' :
                                 productWindow.stock <= productWindow.threshold ? 'bg-amber-500' : 'bg-emerald-500'
                             ]"
@@ -625,12 +612,12 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
                 </div>
 
                 <!-- Monthly Forecast Demand -->
-                <div class="bg-white/90 backdrop-blur-sm rounded-xl p-3.5 border border-gray-200 shadow-xs">
-                    <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+                <div class="bg-white/90 rounded-xl p-3.5 border border-gray-200">
+                    <div class="text-[11px] font-semibold text-gray-500 mb-1 flex items-center justify-between">
                         <span>Monthly Demand</span>
                         <Sparkles class="w-3.5 h-3.5 text-[#F8B803]" />
                     </div>
-                    <div class="text-2xl font-black text-gray-900 tracking-tight">
+                    <div class="text-2xl font-semibold text-gray-900 tracking-tight">
                         ~{{ productWindow.avgMonthlyDemand }} <span class="text-xs font-medium text-gray-500">{{ productWindow.unit }}/mo</span>
                     </div>
                     <p class="text-[11px] text-gray-500 mt-2">
@@ -639,14 +626,14 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
                 </div>
 
                 <!-- Days of Supply / Runway -->
-                <div class="bg-white/90 backdrop-blur-sm rounded-xl p-3.5 border border-gray-200 shadow-xs">
-                    <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+                <div class="bg-white/90 rounded-xl p-3.5 border border-gray-200">
+                    <div class="text-[11px] font-semibold text-gray-500 mb-1 flex items-center justify-between">
                         <span>Inventory Runway</span>
                         <Clock class="w-3.5 h-3.5 text-blue-500" />
                     </div>
                     <div
                         :class="[
-                            'text-2xl font-black tracking-tight',
+                            'text-2xl font-semibold tracking-tight',
                             productWindow.daysOfSupply <= 7 ? 'text-red-600' :
                             productWindow.daysOfSupply <= 20 ? 'text-amber-600' : 'text-emerald-700'
                         ]"
@@ -659,12 +646,12 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
                 </div>
 
                 <!-- Recommended Restock -->
-                <div class="bg-white/90 backdrop-blur-sm rounded-xl p-3.5 border border-gray-200 shadow-xs">
-                    <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+                <div class="bg-white/90 rounded-xl p-3.5 border border-gray-200">
+                    <div class="text-[11px] font-semibold text-gray-500 mb-1 flex items-center justify-between">
                         <span>Suggested Order</span>
                         <TrendingUp class="w-3.5 h-3.5 text-[#4b5320]" />
                     </div>
-                    <div class="text-2xl font-black text-[#4b5320] tracking-tight">
+                    <div class="text-2xl font-semibold text-[#4b5320] tracking-tight">
                         +{{ productWindow.recommendedRestock }} <span class="text-xs font-medium text-gray-500">{{ productWindow.unit }}</span>
                     </div>
                     <p class="text-[11px] text-gray-500 mt-2">
@@ -675,15 +662,15 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
         </div>
 
         <!-- ─── CATEGORY WINDOW (When category selected but no single product) ─── -->
-        <div v-else-if="categoryWindow" class="mb-6 bg-gradient-to-r from-amber-500/5 via-[#F8B803]/10 to-emerald-500/5 border border-amber-200 rounded-2xl p-5 shadow-sm">
+        <div v-else-if="categoryWindow" class="bg-white border border-gray-200 rounded-xl p-5">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 pb-4 border-b border-amber-200/60">
                 <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-[#F8B803] text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <div class="w-10 h-10 rounded-xl bg-[#F8B803] text-white flex items-center justify-center shrink-0">
                         <Layers class="w-5 h-5 text-gray-900" />
                     </div>
                     <div>
                         <div class="flex items-center gap-2">
-                            <h2 class="text-lg font-bold text-gray-900 tracking-tight">{{ categoryWindow.name }} Category Window</h2>
+                            <h2 class="text-lg font-semibold text-gray-900 tracking-tight">{{ categoryWindow.name }} Category Window</h2>
                             <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900">
                                 {{ categoryWindow.totalItems }} Active Items
                             </span>
@@ -701,26 +688,26 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
 
             <!-- Category Window Metrics Grid -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3.5">
-                <div class="bg-white/90 rounded-xl p-3.5 border border-gray-200 shadow-xs">
-                    <span class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Total Category Items</span>
-                    <div class="text-2xl font-black text-gray-900 tracking-tight">{{ categoryWindow.totalItems }}</div>
+                <div class="bg-white/90 rounded-xl p-3.5 border border-gray-200">
+                    <span class="text-[11px] font-semibold text-gray-500 block mb-1">Total Category Items</span>
+                    <div class="text-2xl font-semibold text-gray-900 tracking-tight">{{ categoryWindow.totalItems }}</div>
                     <span class="text-[11px] text-gray-400">Active catalog SKUs</span>
                 </div>
-                <div class="bg-white/90 rounded-xl p-3.5 border border-gray-200 shadow-xs">
-                    <span class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">On-Hand Category Stock</span>
-                    <div class="text-2xl font-black text-gray-900 tracking-tight">{{ categoryWindow.totalStock }}</div>
+                <div class="bg-white/90 rounded-xl p-3.5 border border-gray-200">
+                    <span class="text-[11px] font-semibold text-gray-500 block mb-1">On-Hand Category Stock</span>
+                    <div class="text-2xl font-semibold text-gray-900 tracking-tight">{{ categoryWindow.totalStock }}</div>
                     <span class="text-[11px] text-gray-400">Total units in warehouse</span>
                 </div>
-                <div class="bg-white/90 rounded-xl p-3.5 border border-gray-200 shadow-xs">
-                    <span class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Needs Reorder</span>
-                    <div :class="['text-2xl font-black tracking-tight', categoryWindow.lowStockItems > 0 ? 'text-amber-600' : 'text-emerald-600']">
+                <div class="bg-white/90 rounded-xl p-3.5 border border-gray-200">
+                    <span class="text-[11px] font-semibold text-gray-500 block mb-1">Needs Reorder</span>
+                    <div :class="['text-2xl font-semibold tracking-tight', categoryWindow.lowStockItems > 0 ? 'text-amber-600' : 'text-emerald-600']">
                         {{ categoryWindow.lowStockItems }}
                     </div>
                     <span class="text-[11px] text-gray-400">Items below threshold</span>
                 </div>
-                <div class="bg-white/90 rounded-xl p-3.5 border border-gray-200 shadow-xs">
-                    <span class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Monthly Forecast Velocity</span>
-                    <div class="text-2xl font-black text-[#4b5320] tracking-tight">~{{ categoryWindow.avgMonthlyDemand }}</div>
+                <div class="bg-white/90 rounded-xl p-3.5 border border-gray-200">
+                    <span class="text-[11px] font-semibold text-gray-500 block mb-1">Monthly Forecast Velocity</span>
+                    <div class="text-2xl font-semibold text-[#4b5320] tracking-tight">~{{ categoryWindow.avgMonthlyDemand }}</div>
                     <span class="text-[11px] text-gray-400">Predicted units/month</span>
                 </div>
             </div>
@@ -730,10 +717,10 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
         <div class="grid lg:grid-cols-3 gap-6">
 
             <!-- Chart Panel -->
-            <div class="lg:col-span-2 rounded-2xl bg-white border border-gray-200 p-6 shadow-sm flex flex-col">
+            <div class="lg:col-span-2 rounded-xl bg-white border border-gray-200 p-6 flex flex-col">
                 <div class="flex flex-col sm:flex-row justify-between sm:items-start gap-2 mb-5">
                     <div>
-                        <h3 class="text-xl font-bold text-gray-900 leading-tight">
+                        <h3 class="text-xl font-semibold text-gray-900 leading-tight">
                             {{ chartTitle }}
                         </h3>
                         <p class="text-xs text-gray-400 mt-0.5">
@@ -754,8 +741,8 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
             <div class="flex flex-col gap-5">
 
                 <!-- Projected Growth Card -->
-                <div class="rounded-2xl bg-gradient-to-br from-[#F8B803]/10 to-[#4b5320]/5 border border-[#F8B803]/30 p-5 shadow-sm">
-                    <div class="flex items-center gap-2 text-[#92400e] font-bold text-sm mb-2">
+                <div class="rounded-xl bg-white border border-gray-200 p-5">
+                    <div class="flex items-center gap-2 text-[#92400e] font-semibold text-sm mb-2">
                         <TrendingUp class="w-4 h-4" />
                         <span>Projected Growth</span>
                     </div>
@@ -763,13 +750,13 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
                         Estimated demand trend based on {{ smaLabel }} applied over the selected period.
                         Maintain a safety buffer above forecasted values.
                     </p>
-                    <div class="text-4xl font-black text-gray-900 tracking-tight">{{ projectedGrowth }}</div>
+                    <div class="text-4xl font-semibold text-gray-900 tracking-tight">{{ projectedGrowth }}</div>
                     <span class="text-xs text-gray-400">Projected period trend (forecast vs. last historical)</span>
                 </div>
 
                 <!-- SMA Legend -->
-                <div class="rounded-2xl bg-white border border-gray-200 p-5 shadow-sm">
-                    <h4 class="text-sm font-bold text-gray-800 mb-3">How SMA Works</h4>
+                <div class="rounded-xl bg-white border border-gray-200 p-5">
+                    <h4 class="text-sm font-semibold text-gray-800 mb-3">How SMA Works</h4>
                     <div class="space-y-2 text-xs text-gray-600 leading-relaxed">
                         <div class="flex gap-2">
                             <span class="w-2 h-2 rounded-full bg-emerald-500 mt-1 shrink-0"></span>
@@ -786,10 +773,10 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
                 </div>
 
                 <!-- Restock Alerts (Clickable to switch Product Window) -->
-                <div class="flex-1 rounded-2xl bg-white border border-gray-200 p-5 shadow-sm overflow-hidden flex flex-col">
+                <div class="flex-1 rounded-xl bg-white border border-gray-200 p-5 overflow-hidden flex flex-col">
                     <div class="flex justify-between items-center mb-3">
                         <div>
-                            <h3 class="text-base font-bold text-gray-900">Restock Alerts</h3>
+                            <h3 class="text-base font-semibold text-gray-900">Restock Alerts</h3>
                             <span class="text-[11px] text-gray-400">Click item to open product forecast</span>
                         </div>
                         <span class="text-xs text-gray-400 font-medium">{{ suggestedRestocks.length }} items</span>
@@ -803,7 +790,7 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
                             v-for="item in suggestedRestocks"
                             :key="item.id"
                             :class="[
-                                'p-3 rounded-xl border transition-all cursor-pointer relative group',
+                                'p-3 rounded-xl border transition-colors cursor-pointer relative group',
                                 item.id === Number(localProductId)
                                     ? 'border-[#F8B803] bg-[#F8B803]/10 ring-2 ring-[#F8B803]/40'
                                     : item.urgency === 'Urgent' ? 'border-red-200 bg-red-50/50 hover:border-red-300' :
@@ -821,7 +808,7 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
                                 </div>
                                 <span
                                     :class="[
-                                        'text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0 ml-2',
+                                        'text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ml-2',
                                         item.urgency === 'Urgent' ? 'bg-red-100 text-red-700' :
                                         item.urgency === 'Soon'   ? 'bg-amber-100 text-amber-800' :
                                                                     'bg-gray-200 text-gray-700'
@@ -840,7 +827,7 @@ const goToProcurement = (product?: { name: string; sku: string }) => {
                                 </span>
                                 <button
                                     @click.stop="goToProcurement(item)"
-                                    class="py-1 px-2 bg-white border border-gray-200 hover:border-[#F8B803] hover:bg-[#F8B803]/5 text-gray-700 text-[10px] font-semibold rounded-md transition-all flex items-center gap-1 shadow-xs"
+                                    class="py-1 px-2 bg-white border border-gray-200 hover:border-[#F8B803] hover:bg-[#F8B803]/5 text-gray-700 text-[10px] font-semibold rounded-md transition-colors flex items-center gap-1"
                                 >
                                     <span>Procure</span>
                                     <ArrowRight class="w-2.5 h-2.5 text-[#F8B803]" />

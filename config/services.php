@@ -22,6 +22,19 @@ return [
         'key' => env('RESEND_API_KEY'),
         'name' => env('RESEND_FROM_NAME', 'mrp-electrodesk-dev'),
         'from_email' => env('RESEND_FROM_EMAIL', 'onboarding@resend.dev'),
+        // Development only (APP_ENV=local): send every email to this address instead. Use the
+        // email of your Resend account, because the sandbox sender only delivers there.
+        'dev_redirect_to' => env('RESEND_DEV_REDIRECT_TO'),
+    ],
+
+    // OCR for uploaded material lists (images and scanned PDFs). Point these at the installed
+    // programs if they are not on the PATH, e.g. "C:\Program Files\Tesseract-OCR\tesseract.exe".
+    'ocr' => [
+        'tesseract' => env('TESSERACT_PATH', 'tesseract'),
+        'pdftoppm' => env('PDFTOPPM_PATH', 'pdftoppm'),
+        'pdftotext' => env('PDFTOTEXT_PATH'), // default: next to pdftoppm
+        'lang' => env('TESSERACT_LANG', 'eng'),
+        'timeout' => (int) env('OCR_TIMEOUT', 60), // seconds per page
     ],
 
     'ses' => [

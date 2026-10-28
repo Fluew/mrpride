@@ -193,7 +193,7 @@ function backToOtp() {
 }
 
 // Step 3: Password Format Validation Checklist
-const lengthValid = computed(() => resetForm.password.length >= 8);
+const lengthValid = computed(() => resetForm.password.length >= 12);
 const upperLowerValid = computed(
     () => /[a-z]/.test(resetForm.password) && /[A-Z]/.test(resetForm.password)
 );
@@ -246,9 +246,9 @@ onUnmounted(() => {
         <div class="flex items-center gap-1.5">
             <div 
                 :class="[
-                    'flex size-6 sm:size-7 items-center justify-center rounded-full text-xs font-bold transition-all',
+                    'flex size-6 sm:size-7 items-center justify-center rounded-full text-xs font-semibold transition-colors',
                     step === 'email' 
-                        ? 'bg-[#F8B803] text-gray-950 shadow-xs ring-2 ring-[#F8B803]/40' 
+                        ? 'bg-[#F8B803] text-gray-950 ring-2 ring-[#F8B803]/40' 
                         : (step === 'otp' || step === 'password' ? 'bg-[#F8B803] text-gray-950' : 'bg-white/20 text-white')
                 ]"
             >
@@ -262,7 +262,7 @@ onUnmounted(() => {
 
         <div class="h-0.5 flex-1 mx-2 sm:mx-2.5 bg-white/20 rounded-full overflow-hidden">
             <div 
-                class="h-full bg-[#F8B803] transition-all duration-300"
+                class="h-full bg-[#F8B803] transition-colors duration-300"
                 :style="{ width: step === 'email' ? '0%' : (step === 'otp' ? '50%' : '100%') }"
             />
         </div>
@@ -271,9 +271,9 @@ onUnmounted(() => {
         <div class="flex items-center gap-1.5">
             <div 
                 :class="[
-                    'flex size-6 sm:size-7 items-center justify-center rounded-full text-xs font-bold transition-all',
+                    'flex size-6 sm:size-7 items-center justify-center rounded-full text-xs font-semibold transition-colors',
                     step === 'otp' 
-                        ? 'bg-[#F8B803] text-gray-950 shadow-xs ring-2 ring-[#F8B803]/40' 
+                        ? 'bg-[#F8B803] text-gray-950 ring-2 ring-[#F8B803]/40' 
                         : (step === 'password' ? 'bg-[#F8B803] text-gray-950' : 'bg-white/20 text-white/60')
                 ]"
             >
@@ -287,7 +287,7 @@ onUnmounted(() => {
 
         <div class="h-0.5 flex-1 mx-2 sm:mx-2.5 bg-white/20 rounded-full overflow-hidden">
             <div 
-                class="h-full bg-[#F8B803] transition-all duration-300"
+                class="h-full bg-[#F8B803] transition-colors duration-300"
                 :style="{ width: step === 'password' ? '100%' : '0%' }"
             />
         </div>
@@ -296,9 +296,9 @@ onUnmounted(() => {
         <div class="flex items-center gap-1.5">
             <div 
                 :class="[
-                    'flex size-6 sm:size-7 items-center justify-center rounded-full text-xs font-bold transition-all',
+                    'flex size-6 sm:size-7 items-center justify-center rounded-full text-xs font-semibold transition-colors',
                     step === 'password' 
-                        ? 'bg-[#F8B803] text-gray-950 shadow-xs ring-2 ring-[#F8B803]/40' 
+                        ? 'bg-[#F8B803] text-gray-950 ring-2 ring-[#F8B803]/40' 
                         : 'bg-white/20 text-white/60'
                 ]"
             >
@@ -313,7 +313,7 @@ onUnmounted(() => {
     <!-- Status Notice (Clean without development code) -->
     <div
         v-if="status && step === 'otp'"
-        class="mb-3 rounded-xl border border-emerald-400/30 bg-emerald-950/40 p-2.5 text-xs text-emerald-200 shadow-xs flex items-start gap-2"
+        class="mb-3 rounded-xl border border-emerald-400/30 bg-emerald-950/40 p-2.5 text-xs text-emerald-200 flex items-start gap-2"
     >
         <CheckCircle2 class="size-4 shrink-0 text-emerald-400 mt-0.5" />
         <div class="flex-1 leading-snug">{{ status }}</div>
@@ -356,7 +356,7 @@ onUnmounted(() => {
 
             <Button
                 type="submit"
-                class="w-full cursor-pointer bg-[#F8B803] font-bold text-gray-950 shadow-md transition-all hover:bg-[#fac52e] hover:shadow-lg focus-visible:ring-2 focus-visible:ring-[#F8B803] focus-visible:ring-offset-2 h-10 sm:h-11 rounded-xl text-sm mt-1"
+                class="w-full cursor-pointer bg-[#F8B803] font-semibold text-gray-950 shadow-md transition-colors hover:bg-[#fac52e] focus-visible:ring-2 focus-visible:ring-[#F8B803] focus-visible:ring-offset-2 h-10 sm:h-11 rounded-xl text-sm mt-1"
                 :disabled="emailForm.processing"
                 data-test="send-otp-button"
             >
@@ -370,7 +370,7 @@ onUnmounted(() => {
 
         <div class="border-t border-white/20 pt-2.5 text-center text-xs text-white/80">
             <span>Remember your password?</span>
-            <TextLink :href="login()" class="ml-1 font-bold text-[#F8B803] hover:underline">
+            <TextLink :href="login()" class="ml-1 font-semibold text-[#F8B803] hover:underline">
                 Return to log in
             </TextLink>
         </div>
@@ -382,12 +382,12 @@ onUnmounted(() => {
         <div class="flex items-center justify-between rounded-xl border border-white/20 bg-white/10 px-3 py-1.5 text-xs text-white">
             <div class="flex items-center gap-1.5 truncate pr-2">
                 <span class="text-white/70">Code sent to:</span>
-                <span class="font-bold text-white truncate">{{ otpForm.email || emailForm.email }}</span>
+                <span class="font-semibold text-white truncate">{{ otpForm.email || emailForm.email }}</span>
             </div>
             <button
                 type="button"
                 @click="backToEmail"
-                class="shrink-0 font-bold text-[#F8B803] hover:underline cursor-pointer text-xs"
+                class="shrink-0 font-semibold text-[#F8B803] hover:underline cursor-pointer text-xs"
             >
                 Change
             </button>
@@ -397,7 +397,7 @@ onUnmounted(() => {
             <!-- 6-digit OTP code input with CodeSlots -->
             <div class="space-y-1">
                 <div class="flex items-center justify-between px-0.5">
-                    <Label class="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Label class="text-xs font-semibold text-white flex items-center gap-1.5">
                         <KeyRound class="size-3.5 text-[#F8B803]" />
                         Enter 6-Digit OTP Code
                     </Label>
@@ -435,7 +435,7 @@ onUnmounted(() => {
             <!-- Verify Code Button -->
             <Button
                 type="submit"
-                class="w-full cursor-pointer bg-[#F8B803] font-bold text-gray-950 shadow-md transition-all hover:bg-[#fac52e] hover:shadow-lg focus-visible:ring-2 focus-visible:ring-[#F8B803] focus-visible:ring-offset-2 h-10 sm:h-11 rounded-xl text-sm mt-1"
+                class="w-full cursor-pointer bg-[#F8B803] font-semibold text-gray-950 shadow-md transition-colors hover:bg-[#fac52e] focus-visible:ring-2 focus-visible:ring-[#F8B803] focus-visible:ring-offset-2 h-10 sm:h-11 rounded-xl text-sm mt-1"
                 :disabled="otpForm.processing || otpForm.otp.length < 6"
                 data-test="verify-otp-button"
             >
@@ -478,7 +478,7 @@ onUnmounted(() => {
 
         <div class="text-center text-xs text-white/80 pt-0.5">
             <span>Remember your password?</span>
-            <TextLink :href="login()" class="ml-1 font-bold text-[#F8B803] hover:underline">
+            <TextLink :href="login()" class="ml-1 font-semibold text-[#F8B803] hover:underline">
                 Return to log in
             </TextLink>
         </div>
@@ -495,7 +495,7 @@ onUnmounted(() => {
             <button
                 type="button"
                 @click="backToOtp"
-                class="shrink-0 font-bold text-[#F8B803] hover:underline cursor-pointer text-xs"
+                class="shrink-0 font-semibold text-[#F8B803] hover:underline cursor-pointer text-xs"
             >
                 Change Code
             </button>
@@ -572,7 +572,7 @@ onUnmounted(() => {
 
             <!-- Password Format Requirements Checklist -->
             <div class="space-y-1.5 rounded-xl border border-white/20 bg-white/10 p-2.5 text-xs text-white/90">
-                <p class="text-[10px] font-bold tracking-wider text-[#F8B803] uppercase">
+                <p class="text-[10px] font-semibold text-[#F8B803]">
                     Password Format Requirements
                 </p>
                 <ul class="grid grid-cols-1 gap-1 text-[11px] text-white/90 sm:grid-cols-2">
@@ -583,7 +583,7 @@ onUnmounted(() => {
                             :class="lengthValid ? 'text-[#F8B803]' : 'text-white/40'"
                         />
                         <span :class="lengthValid ? 'font-medium text-white' : 'text-white/70'">
-                            At least 8 characters
+                            At least 12 characters
                         </span>
                     </li>
                     <li class="flex items-center gap-1.5">
@@ -632,7 +632,7 @@ onUnmounted(() => {
             <!-- Submit Button -->
             <Button
                 type="submit"
-                class="w-full cursor-pointer bg-[#F8B803] font-bold text-gray-950 shadow-md transition-all hover:bg-[#fac52e] hover:shadow-lg focus-visible:ring-2 focus-visible:ring-[#F8B803] focus-visible:ring-offset-2 h-10 sm:h-11 rounded-xl text-sm mt-1"
+                class="w-full cursor-pointer bg-[#F8B803] font-semibold text-gray-950 shadow-md transition-colors hover:bg-[#fac52e] focus-visible:ring-2 focus-visible:ring-[#F8B803] focus-visible:ring-offset-2 h-10 sm:h-11 rounded-xl text-sm mt-1"
                 :disabled="resetForm.processing || !isPasswordValid"
                 data-test="reset-password-final-button"
             >
@@ -656,7 +656,7 @@ onUnmounted(() => {
                 <span>Back to Code</span>
             </button>
 
-            <TextLink :href="login()" class="font-bold text-[#F8B803] hover:underline">
+            <TextLink :href="login()" class="font-semibold text-[#F8B803] hover:underline">
                 Return to log in
             </TextLink>
         </div>

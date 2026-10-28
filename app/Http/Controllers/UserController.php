@@ -2,18 +2,16 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\TeamRole;
 use App\Models\AuditLog;
 use App\Models\TrustedDevice;
 use App\Models\User;
 use App\Services\AuditLogger;
-use App\Services\ResendService;
+use App\Services\DeviceEnrollmentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -49,7 +47,7 @@ class UserController extends Controller
         // 1. User Accounts Data
         $accountsData = [];
         if ($activeTab === 'accounts') {
-            $query = $team->members()->withPivot('role')->withCount('trustedDevices');
+            $query = $team->members()->withPivot('role')->withCount('trustedDevices')->with('modulePermissions');
 
             if ($search) {
                 $query->where(function ($q) use ($search) {
@@ -75,6 +73,7 @@ class UserController extends Controller
                 'email' => $user->email,
                 'role' => $user->roleLabel(),
                 'raw_role' => $user->role,
+                'modules' => $user->isStaff() ? $user->assignedModules() : [],
                 'status' => $user->status === 'pending_activation' ? 'Pending Activation' : ucfirst($user->status ?? 'active'),
                 'raw_status' => $user->status ?? 'active',
                 'is_active' => ($user->status ?? 'active') === 'active',
@@ -121,7 +120,7 @@ class UserController extends Controller
 
                 return [
                     'id' => $s->id,
-                    'masked_id' => 'sess_' . substr(hash('sha256', $s->id), 0, 12),
+                    'masked_id' => 'sess_'.substr(hash('sha256', $s->id), 0, 12),
                     'user_id' => $s->user_id,
                     'user_name' => $s->user_name,
                     'user_email' => $s->user_email,
@@ -158,7 +157,7 @@ class UserController extends Controller
             $currentCookieUuid = $request->cookie('mrpride_device_uuid') ?: $request->cookie('mrpride_device_id');
             $allStaffUsers = User::where(function ($q) {
                 $q->whereIn('role', ['admin', 'superadmin', 'owner'])
-                  ->orWhere('role', 'like', 'staff%');
+                    ->orWhere('role', 'like', 'staff%');
             })->get(['id', 'name', 'email', 'role'])->keyBy('id');
 
             $devicesData = $devicesQuery->orderByDesc('last_used_at')->get()->map(function (TrustedDevice $d) use ($currentCookieUuid, $allStaffUsers) {
@@ -176,13 +175,10 @@ class UserController extends Controller
                     }
                 }
 
-                $enrollmentCode = $d->enrollment_code ?: $d->enrollment_token;
-                $isEnrollmentExpired = false;
-                if ($d->enrollment_code) {
-                    $isEnrollmentExpired = $d->enrollment_code_expires_at ? $d->enrollment_code_expires_at->isPast() : true;
-                } elseif ($d->enrollment_token) {
-                    $isEnrollmentExpired = $d->enrollment_token_expires_at ? $d->enrollment_token_expires_at->isPast() : true;
-                }
+                // Codes and link tokens are stored hashed, so they can't be shown again here; the
+                // raw values are shown once (and emailed) when the invitation is issued.
+                $hasInvitation = (bool) ($d->enrollment_code || $d->enrollment_token);
+                $isEnrollmentExpired = $hasInvitation && $d->enrollmentExpired();
 
                 return [
                     'id' => $d->id,
@@ -195,8 +191,9 @@ class UserController extends Controller
                     'is_current' => $d->device_uuid === $currentCookieUuid,
                     'last_used_at' => $d->last_used_at?->diffForHumans() ?? 'Never',
                     'created_at' => $d->created_at?->format('M d, Y'),
-                    'enrollment_code' => $enrollmentCode,
-                    'enrollment_link' => $d->enrollment_token ? url("/device/enroll/{$d->enrollment_token}") : ($enrollmentCode ? url("/device/enroll?code={$enrollmentCode}") : null),
+                    'enrollment_code' => null,
+                    'enrollment_link' => null,
+                    'has_invitation' => $hasInvitation,
                     'is_enrollment_expired' => $isEnrollmentExpired,
                     'user' => $d->user ? [
                         'id' => $d->user->id,
@@ -271,12 +268,13 @@ class UserController extends Controller
 
         $usersList = ! empty($accountsData)
             ? $accountsData
-            : $team->members()->get()->map(fn (User $u) => [
+            : $team->members()->with('modulePermissions')->get()->map(fn (User $u) => [
                 'id' => $u->id,
                 'name' => $u->name,
                 'email' => $u->email,
                 'role' => $u->roleLabel(),
                 'raw_role' => $u->role,
+                'modules' => $u->isStaff() ? $u->assignedModules() : [],
                 'status' => $u->status === 'pending_activation' ? 'Pending Activation' : ucfirst($u->status ?? 'active'),
                 'raw_status' => $u->status ?? 'active',
                 'is_active' => ($u->status ?? 'active') === 'active',
@@ -314,6 +312,9 @@ class UserController extends Controller
                 ['value' => 'staff_suppliers', 'label' => 'Staff - Suppliers'],
                 ['value' => 'staff_reports', 'label' => 'Staff - Reports & Analytics'],
             ],
+            'moduleOptions' => collect(User::moduleOptions())
+                ->map(fn ($label, $value) => ['value' => $value, 'label' => $label])
+                ->values(),
             'temporaryPasswordNotice' => session('temporaryPasswordNotice'),
             'enrollmentNotice' => session('enrollmentNotice'),
         ]);
@@ -344,35 +345,33 @@ class UserController extends Controller
             'user',
         ];
 
+        [$role, $modules] = $this->resolveAccountAssignment($request, $allowedRoles);
+
         if ($request->filled('first_name') || $request->filled('last_name')) {
             $validated = $request->validate([
                 'first_name' => ['required', 'string', 'max:100'],
                 'last_name' => ['required', 'string', 'max:100'],
                 'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-                'role' => ['required', Rule::in($allowedRoles)],
             ]);
-            $fullName = trim($validated['first_name'] . ' ' . $validated['last_name']);
-            $firstName = $validated['first_name'];
+            $fullName = trim($validated['first_name'].' '.$validated['last_name']);
         } else {
             $validated = $request->validate([
                 'name' => ['required', 'string', 'max:255'],
                 'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-                'role' => ['required', Rule::in($allowedRoles)],
             ]);
             $fullName = trim($validated['name']);
-            $nameParts = preg_split('/\s+/', $fullName);
-            $firstName = $nameParts[0] ?? 'User';
         }
 
-        // Initial password on first login MUST strictly be (Firstname)1234
-        $cleanFirst = preg_replace('/[^A-Za-z0-9]/', '', $firstName);
-        $cleanFirst = ! empty($cleanFirst) ? ucfirst(strtolower($cleanFirst)) : 'User';
-        $rawPassword = $cleanFirst . '1234';
+        // Temporary bootstrap password in the agreed "Firstname1234" format (e.g. Juan1234).
+        // It is guessable on purpose, so it is only usable together with a trusted device bound to
+        // this account (which needs the emailed OTP), and it must be changed at first login.
+        $firstName = $validated['first_name'] ?? Str::before($fullName, ' ');
+        $rawPassword = User::initialPasswordFor($firstName);
 
         $user = User::create([
             'name' => $fullName,
             'email' => $validated['email'],
-            'role' => $validated['role'],
+            'role' => $role,
             'status' => 'pending_activation',
             'password' => Hash::make($rawPassword),
             'must_change_password' => true,
@@ -380,12 +379,14 @@ class UserController extends Controller
             'email_verified_at' => now(),
         ]);
 
-        $teamRole = $validated['role'] === 'admin' ? 'admin' : (str_starts_with($validated['role'], 'staff') ? 'staff' : 'member');
+        $user->syncModules($modules);
+
+        $teamRole = $role === 'admin' ? 'admin' : (str_starts_with($role, 'staff') ? 'staff' : 'member');
         $team->members()->attach($user->id, ['role' => $teamRole]);
 
         AuditLogger::audit(
             'account.created',
-            "Administrator {$currentUser->email} created user {$user->email} with role '{$user->roleLabel()}'. Status set to Pending Activation. Initial temporary password set to (Firstname)1234.",
+            "Administrator {$currentUser->email} created user {$user->email} with role '{$user->roleLabel()}'. Status set to Pending Activation. A temporary password (first name + 1234) was issued.",
             $currentUser,
             $user,
             ['role' => $user->role, 'status' => 'pending_activation', 'must_change_password' => true],
@@ -393,11 +394,24 @@ class UserController extends Controller
             $request
         );
 
-        $temporaryPasswordNotice = "Staff account created for {$fullName}. Status: Pending Activation. Initial temporary password: {$rawPassword}. Issue a 10-minute device enrollment invitation to activate their workstation.";
+        $temporaryPasswordNotice = "Account created for {$fullName}. Status: Pending Activation. Initial temporary password: {$rawPassword}. They must change it at first login.";
 
-        return back()
-            ->with('success', "Staff account created (Pending Activation). Initial temporary password: {$rawPassword}")
-            ->with('temporaryPasswordNotice', $temporaryPasswordNotice);
+        if (! $user->isAdminOrStaff()) {
+            return back()
+                ->with('success', "Account created (Pending Activation). Initial temporary password: {$rawPassword}")
+                ->with('temporaryPasswordNotice', $temporaryPasswordNotice);
+        }
+
+        // Send the 5-minute OTP + enrollment link so they can register their device.
+        $invite = app(DeviceEnrollmentService::class)->issueFor($user, $currentUser, null, $request);
+
+        $response = back()
+            ->with('temporaryPasswordNotice', $temporaryPasswordNotice)
+            ->with('enrollmentNotice', $this->enrollmentNotice($user, $invite));
+
+        return $invite['email_sent']
+            ? $response->with('success', "Account created. Enrollment code and link were emailed to {$user->email} (valid for ".DeviceEnrollmentService::MINUTES.' minutes).')
+            : $response->with('error', "Account created, but the enrollment email to {$user->email} could not be sent: {$invite['email_error']}. Give them the code and link shown below, or issue a new invitation.");
     }
 
     /**
@@ -432,41 +446,44 @@ class UserController extends Controller
             'user',
         ];
 
+        [$newRole, $newModules] = $this->resolveAccountAssignment($request, $allowedRoles);
+
         $validated = $request->validate([
             'name' => ['nullable', 'string', 'max:255'],
             'first_name' => ['nullable', 'string', 'max:100'],
             'last_name' => ['nullable', 'string', 'max:100'],
-            'role' => ['required', Rule::in($allowedRoles)],
         ]);
 
         $name = $user->name;
         if (! empty($validated['first_name']) && ! empty($validated['last_name'])) {
-            $name = trim($validated['first_name'] . ' ' . $validated['last_name']);
+            $name = trim($validated['first_name'].' '.$validated['last_name']);
         } elseif (! empty($validated['name'])) {
             $name = trim($validated['name']);
         }
 
         $oldRole = $user->role;
-        $newRole = $validated['role'];
+        $oldModules = $user->assignedModules();
 
         $user->update([
             'name' => $name,
             'role' => $newRole,
         ]);
+        $user->syncModules($newModules);
+        $modulesChanged = $user->isStaff() && $oldModules !== $user->assignedModules();
 
         $teamRole = $newRole === 'admin' ? 'admin' : (str_starts_with($newRole, 'staff') ? 'staff' : 'member');
         $currentUser->currentTeam?->members()->updateExistingPivot($user->id, ['role' => $teamRole]);
 
-        // If role changed, invalidate user's active sessions immediately
-        if ($oldRole !== $newRole) {
+        // If role or module assignments changed, invalidate user's active sessions immediately
+        if ($oldRole !== $newRole || $modulesChanged) {
             DB::table('sessions')->where('user_id', $user->id)->delete();
 
             AuditLogger::audit(
                 'account.role_changed',
-                "Administrator {$currentUser->email} changed role of {$user->email} from '{$oldRole}' to '{$newRole}'. Active sessions revoked.",
+                "Administrator {$currentUser->email} changed role/modules of {$user->email} from '{$oldRole}' [".implode(', ', $oldModules)."] to '{$newRole}' [".implode(', ', $user->assignedModules()).']. Active sessions revoked.',
                 $currentUser,
                 $user,
-                ['old_role' => $oldRole, 'new_role' => $newRole],
+                ['old_role' => $oldRole, 'new_role' => $newRole, 'old_modules' => $oldModules, 'new_modules' => $user->assignedModules()],
                 'success',
                 $request
             );
@@ -483,6 +500,46 @@ class UserController extends Controller
         }
 
         return back()->with('success', 'User account updated successfully.');
+    }
+
+    /**
+     * Work out the account role and module assignments from the request.
+     *
+     * New format: `account_type` (admin|staff) plus `modules[]` for staff. The account role is stored as
+     * staff_<first module> so every existing role check keeps working, while the full module list is
+     * kept in user_module_permissions. Legacy format: a single `role` value, as before.
+     *
+     * @param  array<int, string>  $allowedRoles
+     * @return array{0: string, 1: array<int, string>} [role, modules]
+     */
+    private function resolveAccountAssignment(Request $request, array $allowedRoles): array
+    {
+        if ($request->has('account_type')) {
+            $request->validate([
+                'account_type' => ['required', Rule::in(['admin', 'staff'])],
+                'modules' => ['exclude_if:account_type,admin', 'required', 'array', 'min:1'],
+                'modules.*' => ['string', 'distinct', Rule::in(array_keys(User::moduleOptions()))],
+            ], [
+                'modules.required' => 'Select at least one module for a staff account.',
+                'modules.min' => 'Select at least one module for a staff account.',
+            ]);
+
+            if ($request->input('account_type') === 'admin') {
+                return ['admin', []];
+            }
+
+            $modules = array_values($request->input('modules'));
+
+            return ['staff_'.$modules[0], $modules];
+        }
+
+        $role = $request->validate([
+            'role' => ['required', Rule::in($allowedRoles)],
+        ])['role'];
+
+        $legacyModule = User::legacyModuleForRole($role);
+
+        return [$role, $legacyModule ? [$legacyModule] : []];
     }
 
     /**
@@ -529,7 +586,7 @@ class UserController extends Controller
             );
         }
 
-        return back()->with('success', "Account {$user->email} has been set to " . ucfirst($newStatus) . ".");
+        return back()->with('success', "Account {$user->email} has been set to ".ucfirst($newStatus).'.');
     }
 
     /**
@@ -631,8 +688,11 @@ class UserController extends Controller
     }
 
     /**
-     * Initiate trusted device enrollment or directly add an approved device.
-     * Supports both single assigned accounts and multi-account shared workstations.
+     * Issue (or re-issue after expiry) a device enrollment invitation for one account.
+     *
+     * One device, one account: invitations are always for a single account, and a new one
+     * replaces that account's previous device. Every device must go through enrollment (link +
+     * OTP from the user's email) before it is trusted; there is no "approve without enrolling".
      */
     public function enrollDevice(Request $request): RedirectResponse
     {
@@ -640,97 +700,42 @@ class UserController extends Controller
         abort_if(! $currentUser || ! $currentUser->isAdmin(), 403, 'Device enrollment is restricted to Administrator.');
 
         $validated = $request->validate([
-            'assignment_type' => ['required', 'string', 'in:single,shared'],
-            'user_id' => ['nullable', 'required_if:assignment_type,single', 'exists:users,id'],
-            'authorized_user_ids' => ['nullable', 'required_if:assignment_type,shared', 'array'],
-            'authorized_user_ids.*' => ['exists:users,id'],
+            'assignment_type' => ['nullable', 'string', Rule::in(['single'])],
+            'user_id' => ['required', 'exists:users,id'],
             'device_name' => ['nullable', 'string', 'max:100'],
-            'direct_approve' => ['nullable', 'boolean'],
-            'expires_in_minutes' => ['nullable', 'integer', 'min:1', 'max:10080'],
-            'expires_in_hours' => ['nullable', 'integer', 'min:1', 'max:168'],
+        ], [
+            'assignment_type.in' => 'Shared workstations are not allowed: each device can be registered to one account only.',
         ]);
 
-        $assignmentType = $validated['assignment_type'];
-        $directApprove = (bool) ($validated['direct_approve'] ?? false);
+        $targetUser = User::findOrFail($validated['user_id']);
+        abort_if(! $targetUser->isAdminOrStaff(), 422, 'Trusted devices are only applicable to Admin and Staff accounts.');
 
-        $minutes = 5;
-        if (! empty($validated['expires_in_minutes'])) {
-            $minutes = max(1, min(60, (int) $validated['expires_in_minutes']));
-        } elseif (! empty($validated['expires_in_hours'])) {
-            $minutes = (int) $validated['expires_in_hours'] * 60;
-        }
+        $invite = app(DeviceEnrollmentService::class)->issueFor($targetUser, $currentUser, $validated['device_name'] ?? null, $request);
 
-        $enrollmentCode = TrustedDevice::generateEnrollmentCode();
-        $token = Str::random(48);
-        $expiresAt = now()->addMinutes($minutes);
-        $deviceUuid = (string) Str::uuid();
+        $response = back()->with('enrollmentNotice', $this->enrollmentNotice($targetUser, $invite));
 
-        $targetUser = null;
-        if ($assignmentType === 'single') {
-            $targetUser = User::findOrFail($validated['user_id']);
-            abort_if(! $targetUser->isAdminOrStaff(), 422, 'Trusted devices are only applicable to Admin and Staff accounts.');
-            // Enforce single active device per user policy for single-user devices
-            TrustedDevice::where('user_id', $targetUser->id)->where('is_shared', false)->delete();
-        }
+        return $invite['email_sent']
+            ? $response->with('success', "Enrollment code and link emailed to {$targetUser->email}. They expire in ".DeviceEnrollmentService::MINUTES.' minutes.')
+            : $response->with('error', "The enrollment email to {$targetUser->email} could not be sent: {$invite['email_error']}. Give them the code and link shown below, or try again.");
+    }
 
-        $device = TrustedDevice::create([
-            'user_id' => $assignmentType === 'single' ? $targetUser?->id : null,
-            'is_shared' => $assignmentType === 'shared',
-            'authorized_user_ids' => $assignmentType === 'shared' ? array_map('intval', $validated['authorized_user_ids'] ?? []) : null,
-            'device_uuid' => $deviceUuid,
-            'device_name' => $validated['device_name'] ?: ($assignmentType === 'shared' ? 'Shared Workstation' : "{$targetUser?->name}'s Device"),
-            'status' => $directApprove ? 'approved' : 'pending',
-            'approved_by' => $directApprove ? $currentUser->id : null,
-            'approved_at' => $directApprove ? now() : null,
-            'enrollment_code' => $directApprove ? null : $enrollmentCode,
-            'enrollment_code_expires_at' => $directApprove ? null : $expiresAt,
-            'enrollment_token' => $directApprove ? null : $token,
-            'enrollment_token_expires_at' => $directApprove ? null : $expiresAt,
-            'last_used_at' => $directApprove ? now() : null,
-        ]);
-
-        $targetEmail = $targetUser?->email;
-        $emailParam = $targetEmail ? ('?email=' . urlencode($targetEmail)) : '';
-        $enrollmentLink = $directApprove ? null : url("/device/enroll/{$token}{$emailParam}");
-
-        // Dispatch invitation email to the employee's registered email
-        if (! $directApprove && $targetUser && $targetUser->email) {
-            try {
-                app(ResendService::class)->sendDeviceEnrollmentInvitation(
-                    $targetUser->email,
-                    $targetUser->name,
-                    $enrollmentCode,
-                    $enrollmentLink,
-                    $minutes
-                );
-            } catch (\Throwable $e) {
-                Log::warning("Could not dispatch device enrollment invitation email: " . $e->getMessage());
-            }
-        }
-
-        AuditLogger::audit(
-            $directApprove ? 'device.directly_approved' : 'device.enrollment_initiated',
-            "Administrator {$currentUser->email} created device enrollment invitation for '{$device->device_name}' (Policy: " . ($device->is_shared ? 'Shared Workstation' : 'Single Account') . ", Expires: {$minutes}m).",
-            $currentUser,
-            $targetUser,
-            ['device_id' => $device->id, 'device_uuid' => $deviceUuid, 'code' => $enrollmentCode, 'expires_in_minutes' => $minutes],
-            'success',
-            $request
-        );
-
-        if ($directApprove) {
-            return back()->with('success', "Device '{$device->device_name}' added and approved directly.");
-        }
-
-        return back()->with('enrollmentNotice', [
-            'device_name' => $device->device_name,
-            'user_name' => $targetUser?->name ?? 'Shared Workstation',
-            'user_email' => $targetUser?->email ?? 'Multiple Authorized Staff',
-            'code' => $enrollmentCode,
-            'link' => $enrollmentLink,
-            'expires_at' => $expiresAt->format('h:i A') . ' (5 minutes only)',
-            'expires_in_minutes' => $minutes,
-        ])->with('success', "Device enrollment code created: {$enrollmentCode}. Link expires in {$minutes} minutes.");
+    /**
+     * One-time admin view of a freshly issued invitation (the raw code/link are not stored).
+     *
+     * @param  array{device: TrustedDevice, code: string, link: string, expires_at: Carbon, email_sent: bool, email_error: ?string}  $invite
+     */
+    private function enrollmentNotice(User $user, array $invite): array
+    {
+        return [
+            'device_name' => $invite['device']->device_name,
+            'user_name' => $user->name,
+            'user_email' => $user->email,
+            'code' => $invite['code'],
+            'link' => $invite['link'],
+            'expires_at' => $invite['expires_at']->format('h:i A').' ('.DeviceEnrollmentService::MINUTES.' minutes only)',
+            'expires_in_minutes' => DeviceEnrollmentService::MINUTES,
+            'email_sent' => $invite['email_sent'],
+        ];
     }
 
     /**
@@ -884,7 +889,7 @@ class UserController extends Controller
         $currentUser = $request->user();
         abort_if(! $currentUser || ! $currentUser->isAdmin(), 403, 'Recovery key management is restricted to Administrator.');
 
-        $newKey = 'RECOVER-' . strtoupper(Str::random(6)) . '-' . strtoupper(Str::random(6)) . '-' . strtoupper(Str::random(6));
+        $newKey = 'RECOVER-'.strtoupper(Str::random(6)).'-'.strtoupper(Str::random(6)).'-'.strtoupper(Str::random(6));
         $currentUser->update(['admin_recovery_key' => $newKey]);
 
         AuditLogger::audit(
@@ -910,19 +915,32 @@ class UserController extends Controller
         }
 
         $os = 'Unknown OS';
-        if (str_contains($agent, 'Windows NT 10.0')) $os = 'Windows 10/11';
-        elseif (str_contains($agent, 'Windows')) $os = 'Windows';
-        elseif (str_contains($agent, 'Macintosh') || str_contains($agent, 'Mac OS X')) $os = 'macOS';
-        elseif (str_contains($agent, 'Linux')) $os = 'Linux';
-        elseif (str_contains($agent, 'Android')) $os = 'Android';
-        elseif (str_contains($agent, 'iPhone') || str_contains($agent, 'iPad')) $os = 'iOS';
+        if (str_contains($agent, 'Windows NT 10.0')) {
+            $os = 'Windows 10/11';
+        } elseif (str_contains($agent, 'Windows')) {
+            $os = 'Windows';
+        } elseif (str_contains($agent, 'Macintosh') || str_contains($agent, 'Mac OS X')) {
+            $os = 'macOS';
+        } elseif (str_contains($agent, 'Linux')) {
+            $os = 'Linux';
+        } elseif (str_contains($agent, 'Android')) {
+            $os = 'Android';
+        } elseif (str_contains($agent, 'iPhone') || str_contains($agent, 'iPad')) {
+            $os = 'iOS';
+        }
 
         $browser = 'Unknown Browser';
-        if (str_contains($agent, 'Edg/')) $browser = 'Microsoft Edge';
-        elseif (str_contains($agent, 'Chrome/')) $browser = 'Google Chrome';
-        elseif (str_contains($agent, 'Firefox/')) $browser = 'Mozilla Firefox';
-        elseif (str_contains($agent, 'Safari/') && ! str_contains($agent, 'Chrome/')) $browser = 'Apple Safari';
-        elseif (str_contains($agent, 'Opera') || str_contains($agent, 'OPR/')) $browser = 'Opera';
+        if (str_contains($agent, 'Edg/')) {
+            $browser = 'Microsoft Edge';
+        } elseif (str_contains($agent, 'Chrome/')) {
+            $browser = 'Google Chrome';
+        } elseif (str_contains($agent, 'Firefox/')) {
+            $browser = 'Mozilla Firefox';
+        } elseif (str_contains($agent, 'Safari/') && ! str_contains($agent, 'Chrome/')) {
+            $browser = 'Apple Safari';
+        } elseif (str_contains($agent, 'Opera') || str_contains($agent, 'OPR/')) {
+            $browser = 'Opera';
+        }
 
         return ['browser' => $browser, 'os' => $os];
     }

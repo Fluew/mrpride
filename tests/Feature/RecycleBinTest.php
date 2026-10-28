@@ -1,7 +1,6 @@
 <?php
 
 use App\Enums\TeamRole;
-use App\Models\AuditLog;
 use App\Models\Inquiry;
 use App\Models\Product;
 use App\Models\Supplier;
@@ -43,7 +42,7 @@ test('non-admin staff is forbidden from accessing recycle bin page', function ()
         ->withCookies($deviceData['cookies'])
         ->get("/{$team->slug}/recycle-bin");
 
-    $response->assertNotFound(); // EnsureRole returns 404 for admin-only routes to protect obscurity
+    $response->assertForbidden(); // staff get 403 on admin-only areas
 });
 
 test('archived records display with deleted_by tracking information', function () {

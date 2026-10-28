@@ -34,14 +34,14 @@ const reloadPage = () => {
 
     <div class="space-y-6">
         <!-- Shield Icon & Warning Banner -->
-        <div class="rounded-2xl border border-red-200/80 bg-red-50/70 p-6 text-center shadow-xs">
+        <div class="rounded-xl border border-red-200/80 bg-red-50/70 p-6 text-center">
             <div
-                class="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-red-100 text-red-600 shadow-xs"
+                class="mx-auto mb-4 flex size-14 items-center justify-center rounded-xl bg-red-100 text-red-600"
             >
                 <ShieldAlert class="size-7" />
             </div>
 
-            <h3 class="text-lg font-bold tracking-tight text-red-950">
+            <h3 class="text-lg font-semibold tracking-tight text-red-950">
                 {{ title }}
             </h3>
 
@@ -51,13 +51,13 @@ const reloadPage = () => {
         </div>
 
         <!-- Technical explanation card -->
-        <div class="rounded-2xl border border-gray-200/80 bg-white/60 p-4 text-xs text-gray-600 backdrop-blur-xs">
+        <div class="rounded-xl border border-gray-200/80 bg-white/60 p-4 text-xs text-gray-600">
             <div class="flex items-start gap-3">
                 <div class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#4b5320]/10 text-[#4b5320]">
                     <Lock class="size-4" />
                 </div>
                 <div>
-                    <h4 class="font-bold text-gray-900">
+                    <h4 class="font-semibold text-gray-900">
                         Browser-Based Trusted Device Identity
                     </h4>
                     <p class="mt-1 leading-relaxed text-gray-600">
@@ -73,10 +73,10 @@ const reloadPage = () => {
             <Link
                 v-if="canEnroll"
                 href="/device/enroll"
-                class="flex w-full items-center justify-center gap-2 rounded-xl bg-[#F8B803] py-3 text-sm font-bold text-gray-950 shadow-md transition-all hover:bg-[#fac52e] hover:shadow-lg focus:outline-none"
+                class="flex w-full items-center justify-center gap-2 rounded-xl bg-[#F8B803] py-2.5 text-sm font-semibold text-gray-950 transition-colors hover:bg-[#fac52e] focus:outline-none"
             >
                 <Laptop class="size-4" />
-                Enroll This Browser
+                Enroll With Code
                 <ArrowRight class="size-4" />
             </Link>
 
@@ -93,7 +93,7 @@ const reloadPage = () => {
 
                 <Link
                     href="/"
-                    class="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2.5 text-xs font-semibold text-gray-700 shadow-2xs hover:bg-gray-100"
+                    class="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-100"
                 >
                     <Home class="size-3.5" />
                     Home Page

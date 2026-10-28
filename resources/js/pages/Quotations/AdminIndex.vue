@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { Head, router, usePage } from '@inertiajs/vue3';
+import { useCanDelete } from '@/composables/useCanDelete';
 import { ref, computed, watch } from 'vue';
 import SpecularButton from '@/components/ui/SpecularButton.vue';
+import StatusBadge from '@/components/ui/StatusBadge.vue';
+import GlideSelect from '@/components/vue-bits/GlideSelect.vue';
 import { 
     FileText, 
     Plus, 
@@ -30,7 +33,9 @@ import {
     Upload,
     ChevronRight,
     FileSpreadsheet,
-    FileUp
+    FileUp,
+    Truck,
+    Paperclip,
 } from '@lucide/vue';
 
 interface QuotationItem {
@@ -42,6 +47,9 @@ interface QuotationItem {
     unit_price: number;
     discount: number;
     subtotal: number;
+    // Computed by the server for catalog products (stock check).
+    available_stock?: number;
+    shortage?: number;
 }
 
 interface Quotation {
@@ -67,6 +75,22 @@ interface Quotation {
     converted_to_sale_id?: number | null;
     sale?: { invoice_number: string } | null;
     items: QuotationItem[];
+    created_at?: string;
+    attachment_url?: string | null;
+    material_file_url?: string | null;
+    material_file_name?: string | null;
+    // What the client sent with a public request (or how a staff import was made).
+    request_details?: {
+        source?: 'public_form' | 'staff_import';
+        project_type?: string;
+        timeline?: string;
+        brands?: { brand: string; details: string }[];
+        unlisted_brands?: string | null;
+        file_name?: string;
+        imported_by?: string | null;
+        submitted_at?: string;
+    } | null;
+    files?: { id: number; kind: string; original_name: string; size: number; mime?: string | null; url: string }[];
 }
 
 interface Product {
@@ -115,6 +139,7 @@ const props = defineProps<{
 }>();
 
 const page = usePage();
+const canDelete = useCanDelete();
 const teamSlug = computed(() => (page.props as any).currentTeam?.slug || (page.props as any).team?.slug || '');
 
 // Filters
@@ -481,16 +506,41 @@ const updateStatusSubmit = () => {
 
 // Convert to Sale Modal
 const paymentMethod = ref('Bank Transfer / Check');
+const convertAmountPaid = ref<number>(0);
+const convertPaymentReference = ref('');
+const convertFulfillmentType = ref<'Delivery' | 'Store Pickup'>('Delivery');
+const convertRecipientName = ref('');
+const convertContactNumber = ref('');
+const convertDeliveryAddress = ref('');
+const convertDeliverySchedule = ref('');
+const convertDeliveryInstructions = ref('');
+
 const openConvertModal = (quote: Quotation) => {
     activeQuotation.value = quote;
     paymentMethod.value = 'Bank Transfer / Check';
+    convertAmountPaid.value = Number(quote.grand_total || 0);
+    convertPaymentReference.value = '';
+    convertFulfillmentType.value = 'Delivery';
+    convertRecipientName.value = quote.contact_person || quote.client_name;
+    convertContactNumber.value = quote.phone || '';
+    convertDeliveryAddress.value = quote.address || '';
+    convertDeliverySchedule.value = '';
+    convertDeliveryInstructions.value = '';
     showConvertModal.value = true;
 };
 
 const convertToSaleSubmit = () => {
     if (!activeQuotation.value) return;
     router.post(`/${teamSlug.value}/quotations/${activeQuotation.value.id}/convert-to-sale`, {
-        payment_method: paymentMethod.value
+        payment_method: paymentMethod.value,
+        amount_paid: convertAmountPaid.value,
+        payment_reference: convertPaymentReference.value,
+        fulfillment_type: convertFulfillmentType.value,
+        recipient_name: convertRecipientName.value,
+        contact_number: convertContactNumber.value,
+        delivery_address: convertDeliveryAddress.value,
+        delivery_schedule: convertDeliverySchedule.value || null,
+        delivery_instructions: convertDeliveryInstructions.value,
     }, {
         onSuccess: () => {
             showConvertModal.value = false;
@@ -502,6 +552,164 @@ const convertToSaleSubmit = () => {
 const openViewModal = (quote: Quotation) => {
     activeQuotation.value = quote;
     showViewModal.value = true;
+};
+
+// ------------------------------------------------------------------ client request review
+
+const formatFileSize = (bytes: number) =>
+    bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+// Request lines staff still have to handle: not matched to a catalog product, or not priced.
+const reviewItems = computed(() =>
+    (activeQuotation.value?.items ?? [])
+        .filter((i) => !String(i.sku).startsWith('BRAND'))
+        .map((i) => ({
+            ...i,
+            needsMatching: !i.product_id,
+            needsPrice: Number(i.unit_price) <= 0,
+        })),
+);
+const reviewOpenCount = computed(() => reviewItems.value.filter((i) => i.needsMatching || i.needsPrice).length);
+const hasClientFiles = (q: Quotation) => !!(q.material_file_url || q.attachment_url || q.files?.length);
+
+const editFromReview = () => {
+    if (!activeQuotation.value) return;
+    const quote = activeQuotation.value;
+    showViewModal.value = false;
+    openEditModal(quote);
+};
+const statusFromReview = () => {
+    if (!activeQuotation.value) return;
+    const quote = activeQuotation.value;
+    showViewModal.value = false;
+    openStatusModal(quote);
+};
+
+// ------------------------------------------------------------------ import menu
+
+const importOptions = [
+    { value: 'materials', label: 'Material list', tag: 'PDF · Excel · Image' },
+    { value: 'csv', label: 'Quotations (CSV)', tag: '.csv' },
+];
+const onImportChoice = (value: string) => {
+    if (value === 'csv') openImportModal();
+    else openMaterialImportModal();
+};
+
+// ------------------------------------------------------------------ material-list import
+
+const MATERIAL_EXTENSIONS = ['pdf', 'xlsx', 'xls', 'csv', 'jpg', 'jpeg', 'png'];
+const showMaterialImportModal = ref(false);
+const materialImport = ref({ file: null as File | null, clientId: '', clientName: '', contactPerson: '', email: '', phone: '' });
+const materialPreview = ref<{
+    method: string;
+    warning: string | null;
+    valid_count: number;
+    invalid_count: number;
+    unparsed_count: number;
+    items: { description: string; quantity: number | null; unit: string | null; brand: string | null; errors: string[]; match: { sku: string; name: string; price: number | null } | null }[];
+} | null>(null);
+const materialImportError = ref<string | null>(null);
+const isReadingMaterials = ref(false);
+const isCreatingFromMaterials = ref(false);
+
+const openMaterialImportModal = () => {
+    materialImport.value = { file: null, clientId: '', clientName: '', contactPerson: '', email: '', phone: '' };
+    materialPreview.value = null;
+    materialImportError.value = null;
+    showMaterialImportModal.value = true;
+};
+
+const onMaterialClientPick = () => {
+    const client = props.clients.find((c) => String(c.id) === materialImport.value.clientId);
+    if (!client) return;
+    materialImport.value.clientName = client.company_name;
+    materialImport.value.contactPerson = client.contact_person ?? '';
+    materialImport.value.email = client.email ?? '';
+    materialImport.value.phone = client.phone ?? '';
+};
+
+const onMaterialFileChange = (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    const chosen = input.files?.[0] ?? null;
+    input.value = '';
+    materialPreview.value = null;
+    materialImportError.value = null;
+    if (!chosen) return;
+    const ext = chosen.name.split('.').pop()?.toLowerCase() ?? '';
+    if (!MATERIAL_EXTENSIONS.includes(ext)) {
+        materialImportError.value = 'Please choose a PDF, Excel (.xlsx/.xls), CSV, JPG or PNG file.';
+        return;
+    }
+    if (chosen.size > 10 * 1024 * 1024) {
+        materialImportError.value = `This file is ${formatFileSize(chosen.size)}. The limit is 10 MB.`;
+        return;
+    }
+    materialImport.value.file = chosen;
+};
+
+const materialFormData = (execute: boolean) => {
+    const data = new FormData();
+    data.append('file', materialImport.value.file as File);
+    data.append('client_name', materialImport.value.clientName.trim());
+    if (materialImport.value.contactPerson.trim()) data.append('contact_person', materialImport.value.contactPerson.trim());
+    if (materialImport.value.email.trim()) data.append('email', materialImport.value.email.trim());
+    if (materialImport.value.phone.trim()) data.append('phone', materialImport.value.phone.trim());
+    data.append('execute', execute ? '1' : '0');
+    return data;
+};
+
+const readMaterialFile = async () => {
+    if (!materialImport.value.file) {
+        materialImportError.value = 'Please choose a file first.';
+        return;
+    }
+    if (!materialImport.value.clientName.trim()) {
+        materialImportError.value = 'Please enter the client or company name.';
+        return;
+    }
+    isReadingMaterials.value = true;
+    materialImportError.value = null;
+    materialPreview.value = null;
+    try {
+        const response = await fetch(`/${teamSlug.value}/quotations/import-materials`, {
+            method: 'POST',
+            body: materialFormData(false),
+            headers: {
+                'X-CSRF-TOKEN': (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '',
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.ok && data.success) {
+            materialPreview.value = data;
+        } else {
+            const firstError = data?.errors ? (Object.values(data.errors).flat()[0] as string) : null;
+            materialImportError.value = firstError || data.message || 'The file could not be read.';
+        }
+    } catch {
+        materialImportError.value = 'Network error. Please check your connection and try again.';
+    } finally {
+        isReadingMaterials.value = false;
+    }
+};
+
+const createFromMaterials = () => {
+    if (!materialImport.value.file || !materialPreview.value || isCreatingFromMaterials.value) return;
+    isCreatingFromMaterials.value = true;
+    router.post(`/${teamSlug.value}/quotations/import-materials`, materialFormData(true) as any, {
+        preserveScroll: true,
+        onSuccess: () => {
+            showMaterialImportModal.value = false;
+        },
+        onError: (errors) => {
+            materialImportError.value = (Object.values(errors)[0] as string) || 'The quotation could not be created.';
+        },
+        onFinish: () => {
+            isCreatingFromMaterials.value = false;
+        },
+    });
 };
 
 const openPrintModal = (quote: Quotation) => {
@@ -667,6 +875,7 @@ const defaultClientName = ref('Direct Customer');
 const isValidatingCsv = ref(false);
 const isImportingCsv = ref(false);
 const csvValidationResult = ref<{
+    existing_count?: number;
     total_rows: number;
     valid_count: number;
     invalid_count: number;
@@ -777,9 +986,9 @@ const executeCsvImport = () => {
 
     router.post(`/${teamSlug.value}/quotations/import-csv`, formData as any, {
         onSuccess: () => {
+            // The server's message says how many were imported and which were skipped.
             showImportModal.value = false;
             isImportingCsv.value = false;
-            showNotification('Quotations imported successfully!', 'success');
         },
         onError: (err) => {
             isImportingCsv.value = false;
@@ -795,26 +1004,34 @@ const executeCsvImport = () => {
 
     <div class="workspace-page">
         <!-- Page Title & Main Action -->
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-1">
+        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div>
-                <div class="flex items-center gap-2">
-                    <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Quotation Management</h1>
-                    <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#F8B803]/20 text-[#4b5320] border border-[#F8B803]/30">
-                        MRP ElectroDesk
-                    </span>
-                </div>
-                <p class="text-gray-500 mt-1">Create electrical project estimates, manage client approvals, and convert quotations to sales.</p>
+                <h1 class="page-title">Quotation Management</h1>
+                <p class="page-subtitle">Estimates, client approvals and conversion to sales.</p>
             </div>
-            <div class="flex items-center gap-2.5">
-                <SpecularButton
-                    variant="secondary"
-                    size="md"
-                    :radius="12"
-                    @click="openImportModal"
-                >
-                    <Upload class="w-4 h-4 text-[#4b5320]" />
-                    <span>Upload CSV</span>
-                </SpecularButton>
+            <div class="flex flex-wrap items-center justify-start lg:justify-end gap-2.5 w-full lg:w-auto">
+                <div class="rounded-xl border border-gray-200 bg-white p-[3px]" data-test="quotation-import-menu">
+                    <GlideSelect
+                        :options="importOptions"
+                        value=""
+                        placeholder="Import"
+                        :placeholderMuted="false"
+                        ariaLabel="Import"
+                        accentColor="#4b5320"
+                        surfaceColor="#ffffff"
+                        highlightColor="#f3f4f6"
+                        textColor="#374151"
+                        size="md"
+                        :radius="12"
+                        :menuWidth="232"
+                        align="right"
+                        @change="onImportChoice"
+                    >
+                        <template #leading>
+                            <Upload class="size-3.5 text-gray-500" aria-hidden="true" />
+                        </template>
+                    </GlideSelect>
+                </div>
 
                 <SpecularButton
                     variant="brand"
@@ -822,75 +1039,45 @@ const executeCsvImport = () => {
                     :radius="12"
                     @click="openCreateModal"
                 >
-                    <Plus class="w-5 h-5" />
-                    <span>+ Create Quotation</span>
+                    <Plus class="w-4 h-4" />
+                    <span>Create Quotation</span>
                 </SpecularButton>
             </div>
         </div>
 
-        <!-- Metrics Overview Cards -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
-                <div>
-                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Quotations</p>
-                    <h3 class="text-2xl font-black text-gray-900 mt-1">{{ metrics.totalQuotations }}</h3>
-                    <p class="text-xs text-gray-400 mt-0.5">All time logged quotes</p>
-                </div>
-                <div class="p-3 bg-gray-50 text-gray-700 rounded-xl border border-gray-100">
-                    <FileText class="w-6 h-6 text-[#4b5320]" />
-                </div>
-            </div>
-
-            <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
-                <div>
-                    <p class="text-xs font-semibold text-amber-600 uppercase tracking-wider">Pending Review</p>
-                    <h3 class="text-2xl font-black text-gray-900 mt-1">{{ metrics.pendingCount }}</h3>
-                    <p class="text-xs text-gray-400 mt-0.5">Awaiting customer sign-off</p>
-                </div>
-                <div class="p-3 bg-amber-50 text-amber-600 rounded-xl border border-amber-100">
-                    <Clock class="w-6 h-6" />
-                </div>
-            </div>
-
-            <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
-                <div>
-                    <p class="text-xs font-semibold text-emerald-600 uppercase tracking-wider">Approved Quotes</p>
-                    <h3 class="text-2xl font-black text-gray-900 mt-1">{{ metrics.approvedCount }}</h3>
-                    <p class="text-xs text-gray-400 mt-0.5">Ready for Convert to Sale</p>
-                </div>
-                <div class="p-3 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
-                    <CheckCircle2 class="w-6 h-6" />
-                </div>
-            </div>
-
-            <div class="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
-                <div>
-                    <p class="text-xs font-semibold text-[#4b5320] uppercase tracking-wider">Active Pipeline</p>
-                    <h3 class="text-2xl font-black text-[#4b5320] mt-1">{{ formatCurrency(metrics.totalQuotedValue) }}</h3>
-                    <p class="text-xs text-gray-400 mt-0.5">Total active proposal value</p>
-                </div>
-                <div class="p-3 bg-[#F8B803]/15 text-[#4b5320] rounded-xl border border-[#F8B803]/30">
-                    <ShoppingCart class="w-6 h-6" />
-                </div>
+        <!-- Metrics Overview -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div
+                v-for="card in [
+                    { label: 'Total quotations', value: metrics.totalQuotations },
+                    { label: 'Pending review', value: metrics.pendingCount },
+                    { label: 'Approved, ready to convert', value: metrics.approvedCount },
+                    { label: 'Active pipeline value', value: formatCurrency(metrics.totalQuotedValue) },
+                ]"
+                :key="card.label"
+                class="bg-white px-4 py-3 rounded-xl border border-gray-200"
+            >
+                <p class="text-xs text-gray-500">{{ card.label }}</p>
+                <p class="text-2xl font-semibold text-gray-900 mt-1">{{ card.value }}</p>
             </div>
         </div>
 
         <!-- Filter & Search Controls -->
-        <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
+        <div class="flex flex-col md:flex-row gap-3 items-center justify-between">
             <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto flex-1">
                 <!-- Search -->
                 <div class="relative flex-1 sm:max-w-xs">
                     <Search class="w-4 h-4 text-gray-400 absolute left-3 top-3" />
-                    <input v-model="search" 
-                           type="text" 
-                           placeholder="Search quote #, client, email..." 
-                           class="w-full pl-9 pr-4 py-2 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-[#F8B803] focus:bg-white focus:outline-none shadow-2xs" />
+                    <input v-model="search"
+                           type="text"
+                           placeholder="Search quote #, client, email..."
+                           class="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-gray-400 focus:outline-none" />
                 </div>
 
                 <!-- Status Filter -->
                 <div class="w-full sm:w-44">
-                    <select v-model="selectedStatus" 
-                            class="w-full py-2 px-3 bg-gray-50/50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-[#F8B803] focus:bg-white focus:outline-none shadow-2xs">
+                    <select v-model="selectedStatus"
+                            class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-gray-400 focus:outline-none">
                         <option value="All">All Statuses</option>
                         <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                     </select>
@@ -898,16 +1085,16 @@ const executeCsvImport = () => {
 
                 <!-- Date Range -->
                 <div class="flex items-center gap-2">
-                    <input v-model="dateFrom" type="date" title="Quotation Date From" class="py-2 px-2.5 bg-gray-50/50 border border-gray-200 rounded-lg text-xs text-gray-700 focus:border-[#F8B803] focus:outline-none" />
+                    <input v-model="dateFrom" type="date" title="Quotation Date From" class="py-2 px-2.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:border-gray-400 focus:outline-none" />
                     <span class="text-gray-400 text-xs">to</span>
-                    <input v-model="dateTo" type="date" title="Quotation Date To" class="py-2 px-2.5 bg-gray-50/50 border border-gray-200 rounded-lg text-xs text-gray-700 focus:border-[#F8B803] focus:outline-none" />
+                    <input v-model="dateTo" type="date" title="Quotation Date To" class="py-2 px-2.5 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 focus:border-gray-400 focus:outline-none" />
                 </div>
             </div>
 
             <div class="flex items-center gap-2 w-full md:w-auto justify-end">
-                <button v-if="search || selectedStatus !== 'All' || dateFrom || dateTo" 
-                        @click="resetFilters" 
-                        class="px-3 py-2 text-xs font-semibold text-gray-600 hover:text-gray-900 bg-gray-100 rounded-lg flex items-center gap-1.5 transition-colors">
+                <button v-if="search || selectedStatus !== 'All' || dateFrom || dateTo"
+                        @click="resetFilters"
+                        class="px-3 py-2 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg flex items-center gap-1.5 transition-colors">
                     <RotateCcw class="w-3.5 h-3.5" />
                     <span>Reset</span>
                 </button>
@@ -915,11 +1102,11 @@ const executeCsvImport = () => {
         </div>
 
         <!-- Quotations Table Card -->
-        <div class="flex-1 rounded-2xl bg-white border border-gray-200 p-6 shadow-sm flex flex-col justify-between">
+        <div class="flex-1 rounded-xl bg-white border border-gray-200 p-6 flex flex-col justify-between">
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead>
-                        <tr class="border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wider">
+                        <tr class="border-b border-gray-200 text-gray-500 text-xs">
                             <th class="pb-3 font-semibold">DATE</th>
                             <th class="pb-3 font-semibold">QUOTE NUMBER</th>
                             <th class="pb-3 font-semibold text-center">QUANTITY</th>
@@ -936,7 +1123,7 @@ const executeCsvImport = () => {
                                 <td class="py-4 whitespace-nowrap">
                                     <span class="font-semibold text-gray-900 text-xs sm:text-sm">{{ formatDate(quote.quotation_date) }}</span>
                                     <span v-if="isExpired(quote.valid_until, quote.status)" 
-                                          class="ml-1.5 px-1.5 py-0.2 rounded text-[10px] bg-amber-100 text-amber-800 font-bold inline-block">
+                                          class="ml-1.5 px-1.5 py-0.2 rounded text-[10px] bg-amber-100 text-amber-800 font-semibold inline-block">
                                         Expired
                                     </span>
                                 </td>
@@ -952,11 +1139,9 @@ const executeCsvImport = () => {
                                             <ChevronRight :class="['w-3.5 h-3.5 transition-transform duration-150', isRowExpanded(quote.id) ? 'rotate-90 text-[#4b5320]' : '']" />
                                         </button>
                                         <div>
-                                            <span class="font-mono text-xs sm:text-sm font-bold text-gray-900 block">{{ quote.quotation_number }}</span>
+                                            <span class="font-mono text-xs sm:text-sm font-semibold text-gray-900 block">{{ quote.quotation_number }}</span>
                                             <div class="flex items-center gap-1.5 mt-0.5">
-                                                <span :class="getStatusBadge(quote.status)" class="px-2 py-0.2 rounded-full text-[10px] font-semibold border inline-flex items-center">
-                                                    {{ quote.status }}
-                                                </span>
+                                                <StatusBadge :status="quote.status" size="sm" />
                                                 <span class="text-[11px] text-gray-500 truncate max-w-[130px]" :title="quote.client_name">{{ quote.client_name }}</span>
                                             </div>
                                         </div>
@@ -965,7 +1150,7 @@ const executeCsvImport = () => {
 
                                 <!-- QUANTITY -->
                                 <td class="py-4 text-center">
-                                    <span class="font-bold text-sm text-gray-900">{{ getQuoteTotalQuantity(quote) }}</span>
+                                    <span class="font-semibold text-sm text-gray-900">{{ getQuoteTotalQuantity(quote) }}</span>
                                     <span v-if="quote.items && quote.items.length > 1" class="block text-[10px] text-gray-400">
                                         ({{ quote.items.length }} items)
                                     </span>
@@ -1012,7 +1197,7 @@ const executeCsvImport = () => {
 
                                 <!-- AMOUNT -->
                                 <td class="py-4 text-right whitespace-nowrap">
-                                    <span class="text-sm sm:text-base font-bold text-gray-900 block">{{ formatCurrency(quote.grand_total || quote.subtotal) }}</span>
+                                    <span class="text-sm sm:text-base font-semibold text-gray-900 block">{{ formatCurrency(quote.grand_total || quote.subtotal) }}</span>
                                     <span v-if="quote.sale" class="block text-[10px] text-blue-600 font-mono font-semibold">
                                         Sale: {{ quote.sale.invoice_number }}
                                     </span>
@@ -1034,10 +1219,19 @@ const executeCsvImport = () => {
                                             <span>Convert to Sale</span>
                                         </SpecularButton>
 
+                                        <!-- Review what the client sent -->
+                                        <button @click="openViewModal(quote)"
+                                                title="Review request details and files"
+                                                aria-label="Review request"
+                                                class="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors relative">
+                                            <Eye class="w-4 h-4" />
+                                            <span v-if="hasClientFiles(quote)" class="absolute top-1 right-1 size-1.5 rounded-full bg-[#4b5320]" aria-hidden="true"></span>
+                                        </button>
+
                                         <!-- Update Status Quick Action -->
                                         <button @click="openStatusModal(quote)" 
                                                 title="Update Status"
-                                                class="px-2 py-1 bg-white border border-gray-200 hover:border-[#F8B803] text-gray-700 rounded-lg text-xs transition-colors shadow-2xs">
+                                                class="px-2 py-1 bg-white border border-gray-200 hover:border-[#F8B803] text-gray-700 rounded-lg text-xs transition-colors">
                                             Status
                                         </button>
 
@@ -1056,7 +1250,7 @@ const executeCsvImport = () => {
                                         </button>
 
                                         <!-- Delete (Only Draft/Cancelled/Rejected) -->
-                                        <button @click="openDeleteModal(quote)" 
+                                        <button v-if="canDelete" @click="openDeleteModal(quote)" 
                                                 title="Delete Quotation"
                                                 class="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
                                             <Trash2 class="w-4 h-4" />
@@ -1068,8 +1262,8 @@ const executeCsvImport = () => {
                             <!-- Expanded Details for Multi-Item Quotes -->
                             <tr v-if="isRowExpanded(quote.id)" class="bg-gray-50/70 border-b border-gray-100">
                                 <td colspan="7" class="p-3 pl-8">
-                                    <div class="rounded-xl border border-gray-200 bg-white p-3.5 shadow-2xs">
-                                        <div class="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
+                                    <div class="rounded-xl border border-gray-200 bg-white p-3.5">
+                                        <div class="text-[11px] font-semibold text-gray-500 mb-2 flex items-center justify-between">
                                             <span>Quotation Line Items ({{ quote.items.length }})</span>
                                             <span class="text-gray-400 font-mono text-[10px]">{{ quote.quotation_number }}</span>
                                         </div>
@@ -1087,9 +1281,9 @@ const executeCsvImport = () => {
                                                 <tr v-for="(item, idx) in quote.items" :key="idx" class="hover:bg-gray-50/50">
                                                     <td class="py-1.5 font-mono text-gray-600 text-[11px]">{{ item.sku }}</td>
                                                     <td class="py-1.5 text-gray-900 font-medium">{{ item.product_name }}</td>
-                                                    <td class="py-1.5 text-center font-bold text-gray-800">{{ item.quantity }}</td>
+                                                    <td class="py-1.5 text-center font-semibold text-gray-800">{{ item.quantity }}</td>
                                                     <td class="py-1.5 text-right text-gray-700">{{ formatCurrency(item.unit_price) }}</td>
-                                                    <td class="py-1.5 text-right font-bold text-gray-900">{{ formatCurrency(item.subtotal || (item.quantity * item.unit_price)) }}</td>
+                                                    <td class="py-1.5 text-right font-semibold text-gray-900">{{ formatCurrency(item.subtotal || (item.quantity * item.unit_price)) }}</td>
                                                 </tr>
                                             </tbody>
                                         </table>
@@ -1126,10 +1320,10 @@ const executeCsvImport = () => {
                             @click="link.url && router.get(link.url)"
                             v-html="link.label"
                             :class="[
-                                link.active ? 'bg-[#4b5320] text-white font-bold' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50',
+                                link.active ? 'bg-[#4b5320] text-white font-semibold' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50',
                                 !link.url ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
                             ]"
-                            class="px-3 py-1 text-xs rounded-lg shadow-2xs transition-colors">
+                            class="px-3 py-1 text-xs rounded-lg transition-colors">
                     </button>
                 </div>
             </div>
@@ -1139,8 +1333,8 @@ const executeCsvImport = () => {
     <!-- ========================================================================= -->
     <!-- CREATE / EDIT QUOTATION MODAL -->
     <!-- ========================================================================= -->
-    <div v-if="showCreateEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-        <div class="bg-white border border-gray-200 rounded-2xl w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showCreateEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
+        <div class="bg-white border border-gray-200 rounded-xl w-full max-w-5xl shadow-xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in duration-150">
             <!-- Modal Header -->
             <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/70">
                 <div class="flex items-center gap-3">
@@ -1148,7 +1342,7 @@ const executeCsvImport = () => {
                         <FileText class="w-6 h-6" />
                     </div>
                     <div>
-                        <h3 class="text-xl font-bold text-gray-900">
+                        <h3 class="text-xl font-semibold text-gray-900">
                             {{ isEditing ? `Edit Quotation (${form.id})` : 'Create New Quotation' }}
                         </h3>
                         <p class="text-xs text-gray-500">Select items from inventory with live pricing and dynamic total calculations</p>
@@ -1170,8 +1364,7 @@ const executeCsvImport = () => {
                 <!-- Section 1: Client Information -->
                 <div class="bg-gray-50/50 p-4 rounded-xl border border-gray-200">
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3">
-                        <h4 class="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-1.5">
-                            <Building2 class="w-4 h-4 text-[#4b5320]" />
+                        <h4 class="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
                             <span>Client / Customer Information</span>
                         </h4>
 
@@ -1264,8 +1457,8 @@ const executeCsvImport = () => {
                     <!-- Quotation Number Badge Preview -->
                     <div class="sm:col-span-3 px-3.5 py-2 rounded-xl border border-amber-200/80 bg-amber-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                         <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold text-[#4b5320]">Quotation Number:</span>
-                            <span class="font-mono text-sm font-black text-gray-900 bg-white px-2 py-0.5 rounded border border-amber-200">{{ currentPreviewQuoteNumber }}</span>
+                            <span class="text-xs font-semibold text-[#4b5320]">Quotation Number:</span>
+                            <span class="font-mono text-sm font-semibold text-gray-900 bg-white px-2 py-0.5 rounded border border-amber-200">{{ currentPreviewQuoteNumber }}</span>
                         </div>
                         <span class="text-[11px] text-gray-500">Format: Q&lt;MMDDYY&gt;-&lt;PRODUCT_ID&gt; (eg Q010423-068SSCR2)</span>
                     </div>
@@ -1317,20 +1510,19 @@ const executeCsvImport = () => {
                 <div>
                     <div class="flex justify-between items-center mb-2 pb-1 border-b border-gray-100">
                         <div>
-                            <h4 class="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-1.5">
-                                <Layers class="w-4 h-4 text-[#4b5320]" />
+                            <h4 class="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
                                 <span>Quotation Line Items</span>
                             </h4>
                             <p class="text-[11px] text-gray-400">Products are populated directly from inventory with real-time stock verification.</p>
                         </div>
-                        <button type="button" @click="addItem" class="px-3 py-1.5 bg-[#F8B803]/20 hover:bg-[#F8B803]/30 text-[#4b5320] font-bold rounded-lg text-xs transition-colors flex items-center gap-1">
+                        <button type="button" @click="addItem" class="px-3 py-1.5 bg-[#F8B803]/20 hover:bg-[#F8B803]/30 text-[#4b5320] font-semibold rounded-lg text-xs transition-colors flex items-center gap-1">
                             <Plus class="w-3.5 h-3.5" />
                             <span>Add Product</span>
                         </button>
                     </div>
 
                     <!-- Items Table -->
-                    <div class="border border-gray-200 rounded-xl overflow-hidden shadow-2xs">
+                    <div class="border border-gray-200 rounded-xl overflow-hidden">
                         <table class="w-full text-left text-xs border-collapse">
                             <thead class="bg-gray-50 text-gray-600 border-b border-gray-200">
                                 <tr>
@@ -1364,7 +1556,7 @@ const executeCsvImport = () => {
                                     <!-- Stock & Stock Warning -->
                                     <td class="p-2.5 text-center">
                                         <span :class="item.stock <= 0 ? 'bg-rose-100 text-rose-700' : (item.quantity > item.stock ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700')"
-                                              class="px-2 py-0.5 rounded-full text-[10px] font-bold block">
+                                              class="px-2 py-0.5 rounded-full text-[10px] font-semibold block">
                                             {{ item.stock }} in stock
                                         </span>
                                         <span v-if="item.quantity > item.stock" class="text-[10px] text-rose-600 font-semibold block mt-1 leading-tight">
@@ -1374,7 +1566,7 @@ const executeCsvImport = () => {
 
                                     <!-- Qty -->
                                     <td class="p-2.5">
-                                        <input v-model.number="item.quantity" type="number" min="1" class="w-full bg-white border border-gray-200 rounded p-1.5 text-xs text-center font-bold text-gray-900 focus:border-[#F8B803] focus:outline-none" />
+                                        <input v-model.number="item.quantity" type="number" min="1" class="w-full bg-white border border-gray-200 rounded p-1.5 text-xs text-center font-semibold text-gray-900 focus:border-[#F8B803] focus:outline-none" />
                                     </td>
 
                                     <!-- Unit Price -->
@@ -1388,7 +1580,7 @@ const executeCsvImport = () => {
                                     </td>
 
                                     <!-- Item Subtotal -->
-                                    <td class="p-2.5 text-right font-mono font-bold text-gray-900">
+                                    <td class="p-2.5 text-right font-mono font-semibold text-gray-900">
                                         {{ formatCurrency(Math.max(0, (item.unit_price - item.discount) * item.quantity)) }}
                                     </td>
 
@@ -1437,7 +1629,7 @@ const executeCsvImport = () => {
 
                     <!-- Right: Dynamic Totals Panel -->
                     <div class="bg-gray-50/80 p-4 rounded-xl border border-gray-200 flex flex-col justify-between">
-                        <h4 class="text-xs font-bold uppercase tracking-wider text-gray-700 mb-3">Calculated Quotation Summary</h4>
+                        <h4 class="text-xs font-semibold text-gray-700 mb-3">Calculated Quotation Summary</h4>
 
                         <div class="space-y-2 text-xs">
                             <div class="flex justify-between text-gray-600">
@@ -1461,8 +1653,8 @@ const executeCsvImport = () => {
                             </div>
 
                             <div class="pt-3 border-t border-gray-200 flex justify-between items-baseline">
-                                <span class="text-sm font-bold text-gray-900">Grand Total:</span>
-                                <span class="text-2xl font-black text-[#4b5320] font-mono">{{ formatCurrency(formGrandTotal) }}</span>
+                                <span class="text-sm font-semibold text-gray-900">Grand Total:</span>
+                                <span class="text-2xl font-semibold text-[#4b5320] font-mono">{{ formatCurrency(formGrandTotal) }}</span>
                             </div>
                         </div>
 
@@ -1503,9 +1695,9 @@ const executeCsvImport = () => {
     <!-- ========================================================================= -->
     <!-- UPDATE STATUS MODAL -->
     <!-- ========================================================================= -->
-    <div v-if="showStatusModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
-            <h3 class="text-lg font-bold text-gray-900 mb-1">Update Quotation Status</h3>
+    <div v-if="showStatusModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl animate-in fade-in duration-150">
+            <h3 class="text-lg font-semibold text-gray-900 mb-1">Update Quotation Status</h3>
             <p class="text-xs text-gray-500 mb-4">Quotation: {{ activeQuotation?.quotation_number }} ({{ activeQuotation?.client_name }})</p>
 
             <div class="space-y-3">
@@ -1513,10 +1705,10 @@ const executeCsvImport = () => {
                 <div class="grid grid-cols-1 gap-2">
                     <label v-for="opt in statusOptions" :key="opt.value" 
                            :class="targetStatus === opt.value ? 'border-[#F8B803] bg-[#F8B803]/10 ring-1 ring-[#F8B803]' : 'border-gray-200 bg-white'"
-                           class="border rounded-xl p-3 cursor-pointer flex items-center justify-between transition-all">
+                           class="border rounded-xl p-3 cursor-pointer flex items-center justify-between transition-colors">
                         <div class="flex items-center gap-2">
                             <input type="radio" v-model="targetStatus" :value="opt.value" class="accent-[#4b5320]" />
-                            <span class="text-sm font-bold text-gray-900">{{ opt.label }}</span>
+                            <span class="text-sm font-semibold text-gray-900">{{ opt.label }}</span>
                         </div>
                         <span :class="opt.badgeClass" class="text-xs px-2 py-0.5 rounded-full border">
                             {{ opt.label }}
@@ -1552,39 +1744,133 @@ const executeCsvImport = () => {
     <!-- ========================================================================= -->
     <!-- CONVERT TO SALE MODAL -->
     <!-- ========================================================================= -->
-    <div v-if="showConvertModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showConvertModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-lg shadow-xl animate-in fade-in duration-150">
             <div class="flex items-center gap-3 mb-4">
                 <div class="p-3 bg-emerald-100 text-emerald-700 rounded-xl">
                     <ShoppingCart class="w-6 h-6" />
                 </div>
                 <div>
-                    <h3 class="text-xl font-bold text-gray-900">Convert Quote to Sale</h3>
+                    <h3 class="text-xl font-semibold text-gray-900">Convert Quote to Sale</h3>
                     <p class="text-xs text-gray-500">Record sales invoice and deduct items from inventory stock</p>
                 </div>
             </div>
 
             <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-2 text-xs mb-4">
-                <div class="flex justify-between"><span class="text-gray-500">Quotation ID:</span> <span class="font-bold text-gray-900">{{ activeQuotation?.quotation_number }}</span></div>
-                <div class="flex justify-between"><span class="text-gray-500">Client / Company:</span> <span class="font-bold text-gray-900">{{ activeQuotation?.client_name }}</span></div>
-                <div class="flex justify-between"><span class="text-gray-500">Items to Transfer:</span> <span class="font-bold text-gray-900">{{ activeQuotation?.items.length }} items</span></div>
-                <div class="flex justify-between pt-2 border-t border-gray-200"><span class="text-gray-700 font-bold">Total Sales Amount:</span> <span class="font-black text-base text-[#4b5320]">{{ formatCurrency(activeQuotation?.grand_total || 0) }}</span></div>
+                <div class="flex justify-between"><span class="text-gray-500">Quotation ID:</span> <span class="font-semibold text-gray-900">{{ activeQuotation?.quotation_number }}</span></div>
+                <div class="flex justify-between"><span class="text-gray-500">Client / Company:</span> <span class="font-semibold text-gray-900">{{ activeQuotation?.client_name }}</span></div>
+                <div class="flex justify-between"><span class="text-gray-500">Items to Transfer:</span> <span class="font-semibold text-gray-900">{{ activeQuotation?.items.length }} items</span></div>
+                <div class="flex justify-between pt-2 border-t border-gray-200"><span class="text-gray-700 font-semibold">Total Sales Amount:</span> <span class="font-semibold text-base text-[#4b5320]">{{ formatCurrency(activeQuotation?.grand_total || 0) }}</span></div>
             </div>
 
-            <div class="mb-4">
-                <label class="block text-xs font-semibold text-gray-700 mb-1">Payment Method</label>
-                <select v-model="paymentMethod" class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs text-gray-900 focus:border-[#F8B803] focus:outline-none">
-                    <option>Bank Transfer / Check</option>
-                    <option>Cash on Delivery (COD)</option>
-                    <option>Direct Cash</option>
-                    <option>Credit Terms (30 Days)</option>
-                </select>
+            <div class="space-y-4 mb-4">
+                <!-- Payment Details -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">Payment Method</label>
+                        <select v-model="paymentMethod" class="w-full bg-white border border-gray-200 rounded-lg p-2.5 text-xs text-gray-900 focus:border-[#4b5320] focus:outline-none">
+                            <option>Bank Transfer / Check</option>
+                            <option>GCash</option>
+                            <option>Direct Cash</option>
+                            <option>Cash on Delivery (COD)</option>
+                            <option>Credit Terms (30 Days)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">Amount Paid (PHP)</label>
+                        <input
+                            v-model.number="convertAmountPaid"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            class="w-full bg-white border border-gray-200 rounded-lg p-2 text-xs text-gray-900 focus:border-[#4b5320] focus:outline-none"
+                            placeholder="0.00"
+                        />
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-700 mb-1">Payment Reference / Transaction No.</label>
+                    <input
+                        v-model="convertPaymentReference"
+                        type="text"
+                        class="w-full bg-white border border-gray-200 rounded-lg p-2 text-xs text-gray-900 focus:border-[#4b5320] focus:outline-none"
+                        placeholder="e.g. GCash Ref #, Bank Check #, Deposit Slip #"
+                    />
+                </div>
+
+                <!-- Fulfillment / Delivery Section -->
+                <div class="pt-3 border-t border-gray-200">
+                    <h4 class="text-xs font-semibold text-[#4b5320] mb-2 flex items-center gap-1.5">
+                        <span>Fulfillment & Dispatch Setup</span>
+                    </h4>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">Fulfillment Mode</label>
+                            <select v-model="convertFulfillmentType" class="w-full bg-white border border-gray-200 rounded-lg p-2 text-xs text-gray-900 focus:border-[#4b5320] focus:outline-none">
+                                <option value="Delivery">Jobsite / Client Delivery</option>
+                                <option value="Store Pickup">Customer Store Pickup</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">Recipient Name</label>
+                            <input
+                                v-model="convertRecipientName"
+                                type="text"
+                                class="w-full bg-white border border-gray-200 rounded-lg p-2 text-xs text-gray-900 focus:border-[#4b5320] focus:outline-none"
+                                placeholder="Receiver name"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">Contact Phone</label>
+                            <input
+                                v-model="convertContactNumber"
+                                type="text"
+                                class="w-full bg-white border border-gray-200 rounded-lg p-2 text-xs text-gray-900 focus:border-[#4b5320] focus:outline-none"
+                                placeholder="Contact number"
+                            />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">Delivery Schedule</label>
+                            <input
+                                v-model="convertDeliverySchedule"
+                                type="date"
+                                class="w-full bg-white border border-gray-200 rounded-lg p-2 text-xs text-gray-900 focus:border-[#4b5320] focus:outline-none"
+                            />
+                        </div>
+                    </div>
+
+                    <div v-if="convertFulfillmentType === 'Delivery'" class="mb-3">
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">Delivery Address</label>
+                        <textarea
+                            v-model="convertDeliveryAddress"
+                            rows="2"
+                            class="w-full bg-white border border-gray-200 rounded-lg p-2 text-xs text-gray-900 focus:border-[#4b5320] focus:outline-none resize-none"
+                            placeholder="Complete delivery address..."
+                        ></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-1">Instructions / Notes</label>
+                        <input
+                            v-model="convertDeliveryInstructions"
+                            type="text"
+                            class="w-full bg-white border border-gray-200 rounded-lg p-2 text-xs text-gray-900 focus:border-[#4b5320] focus:outline-none"
+                            placeholder="Gate pass, delivery contact person, special instructions..."
+                        />
+                    </div>
+                </div>
             </div>
 
             <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2 mb-6">
                 <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <span>
-                    Executing this conversion will immediately deduct the required item quantities from your active Inventory database and mark this quotation as <strong>Completed</strong>.
+                    Executing this conversion will immediately deduct item quantities from your active Inventory database, log stock movements, and initialize customer order fulfillment tracking.
                 </span>
             </div>
 
@@ -1613,10 +1899,239 @@ const executeCsvImport = () => {
     </div>
 
     <!-- ========================================================================= -->
+    <!-- CLIENT REQUEST REVIEW -->
+    <!-- ========================================================================= -->
+    <div v-if="showViewModal && activeQuotation" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto" @keydown.esc="showViewModal = false">
+        <div role="dialog" aria-modal="true" aria-labelledby="review-title" class="bg-white border border-gray-200 rounded-xl w-full max-w-3xl shadow-xl flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 border-b border-gray-100 flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <h3 id="review-title" class="text-lg font-semibold text-gray-900">Request {{ activeQuotation.quotation_number }}</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">
+                        {{ activeQuotation.request_details?.source === 'staff_import' ? `Imported from ${activeQuotation.request_details.file_name ?? 'a file'}${activeQuotation.request_details.imported_by ? ` by ${activeQuotation.request_details.imported_by}` : ''}` : activeQuotation.request_details ? 'Submitted from the quotation request form' : 'Created by staff' }}
+                        · {{ formatDate(activeQuotation.request_details?.submitted_at || activeQuotation.created_at || activeQuotation.quotation_date) }}
+                    </p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <StatusBadge :status="activeQuotation.status" />
+                    <button type="button" @click="showViewModal = false" class="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100" aria-label="Close">
+                        <X class="w-5 h-5" />
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-6 overflow-y-auto space-y-6 text-sm">
+                <p class="text-xs text-gray-500">
+                    Client-submitted information. Product matches, prices and availability are not confirmed until you review and price the quotation.
+                </p>
+
+                <section>
+                    <h4 class="text-xs font-medium text-gray-500 mb-2">Client</h4>
+                    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+                        <div class="flex gap-2"><dt class="text-gray-500 w-24 shrink-0">Company</dt><dd class="text-gray-900 font-medium min-w-0 break-words">{{ activeQuotation.client_name }}</dd></div>
+                        <div class="flex gap-2"><dt class="text-gray-500 w-24 shrink-0">Contact</dt><dd class="text-gray-900 min-w-0 break-words">{{ activeQuotation.contact_person || '—' }}</dd></div>
+                        <div class="flex gap-2"><dt class="text-gray-500 w-24 shrink-0">Email</dt><dd class="text-gray-900 min-w-0 break-all">{{ activeQuotation.email || '—' }}</dd></div>
+                        <div class="flex gap-2"><dt class="text-gray-500 w-24 shrink-0">Phone</dt><dd class="text-gray-900 min-w-0">{{ activeQuotation.phone || '—' }}</dd></div>
+                    </dl>
+                </section>
+
+                <section v-if="activeQuotation.request_details?.project_type || activeQuotation.request_details?.timeline">
+                    <h4 class="text-xs font-medium text-gray-500 mb-2">Project</h4>
+                    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+                        <div class="flex gap-2"><dt class="text-gray-500 w-24 shrink-0">Type</dt><dd class="text-gray-900">{{ activeQuotation.request_details?.project_type || '—' }}</dd></div>
+                        <div class="flex gap-2"><dt class="text-gray-500 w-24 shrink-0">Timeline</dt><dd class="text-gray-900">{{ activeQuotation.request_details?.timeline || '—' }}</dd></div>
+                    </dl>
+                </section>
+
+                <section v-if="activeQuotation.request_details?.brands?.length || activeQuotation.request_details?.unlisted_brands">
+                    <h4 class="text-xs font-medium text-gray-500 mb-2">Brands requested</h4>
+                    <ul class="space-y-1">
+                        <li v-for="(b, i) in activeQuotation.request_details?.brands ?? []" :key="i" class="text-gray-900">
+                            <span class="font-medium">{{ b.brand }}</span><span v-if="b.details" class="text-gray-600"> — {{ b.details }}</span>
+                        </li>
+                    </ul>
+                    <p v-if="activeQuotation.request_details?.unlisted_brands" class="mt-1.5 text-gray-700">
+                        <span class="text-gray-500">Not in our list:</span> {{ activeQuotation.request_details.unlisted_brands }}
+                    </p>
+                </section>
+
+                <section>
+                    <h4 class="text-xs font-medium text-gray-500 mb-2">Files</h4>
+                    <ul v-if="hasClientFiles(activeQuotation)" class="divide-y divide-gray-100 border border-gray-200 rounded-lg">
+                        <li v-if="activeQuotation.material_file_url" class="flex items-center gap-3 px-3 py-2">
+                            <span class="text-xs text-gray-500 w-28 shrink-0">Material list</span>
+                            <span class="min-w-0 flex-1 truncate text-gray-900" :title="activeQuotation.material_file_name ?? ''">{{ activeQuotation.material_file_name || 'Material list file' }}</span>
+                            <a :href="activeQuotation.material_file_url" target="_blank" rel="noopener" class="text-xs font-medium text-[#4b5320] hover:underline shrink-0">Open</a>
+                        </li>
+                        <li v-for="f in activeQuotation.files ?? []" :key="f.id" class="flex items-center gap-3 px-3 py-2">
+                            <span class="text-xs text-gray-500 w-28 shrink-0">Product list</span>
+                            <span class="min-w-0 flex-1 truncate text-gray-900" :title="f.original_name">{{ f.original_name }}</span>
+                            <span class="text-xs text-gray-400 shrink-0">{{ formatFileSize(f.size) }}</span>
+                            <a :href="f.url" target="_blank" rel="noopener" class="text-xs font-medium text-[#4b5320] hover:underline shrink-0">Open</a>
+                        </li>
+                        <li v-if="activeQuotation.attachment_url" class="flex items-center gap-3 px-3 py-2">
+                            <span class="text-xs text-gray-500 w-28 shrink-0">Specs / BOQ / plans</span>
+                            <span class="min-w-0 flex-1 truncate text-gray-900">Specification document</span>
+                            <a :href="activeQuotation.attachment_url" target="_blank" rel="noopener" class="text-xs font-medium text-[#4b5320] hover:underline shrink-0">Open</a>
+                        </li>
+                    </ul>
+                    <p v-else class="text-gray-500">No files attached.</p>
+                </section>
+
+                <section>
+                    <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+                        <h4 class="text-xs font-medium text-gray-500">Materials ({{ reviewItems.length }})</h4>
+                        <p v-if="reviewOpenCount" class="text-xs text-amber-700">{{ reviewOpenCount }} line(s) need product matching or a price</p>
+                    </div>
+                    <div v-if="reviewItems.length" class="border border-gray-200 rounded-lg overflow-x-auto max-h-72 overflow-y-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-gray-50 text-gray-500 sticky top-0">
+                                <tr>
+                                    <th class="px-3 py-2 font-medium">Description</th>
+                                    <th class="px-3 py-2 font-medium text-right">Qty</th>
+                                    <th class="px-3 py-2 font-medium text-right">Unit price</th>
+                                    <th class="px-3 py-2 font-medium">To do</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <tr v-for="(item, i) in reviewItems" :key="item.id ?? i">
+                                    <td class="px-3 py-2 text-gray-900">
+                                        {{ item.product_name }}
+                                        <span v-if="item.product_id" class="block font-mono text-[10px] text-gray-400">{{ item.sku }}</span>
+                                    </td>
+                                    <td class="px-3 py-2 text-right text-gray-900">{{ item.quantity }}</td>
+                                    <td class="px-3 py-2 text-right text-gray-900 whitespace-nowrap">{{ item.needsPrice ? '—' : formatCurrency(item.unit_price) }}</td>
+                                    <td class="px-3 py-2 text-amber-700 whitespace-nowrap">
+                                        {{ [item.needsMatching ? 'Match product' : '', item.needsPrice ? 'Set price' : ''].filter(Boolean).join(' · ') }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p v-else class="text-gray-500">
+                        No material lines yet.<template v-if="activeQuotation.material_file_url"> Read the items from the material list file, then add them with “Edit &amp; price items”.</template>
+                    </p>
+                </section>
+
+                <details v-if="activeQuotation.notes" class="text-xs">
+                    <summary class="cursor-pointer font-medium text-gray-600">Notes</summary>
+                    <pre class="mt-2 whitespace-pre-wrap font-sans text-gray-700">{{ activeQuotation.notes }}</pre>
+                </details>
+            </div>
+
+            <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex flex-wrap justify-end gap-2">
+                <SpecularButton variant="secondary" size="md" :radius="10" @click="openPrintModal(activeQuotation)">Print</SpecularButton>
+                <SpecularButton variant="secondary" size="md" :radius="10" @click="statusFromReview">Update status</SpecularButton>
+                <SpecularButton variant="brand" size="md" :radius="10" @click="editFromReview">Edit &amp; price items</SpecularButton>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- IMPORT A MATERIAL LIST AS A DRAFT QUOTATION -->
+    <!-- ========================================================================= -->
+    <div v-if="showMaterialImportModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
+        <div role="dialog" aria-modal="true" aria-labelledby="material-import-title" class="bg-white border border-gray-200 rounded-xl w-full max-w-3xl shadow-xl flex flex-col max-h-[90vh]">
+            <div class="px-6 py-4 border-b border-gray-100 flex items-start justify-between gap-4">
+                <div>
+                    <h3 id="material-import-title" class="text-lg font-semibold text-gray-900">Import material list</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">Creates a draft quotation from a PDF, Excel, CSV, JPG or PNG file (up to 10 MB). Check the lines and set prices afterwards.</p>
+                </div>
+                <button type="button" @click="showMaterialImportModal = false" class="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100" aria-label="Close">
+                    <X class="w-5 h-5" />
+                </button>
+            </div>
+
+            <div class="p-6 overflow-y-auto space-y-5 text-sm">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div v-if="clients.length" class="sm:col-span-2">
+                        <label for="mi-client" class="block text-xs font-medium text-gray-700 mb-1">Existing client (optional)</label>
+                        <select id="mi-client" v-model="materialImport.clientId" @change="onMaterialClientPick" class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-gray-400 focus:outline-none">
+                            <option value="">Choose a client…</option>
+                            <option v-for="c in clients" :key="c.id" :value="String(c.id)">{{ c.company_name }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="mi-company" class="block text-xs font-medium text-gray-700 mb-1">Client / company name <span class="text-red-600">*</span></label>
+                        <input id="mi-company" v-model="materialImport.clientName" maxlength="255" class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-gray-400 focus:outline-none" />
+                    </div>
+                    <div>
+                        <label for="mi-contact" class="block text-xs font-medium text-gray-700 mb-1">Contact person</label>
+                        <input id="mi-contact" v-model="materialImport.contactPerson" maxlength="255" class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-gray-400 focus:outline-none" />
+                    </div>
+                    <div>
+                        <label for="mi-email" class="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                        <input id="mi-email" v-model="materialImport.email" type="email" maxlength="255" class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-gray-400 focus:outline-none" />
+                    </div>
+                    <div>
+                        <label for="mi-phone" class="block text-xs font-medium text-gray-700 mb-1">Phone</label>
+                        <input id="mi-phone" v-model="materialImport.phone" maxlength="50" class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm focus:border-gray-400 focus:outline-none" />
+                    </div>
+                </div>
+
+                <div>
+                    <span class="block text-xs font-medium text-gray-700 mb-1">Material list file <span class="text-red-600">*</span></span>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <label class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 focus-within:outline-2 focus-within:outline-[#4b5320]">
+                            <Upload class="size-3.5 text-gray-500" />
+                            <span>{{ materialImport.file ? 'Choose another file' : 'Choose file' }}</span>
+                            <input type="file" class="sr-only" accept=".pdf,.xlsx,.xls,.csv,.jpg,.jpeg,.png" @change="onMaterialFileChange" />
+                        </label>
+                        <span v-if="materialImport.file" class="min-w-0 truncate text-xs text-gray-700">{{ materialImport.file.name }} · {{ formatFileSize(materialImport.file.size) }}</span>
+                    </div>
+                </div>
+
+                <p v-if="materialImportError" class="text-xs font-medium text-red-600" role="alert">{{ materialImportError }}</p>
+                <p v-if="isReadingMaterials" class="text-xs text-gray-500" role="status">Reading the file… photos and scanned PDFs can take up to a minute.</p>
+
+                <div v-if="materialPreview" class="space-y-2">
+                    <p class="text-xs text-gray-600">
+                        {{ materialPreview.valid_count }} line(s) will be imported<template v-if="materialPreview.invalid_count">, {{ materialPreview.invalid_count }} skipped (missing description or quantity)</template><template v-if="materialPreview.unparsed_count">, {{ materialPreview.unparsed_count }} line(s) of the file not readable as materials</template>.
+                    </p>
+                    <p v-if="materialPreview.warning" class="text-xs text-amber-700">{{ materialPreview.warning }}</p>
+                    <div class="border border-gray-200 rounded-lg overflow-x-auto max-h-64 overflow-y-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-gray-50 text-gray-500 sticky top-0">
+                                <tr>
+                                    <th class="px-3 py-2 font-medium">Description</th>
+                                    <th class="px-3 py-2 font-medium text-right">Qty</th>
+                                    <th class="px-3 py-2 font-medium">Catalog match</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <tr v-for="(item, i) in materialPreview.items" :key="i" :class="item.errors.length ? 'text-gray-400' : ''">
+                                    <td class="px-3 py-2">
+                                        {{ item.description || '—' }}
+                                        <span v-if="item.errors.length" class="block text-[11px] text-red-600">{{ item.errors.join(' ') }}</span>
+                                    </td>
+                                    <td class="px-3 py-2 text-right whitespace-nowrap">{{ item.quantity ?? '—' }} {{ item.unit || '' }}</td>
+                                    <td class="px-3 py-2">
+                                        <template v-if="item.match">{{ item.match.name }} <span class="font-mono text-[10px] text-gray-400">{{ item.match.sku }}</span></template>
+                                        <span v-else class="text-amber-700">Needs matching and a price</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex flex-wrap justify-end gap-2">
+                <SpecularButton variant="secondary" size="md" :radius="10" @click="showMaterialImportModal = false">Cancel</SpecularButton>
+                <SpecularButton variant="secondary" size="md" :radius="10" :disabled="!materialImport.file || isReadingMaterials" @click="readMaterialFile">
+                    {{ isReadingMaterials ? 'Reading…' : materialPreview ? 'Read again' : 'Read file' }}
+                </SpecularButton>
+                <SpecularButton variant="brand" size="md" :radius="10" :disabled="!materialPreview || isCreatingFromMaterials" @click="createFromMaterials">
+                    {{ isCreatingFromMaterials ? 'Creating…' : 'Create draft quotation' }}
+                </SpecularButton>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================================= -->
     <!-- PROFESSIONAL PRINT / PREVIEW MODAL -->
     <!-- ========================================================================= -->
-    <div v-if="showPrintModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 overflow-y-auto print:p-0 print:bg-white print:static">
-        <div class="bg-white border border-gray-200 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] print:max-h-none print:shadow-none print:border-none">
+    <div v-if="showPrintModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 overflow-y-auto print:p-0 print:bg-white print:static">
+        <div class="bg-white border border-gray-200 rounded-xl w-full max-w-4xl shadow-xl overflow-hidden flex flex-col max-h-[95vh] print:max-h-none print:shadow-none print:border-none">
             <!-- Modal Actions Bar (Hidden in print) -->
             <div class="px-6 py-3 border-b border-gray-100 bg-gray-50 flex justify-between items-center print:hidden">
                 <div class="flex items-center gap-2 text-sm font-semibold text-gray-700">
@@ -1624,7 +2139,7 @@ const executeCsvImport = () => {
                     <span>Print Preview — Quotation #{{ activeQuotation?.quotation_number }}</span>
                 </div>
                 <div class="flex items-center gap-3">
-                    <button @click="triggerPrint" class="px-4 py-2 bg-[#4b5320] text-white font-bold text-xs rounded-lg shadow-sm hover:opacity-95 flex items-center gap-2">
+                    <button @click="triggerPrint" class="px-4 py-2 bg-[#4b5320] text-white font-semibold text-xs rounded-lg hover:opacity-95 flex items-center gap-2">
                         <Printer class="w-4 h-4" />
                         <span>Print Quotation</span>
                     </button>
@@ -1672,6 +2187,39 @@ const executeCsvImport = () => {
                             <p v-if="activeQuotation?.address" class="text-gray-700 mt-1">Address: {{ activeQuotation?.address }}</p>
                         </div>
                     </div>
+
+                    <!-- Client Attached Spec Document -->
+                    <div v-if="activeQuotation?.attachment_url" class="mt-4 pt-3 border-t border-gray-200 flex items-center justify-between print:hidden">
+                        <div class="flex items-center gap-2 text-xs text-gray-700">
+                            <Paperclip class="w-4 h-4 text-[#4b5320]" />
+                            <span class="font-bold">Attached Technical Drawing / BOQ / Specs</span>
+                        </div>
+                        <a
+                            :href="activeQuotation.attachment_url"
+                            target="_blank"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#4b5320] text-white text-xs font-bold rounded-lg hover:opacity-90 transition-opacity"
+                        >
+                            <Download class="w-3.5 h-3.5" />
+                            <span>Download Specification File</span>
+                        </a>
+                    </div>
+
+                    <!-- Client's original material list (the file the line items were extracted from) -->
+                    <div v-if="(activeQuotation as any)?.material_file_url" class="mt-3 pt-3 border-t border-gray-200 flex items-center justify-between print:hidden">
+                        <div class="flex items-center gap-2 text-xs text-gray-700">
+                            <Paperclip class="w-4 h-4 text-[#4b5320]" />
+                            <span class="font-bold">Client's Material List</span>
+                            <span class="text-gray-500 truncate max-w-[12rem]">{{ (activeQuotation as any).material_file_name }}</span>
+                        </div>
+                        <a
+                            :href="(activeQuotation as any).material_file_url"
+                            target="_blank"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#4b5320] text-white text-xs font-bold rounded-lg hover:opacity-90 transition-opacity"
+                        >
+                            <Download class="w-3.5 h-3.5" />
+                            <span>Download Original File</span>
+                        </a>
+                    </div>
                 </div>
 
                 <!-- Items Table -->
@@ -1694,6 +2242,10 @@ const executeCsvImport = () => {
                                 <td class="py-3 px-3 text-center text-gray-400 font-mono">{{ idx + 1 }}</td>
                                 <td class="py-3 px-3">
                                     <p class="font-bold text-gray-900">{{ item.product_name }}</p>
+                                    <div v-if="(item.shortage || 0) > 0" class="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 print:hidden">
+                                        <AlertTriangle class="w-3 h-3 text-amber-600" />
+                                        <span>Shortage: {{ item.shortage }} (Available in stock: {{ item.available_stock || 0 }})</span>
+                                    </div>
                                 </td>
                                 <td class="py-3 px-3 font-mono text-gray-500 text-[11px]">{{ item.sku }}</td>
                                 <td class="py-3 px-3 text-center font-bold text-gray-900">{{ item.quantity }}</td>
@@ -1763,18 +2315,18 @@ const executeCsvImport = () => {
     <!-- ========================================================================= -->
     <!-- CONFIRM DELETE MODAL -->
     <!-- ========================================================================= -->
-    <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl animate-in fade-in duration-150">
             <div class="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mb-4">
                 <Trash2 class="w-6 h-6" />
             </div>
-            <h3 class="text-xl font-bold text-gray-900 mb-2">Delete Quotation</h3>
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">Delete Quotation</h3>
             <p class="text-gray-600 text-sm mb-4 leading-relaxed">
                 Are you sure you want to delete quotation <strong class="text-gray-900">"{{ activeQuotation?.quotation_number }}"</strong> for {{ activeQuotation?.client_name }}? This action cannot be undone.
             </p>
             <div class="mt-4 mb-6">
                 <label class="block text-xs font-semibold text-gray-700 mb-1.5">
-                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                    Type <span class="font-mono font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
                 </label>
                 <input
                     v-model="deleteConfirmInput"
@@ -1808,12 +2360,12 @@ const executeCsvImport = () => {
     </div>
 
     <!-- Action Confirmation Modal -->
-    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl animate-in fade-in duration-150">
             <div class="w-11 h-11 rounded-full bg-amber-50 text-[#F8B803] flex items-center justify-center mb-4 border border-amber-100">
                 <CheckCircle2 class="w-6 h-6" />
             </div>
-            <h3 class="text-xl font-bold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
+            <h3 class="text-xl font-semibold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
             <p class="text-gray-600 text-sm mb-4 leading-relaxed">
                 {{ confirmOptions.description }}
             </p>
@@ -1853,8 +2405,8 @@ const executeCsvImport = () => {
     <!-- ========================================================================= -->
     <!-- CSV IMPORT MODAL -->
     <!-- ========================================================================= -->
-    <div v-if="showImportModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-        <div class="bg-white border border-gray-200 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showImportModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
+        <div class="bg-white border border-gray-200 rounded-xl w-full max-w-3xl shadow-xl overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in duration-150">
             <!-- Modal Header -->
             <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/70">
                 <div class="flex items-center gap-3">
@@ -1862,7 +2414,7 @@ const executeCsvImport = () => {
                         <FileSpreadsheet class="w-6 h-6" />
                     </div>
                     <div>
-                        <h3 class="text-xl font-bold text-gray-900">Import Quotations via CSV</h3>
+                        <h3 class="text-xl font-semibold text-gray-900">Import Quotations via CSV</h3>
                         <p class="text-xs text-gray-500">Upload proposal estimates and line items in bulk</p>
                     </div>
                 </div>
@@ -1876,7 +2428,7 @@ const executeCsvImport = () => {
                 <!-- CSV Headers & Format Notice -->
                 <div class="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2 text-xs text-amber-900">
                     <div class="flex items-center justify-between">
-                        <span class="font-bold flex items-center gap-1.5">
+                        <span class="font-semibold flex items-center gap-1.5">
                             <AlertCircle class="w-4 h-4 text-amber-600" />
                             Required CSV Column Headers
                         </span>
@@ -1885,7 +2437,7 @@ const executeCsvImport = () => {
                             Download Sample Template
                         </button>
                     </div>
-                    <div class="font-mono bg-white p-2 rounded-lg border border-amber-200 text-[11px] text-gray-800 overflow-x-auto whitespace-nowrap shadow-2xs">
+                    <div class="font-mono bg-white p-2 rounded-lg border border-amber-200 text-[11px] text-gray-800 overflow-x-auto whitespace-nowrap">
                         DATE, QUOTE NUMBER, QUANTITY, DESCRIPTION, UNIT PRICE, AMOUNT
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px] text-gray-700">
@@ -1905,7 +2457,7 @@ const executeCsvImport = () => {
                     @drop.prevent="onFileDrop"
                     @click="triggerFileSelect"
                     :class="[
-                        'border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all',
+                        'border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors',
                         isDragging ? 'border-[#4b5320] bg-[#4b5320]/5' : 'border-gray-300 hover:border-[#F8B803] bg-gray-50/40'
                     ]"
                 >
@@ -1929,7 +2481,7 @@ const executeCsvImport = () => {
                 <div v-if="csvError" class="p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-xs text-rose-800">
                     <AlertCircle class="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                     <div>
-                        <strong class="font-bold block">CSV Parsing / Validation Notice</strong>
+                        <strong class="font-semibold block">CSV Parsing / Validation Notice</strong>
                         <span>{{ csvError }}</span>
                     </div>
                 </div>
@@ -1938,26 +2490,31 @@ const executeCsvImport = () => {
                 <div v-if="csvValidationResult" class="space-y-3">
                     <div class="grid grid-cols-3 gap-2">
                         <div class="p-2.5 rounded-xl border border-gray-200 bg-gray-50 text-center">
-                            <span class="text-[10px] uppercase font-semibold text-gray-400 block">Total Rows</span>
-                            <span class="text-base font-black text-gray-800">{{ csvValidationResult.total_rows }}</span>
+                            <span class="text-[10px] font-semibold text-gray-400 block">Total Rows</span>
+                            <span class="text-base font-semibold text-gray-800">{{ csvValidationResult.total_rows }}</span>
                         </div>
                         <div class="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/60 text-center">
-                            <span class="text-[10px] uppercase font-semibold text-emerald-600 block">Valid Rows</span>
-                            <span class="text-base font-black text-emerald-700">{{ csvValidationResult.valid_count }}</span>
+                            <span class="text-[10px] font-semibold text-emerald-600 block">Valid Rows</span>
+                            <span class="text-base font-semibold text-emerald-700">{{ csvValidationResult.valid_count }}</span>
                         </div>
                         <div class="p-2.5 rounded-xl border border-rose-200 bg-rose-50/60 text-center">
-                            <span class="text-[10px] uppercase font-semibold text-rose-600 block">Invalid Rows</span>
-                            <span class="text-base font-black text-rose-700">{{ csvValidationResult.invalid_count }}</span>
+                            <span class="text-[10px] font-semibold text-rose-600 block">Invalid Rows</span>
+                            <span class="text-base font-semibold text-rose-700">{{ csvValidationResult.invalid_count }}</span>
                         </div>
                     </div>
+
+                    <p v-if="csvValidationResult.existing_count" class="text-xs text-amber-700">
+                        {{ csvValidationResult.existing_count }} quotation number(s) already exist and will be skipped{{ importMode === 'replace' ? '' : ', so nothing is duplicated' }}.
+                        <template v-if="importMode === 'replace'"> Replace mode will overwrite them instead.</template>
+                    </p>
 
                     <!-- Configuration Options -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                         <div>
                             <label class="block text-xs font-semibold text-gray-700 mb-1">Import Mode Strategy</label>
                             <select v-model="importMode" class="w-full text-xs p-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-[#4b5320]">
-                                <option value="append">Append (Assign unique suffix if quote number exists)</option>
-                                <option value="replace">Replace (Overwrite existing quote with CSV items)</option>
+                                <option value="append">Add new only (skip quote numbers that already exist)</option>
+                                <option v-if="canDelete" value="replace">Replace (Overwrite existing quote with CSV items)</option>
                             </select>
                         </div>
                         <div>
@@ -1969,7 +2526,7 @@ const executeCsvImport = () => {
                     <!-- Live Valid Rows Preview Table -->
                     <div v-if="csvValidationResult.valid_rows && csvValidationResult.valid_rows.length > 0" class="border border-gray-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
                         <table class="w-full text-left text-xs">
-                            <thead class="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase tracking-wider text-[10px]">
+                            <thead class="bg-gray-50 border-b border-gray-200 text-gray-500 text-[10px]">
                                 <tr>
                                     <th class="p-2 font-semibold">DATE</th>
                                     <th class="p-2 font-semibold">QUOTE NUMBER</th>
@@ -1982,11 +2539,11 @@ const executeCsvImport = () => {
                             <tbody class="divide-y divide-gray-100">
                                 <tr v-for="(vRow, idx) in csvValidationResult.valid_rows" :key="idx" class="hover:bg-gray-50/50">
                                     <td class="p-2 font-semibold text-gray-900 whitespace-nowrap">{{ vRow.display_date }}</td>
-                                    <td class="p-2 font-mono text-[11px] font-bold text-gray-800 whitespace-nowrap">{{ vRow.quote_number }}</td>
-                                    <td class="p-2 text-center font-bold text-gray-700">{{ vRow.quantity }}</td>
+                                    <td class="p-2 font-mono text-[11px] font-semibold text-gray-800 whitespace-nowrap">{{ vRow.quote_number }}<span v-if="vRow.exists" class="ml-1.5 font-sans text-[10px] font-medium text-amber-700">exists</span></td>
+                                    <td class="p-2 text-center font-semibold text-gray-700">{{ vRow.quantity }}</td>
                                     <td class="p-2 text-gray-900 truncate max-w-[160px]" :title="vRow.description">{{ vRow.description }}</td>
                                     <td class="p-2 text-right text-gray-600 whitespace-nowrap">{{ formatCurrency(vRow.unit_price) }}</td>
-                                    <td class="p-2 text-right font-bold text-gray-900 whitespace-nowrap">{{ formatCurrency(vRow.amount) }}</td>
+                                    <td class="p-2 text-right font-semibold text-gray-900 whitespace-nowrap">{{ formatCurrency(vRow.amount) }}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1994,7 +2551,7 @@ const executeCsvImport = () => {
 
                     <!-- Invalid Rows Listing -->
                     <div v-if="csvValidationResult.invalid_rows && csvValidationResult.invalid_rows.length > 0" class="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-1">
-                        <span class="text-xs font-bold text-rose-800 block">Errors in Uploaded CSV:</span>
+                        <span class="text-xs font-semibold text-rose-800 block">Errors in Uploaded CSV:</span>
                         <div class="text-[11px] text-rose-700 max-h-24 overflow-y-auto space-y-1">
                             <div v-for="(inv, i) in csvValidationResult.invalid_rows" :key="i">
                                 Row {{ inv.row_number }}: {{ inv.errors?.join(', ') }}
@@ -2031,7 +2588,7 @@ const executeCsvImport = () => {
     </div>
 
     <!-- Floating Toast Notification -->
-    <div v-if="notification" class="fixed top-5 right-5 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg border text-sm transition-all animate-in fade-in slide-in-from-top-3 duration-200"
+    <div v-if="notification" class="fixed top-5 right-5 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg border text-sm transition-colors animate-in fade-in duration-200"
          :class="{
              'bg-emerald-50 border-emerald-200 text-emerald-800': notification.type === 'success',
              'bg-rose-50 border-rose-200 text-rose-800': notification.type === 'error',

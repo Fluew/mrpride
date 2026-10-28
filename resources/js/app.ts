@@ -13,6 +13,7 @@ createInertiaApp({
         switch (true) {
             case name === 'Welcome':
             case name === 'NotFound':
+            case name === 'Forbidden':
             case name === 'Maintenance':
             case name === 'Products/Index':
             case name === 'Company/Index':

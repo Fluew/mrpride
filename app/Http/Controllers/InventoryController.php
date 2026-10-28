@@ -6,34 +6,37 @@ use App\Models\Product;
 use App\Models\StockMovement;
 use App\Models\Supplier;
 use App\Models\Team;
+use App\Services\Inventory\InventoryExporter;
+use App\Services\MaterialList\ExtractionException;
+use App\Services\MaterialList\FileReader;
+use App\Services\MaterialList\MaterialParser;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class InventoryController extends Controller
 {
+    private const THRESHOLD_SQL = 'COALESCE(NULLIF(reorder_level, 0), NULLIF(min_stock, 0), 10)';
+
     /**
-     * Display a listing of inventory products with metrics and filters.
+     * Active products for the inventory list, with the page's search / category / status filters.
+     *
+     * Sorted by stock availability so urgent items come first: out of stock, then low stock
+     * (0 < stock <= threshold), then in stock; alphabetically within each group.
      */
-    public function index(Request $request): InertiaResponse
+    private function productListQuery(int $teamId, ?string $search, ?string $category, ?string $status): Builder
     {
-        $team = $request->user()->currentTeam;
-        if (! $team) {
-            abort(403, 'No active team selected.');
-        }
+        $thresholdSql = self::THRESHOLD_SQL;
 
-        $search = $request->input('search');
-        $category = $request->input('category', 'All Categories');
-        $status = $request->input('status', 'All');
-
-        $query = Product::where('team_id', $team->id)
+        $query = Product::where('team_id', $teamId)
             ->where('is_active', true)
             ->with('supplier:id,name');
 
@@ -49,8 +52,6 @@ class InventoryController extends Controller
             $query->where('category', $category);
         }
 
-        $thresholdSql = 'COALESCE(NULLIF(reorder_level, 0), NULLIF(min_stock, 0), 10)';
-
         if ($status && $status !== 'All') {
             if ($status === 'Out of Stock') {
                 $query->where('stock', '<=', 0);
@@ -65,29 +66,42 @@ class InventoryController extends Controller
             }
         }
 
-        // Automatic Product Prioritization based on Stock Availability:
-        // 1. OUT OF STOCK (Highest Priority) - available quantity <= 0
-        // 2. LOW STOCK (Medium Priority)    - 0 < available quantity <= threshold
-        // 3. IN STOCK (Lowest Priority)     - available quantity > threshold
-        // Within same status group, sort alphabetically by name.
-        // Performed before pagination so high-priority items are not hidden on later pages.
-        $products = $query->orderByRaw("
-            CASE 
-                WHEN stock <= 0 THEN 1 
-                WHEN stock <= {$thresholdSql} THEN 2 
-                ELSE 3 
+        return $query->orderByRaw("
+            CASE
+                WHEN stock <= 0 THEN 1
+                WHEN stock <= {$thresholdSql} THEN 2
+                ELSE 3
             END ASC
-        ")->orderBy('name', 'asc')
-          ->paginate(10)
-          ->withQueryString();
+        ")->orderBy('name', 'asc');
+    }
+
+    /**
+     * Display a listing of inventory products with metrics and filters.
+     */
+    public function index(Request $request): InertiaResponse
+    {
+        $team = $request->user()->currentTeam;
+        if (! $team) {
+            abort(403, 'No active team selected.');
+        }
+
+        $search = $request->input('search');
+        $category = $request->input('category', 'All Categories');
+        $status = $request->input('status', 'All');
+
+        $thresholdSql = self::THRESHOLD_SQL;
+
+        $products = $this->productListQuery($team->id, $search, $category, $status)
+            ->paginate(10)
+            ->withQueryString();
 
         // Calculate inventory summary counts using dynamic stock thresholds
         $baseCountQuery = fn () => Product::where('team_id', $team->id)->where('is_active', true);
 
-        $totalItems            = $baseCountQuery()->count();
-        $outOfStockCount       = $baseCountQuery()->where('stock', '<=', 0)->count();
-        $lowStockCount         = $baseCountQuery()->where('stock', '>', 0)->whereRaw("stock <= {$thresholdSql}")->count();
-        $inStockCount          = $baseCountQuery()->whereRaw("stock > {$thresholdSql}")->count();
+        $totalItems = $baseCountQuery()->count();
+        $outOfStockCount = $baseCountQuery()->where('stock', '<=', 0)->count();
+        $lowStockCount = $baseCountQuery()->where('stock', '>', 0)->whereRaw("stock <= {$thresholdSql}")->count();
+        $inStockCount = $baseCountQuery()->whereRaw("stock > {$thresholdSql}")->count();
         $requiringReorderCount = $baseCountQuery()->whereRaw("stock <= {$thresholdSql}")->count();
 
         // Categories list
@@ -187,6 +201,7 @@ class InventoryController extends Controller
                 Rule::unique('products')->where(fn ($q) => $q->where('team_id', $team->id)),
             ],
             'category' => ['required', 'string', 'max:100'],
+            'brand' => ['nullable', 'string', 'max:100'],
             'unit' => ['nullable', 'string', 'max:50'],
             'price' => ['required', 'numeric', 'min:0'],
             'cost_price' => ['nullable', 'numeric', 'min:0'],
@@ -214,6 +229,7 @@ class InventoryController extends Controller
                 'sku' => strtoupper(trim($validated['sku'])),
                 'name' => trim($validated['name']),
                 'category' => $validated['category'],
+                'brand' => filled($validated['brand'] ?? null) ? trim($validated['brand']) : null,
                 'unit' => $validated['unit'] ?? 'pcs',
                 'price' => $validated['price'],
                 'cost_price' => $validated['cost_price'] ?? 0.00,
@@ -238,7 +254,7 @@ class InventoryController extends Controller
                     'quantity' => $stock,
                     'previous_stock' => 0,
                     'new_stock' => $stock,
-                    'reference_number' => 'INIT-' . $product->sku,
+                    'reference_number' => 'INIT-'.$product->sku,
                     'reason' => 'Initial Stock Entry',
                     'remarks' => 'Initial stock registered upon product creation.',
                     'movement_date' => now(),
@@ -269,6 +285,7 @@ class InventoryController extends Controller
                 Rule::unique('products')->where(fn ($q) => $q->where('team_id', $team->id))->ignore($product->id),
             ],
             'category' => ['required', 'string', 'max:100'],
+            'brand' => ['nullable', 'string', 'max:100'],
             'unit' => ['nullable', 'string', 'max:50'],
             'price' => ['required', 'numeric', 'min:0'],
             'cost_price' => ['nullable', 'numeric', 'min:0'],
@@ -285,6 +302,7 @@ class InventoryController extends Controller
             'sku' => strtoupper(trim($validated['sku'])),
             'name' => trim($validated['name']),
             'category' => $validated['category'],
+            'brand' => filled($validated['brand'] ?? null) ? trim($validated['brand']) : null,
             'unit' => $validated['unit'] ?? $product->unit ?? 'pcs',
             'price' => $validated['price'],
             'cost_price' => $validated['cost_price'] ?? $product->cost_price,
@@ -312,14 +330,16 @@ class InventoryController extends Controller
         }
 
         $name = $product->name;
-        
+
         // If product has linked quotations or sales, soft archive it
         if ($product->quotationItems()->exists() || $product->saleItems()->exists() || $product->stockMovements()->exists()) {
             $product->update(['is_active' => false]);
+
             return back()->with('info', "Product '{$name}' has been archived from active inventory.");
         }
 
         $product->delete();
+
         return back()->with('success', "Product '{$name}' deleted successfully.");
     }
 
@@ -358,7 +378,7 @@ class InventoryController extends Controller
                 'quantity' => $qty,
                 'previous_stock' => $prevStock,
                 'new_stock' => $newStock,
-                'reference_number' => $validated['reference_number'] ?: ('IN-' . strtoupper(uniqid())),
+                'reference_number' => $validated['reference_number'] ?: ('IN-'.strtoupper(uniqid())),
                 'reason' => 'Supplier Restock',
                 'remarks' => $validated['remarks'] ?? null,
                 'movement_date' => $validated['movement_date'] ?? now(),
@@ -416,7 +436,7 @@ class InventoryController extends Controller
                 'quantity' => $qty,
                 'previous_stock' => $prevStock,
                 'new_stock' => $newStock,
-                'reference_number' => $validated['reference_number'] ?: ('OUT-' . strtoupper(uniqid())),
+                'reference_number' => $validated['reference_number'] ?: ('OUT-'.strtoupper(uniqid())),
                 'reason' => $validated['reason'],
                 'remarks' => $validated['remarks'] ?? null,
                 'movement_date' => $validated['movement_date'] ?? now(),
@@ -458,7 +478,7 @@ class InventoryController extends Controller
                 'quantity' => abs($diff),
                 'previous_stock' => $prevStock,
                 'new_stock' => $newStock,
-                'reference_number' => 'ADJ-' . strtoupper(uniqid()),
+                'reference_number' => 'ADJ-'.strtoupper(uniqid()),
                 'reason' => $validated['reason'],
                 'remarks' => $validated['remarks'] ?: "Adjusted from {$prevStock} to {$newStock} ({$diff})",
                 'movement_date' => now(),
@@ -492,65 +512,53 @@ class InventoryController extends Controller
     /**
      * Process CSV Import: supports previewing and executing imports.
      */
-    public function importCsv(Request $request): JsonResponse|RedirectResponse
+    public function importCsv(Request $request, FileReader $reader): JsonResponse|RedirectResponse
     {
         $team = $request->user()->currentTeam;
 
         $request->validate([
-            'file' => ['required', 'file', 'extensions:csv,txt'],
+            'file' => ['required', 'file', 'max:10240', 'extensions:'.implode(',', [...FileReader::EXTENSIONS, 'txt'])],
             'mode' => ['nullable', 'in:append,replace'],
             'execute' => ['nullable', 'boolean'],
+        ], [
+            'file.max' => 'The file is larger than 10 MB. Please upload a smaller file.',
+            'file.extensions' => 'This file type is not supported. Please upload a PDF, Excel (.xlsx/.xls), CSV, JPG or PNG file.',
         ]);
 
-        $file = $request->file('file');
-        $filePath = $file->getRealPath() ?: $file->getPathname();
-        $content = file_get_contents($filePath);
-        $rawLines = preg_split('/\r\n|\n|\r/', trim($content));
-        
-        $lines = [];
-        foreach ($rawLines as $rawLine) {
-            if (trim($rawLine) === '') continue;
-            $row = str_getcsv($rawLine);
-            if (! empty(array_filter($row, fn ($v) => $v !== null && trim((string) $v) !== ''))) {
-                $lines[] = $row;
+        // Replace mode archives (inventory) or overwrites (quotations) existing records, so it is admin-only.
+        abort_if($request->input('mode') === 'replace' && ! $request->user()->isAdmin(), 403, 'Only administrators can use Replace mode.');
+
+        try {
+            [$lines, $method] = $this->readImportFile($request->file('file'), $reader);
+        } catch (ExtractionException $e) {
+            return $this->importFailure($request, $e->getMessage());
+        }
+        $ocr = in_array($method, ['ocr', 'pdf-ocr'], true);
+
+        // The header row is usually first, but PDFs and photos often have a title above it.
+        // Below the first row only exact header names count, so a data row is never taken for one.
+        $headerAt = null;
+        foreach (array_slice($lines, 0, 30, true) as $i => $row) {
+            if ($this->isHeaderRow($row, $i > 0)) {
+                $headerAt = $i;
+                break;
             }
         }
+        $cols = $headerAt !== null ? $this->importColumns($lines[$headerAt]) : null;
 
         if (count($lines) < 2) {
-            return response()->json([
-                'success' => false,
-                'message' => 'The uploaded CSV file is empty or missing headers.',
-                'valid_rows' => [],
-                'invalid_rows' => [],
-            ], 422);
+            return $this->importFailure($request, 'The uploaded file is empty or missing headers.');
+        }
+        if ($headerAt === null) {
+            return $this->importFailure($request, $ocr
+                ? 'We could not find the SKU and Product Name columns in this file. If it is a photo or scan, make sure the column headers are clearly visible, or upload an Excel/CSV file instead.'
+                : 'Required column headers missing. The file must include SKU and Product Name columns.');
         }
 
-        // Clean headers (remove BOM and special chars)
-        $rawHeaders = $lines[0];
-        $headers = array_map(function ($h) {
-            $cleaned = preg_replace('/^\xEF\xBB\xBF/', '', (string) $h);
-            return preg_replace('/[^a-z0-9]/', '', strtolower($cleaned));
-        }, $rawHeaders);
-
-        // Find column indices
-        $skuIdx = $this->findHeaderIndex($headers, ['sku', 'code', 'partnumber', 'itemcode', 'id']);
-        $nameIdx = $this->findHeaderIndex($headers, ['productname', 'name', 'itemname', 'description', 'title']);
-        $catIdx = $this->findHeaderIndex($headers, ['category', 'cat', 'type', 'group']);
-        $unitIdx = $this->findHeaderIndex($headers, ['unit', 'uom', 'measure']);
-        $costIdx = $this->findHeaderIndex($headers, ['costprice', 'cost', 'purchaseprice', 'unitcost']);
-        $priceIdx = $this->findHeaderIndex($headers, ['price', 'sellingprice', 'unitprice', 'rate']);
-        $stockIdx = $this->findHeaderIndex($headers, ['stock', 'currentstock', 'qty', 'quantity', 'count']);
-        $reorderLvlIdx = $this->findHeaderIndex($headers, ['reorderlevel', 'minstock', 'threshold', 'minlevel']);
-        $reorderQtyIdx = $this->findHeaderIndex($headers, ['reorderquantity', 'reorderqty', 'suggestedqty', 'orderqty']);
-
-        if ($skuIdx === -1 || $nameIdx === -1) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Required column headers missing. CSV must include SKU and Product Name columns.',
-                'valid_rows' => [],
-                'invalid_rows' => [],
-            ], 422);
-        }
+        [
+            'sku' => $skuIdx, 'name' => $nameIdx, 'category' => $catIdx, 'brand' => $brandIdx, 'unit' => $unitIdx,
+            'cost' => $costIdx, 'price' => $priceIdx, 'stock' => $stockIdx, 'reorder_level' => $reorderLvlIdx, 'reorder_qty' => $reorderQtyIdx,
+        ] = $cols;
 
         $validRows = [];
         $invalidRows = [];
@@ -559,16 +567,25 @@ class InventoryController extends Controller
         // Fetch existing SKUs in team for uniqueness check
         $existingSkus = Product::where('team_id', $team->id)->pluck('id', 'sku')->toArray();
 
-        for ($i = 1; $i < count($lines); $i++) {
+        for ($i = $headerAt + 1; $i < count($lines); $i++) {
             $row = $lines[$i];
-            if (empty(array_filter($row))) {
+            if (implode('', $row) === '') {
                 continue;
+            }
+            if ($ocr) {
+                // OCR misreads digits as look-alike letters ("1O" for 10, "l5" for 15).
+                foreach ([$costIdx, $priceIdx, $stockIdx, $reorderLvlIdx, $reorderQtyIdx] as $idx) {
+                    if ($idx !== -1 && isset($row[$idx]) && preg_match('/\d/', $row[$idx]) && preg_match('/^[\d\s.,₱OoIl|]+$/u', $row[$idx])) {
+                        $row[$idx] = strtr($row[$idx], ['O' => '0', 'o' => '0', 'I' => '1', 'l' => '1', '|' => '1']);
+                    }
+                }
             }
 
             $rowNumber = $i + 1;
             $sku = isset($row[$skuIdx]) ? strtoupper(trim($row[$skuIdx])) : '';
             $name = isset($row[$nameIdx]) ? trim($row[$nameIdx]) : '';
             $category = ($catIdx !== -1 && isset($row[$catIdx]) && trim($row[$catIdx]) !== '') ? trim($row[$catIdx]) : 'General';
+            $brand = ($brandIdx !== -1 && isset($row[$brandIdx]) && trim($row[$brandIdx]) !== '') ? mb_substr(trim($row[$brandIdx]), 0, 100) : null;
             $unit = ($unitIdx !== -1 && isset($row[$unitIdx]) && trim($row[$unitIdx]) !== '') ? trim($row[$unitIdx]) : 'pcs';
 
             $costPriceStr = $costIdx !== -1 && isset($row[$costIdx]) ? preg_replace('/[^0-9.-]/', '', (string) $row[$costIdx]) : '0';
@@ -634,6 +651,7 @@ class InventoryController extends Controller
                     'sku' => $sku,
                     'name' => $name,
                     'category' => $category,
+                    'brand' => $brand,
                     'unit' => $unit,
                     'cost_price' => $costPrice,
                     'price' => $price,
@@ -650,7 +668,9 @@ class InventoryController extends Controller
         if (! $request->boolean('execute')) {
             return response()->json([
                 'success' => true,
-                'total_rows' => count($lines) - 1,
+                'method' => $method,
+                'warning' => $ocr ? 'This file was read with text recognition (OCR). Check every row against the original before importing.' : null,
+                'total_rows' => count($lines) - $headerAt - 1,
                 'valid_count' => count($validRows),
                 'invalid_count' => count($invalidRows),
                 'valid_rows' => $validRows,
@@ -686,7 +706,7 @@ class InventoryController extends Controller
                         'reorder_quantity' => $item['reorder_quantity'],
                         'status' => $item['status'],
                         'is_active' => true,
-                    ]);
+                    ] + ($item['brand'] !== null ? ['brand' => $item['brand']] : []));
 
                     if ($prevStock !== $item['stock']) {
                         StockMovement::create([
@@ -697,9 +717,9 @@ class InventoryController extends Controller
                             'quantity' => abs($item['stock'] - $prevStock),
                             'previous_stock' => $prevStock,
                             'new_stock' => $item['stock'],
-                            'reference_number' => 'CSV-IMP-' . strtoupper(uniqid()),
-                            'reason' => 'CSV Import Update',
-                            'remarks' => "Stock updated via CSV import from {$prevStock} to {$item['stock']}.",
+                            'reference_number' => 'CSV-IMP-'.strtoupper(uniqid()),
+                            'reason' => 'File Import Update',
+                            'remarks' => "Stock updated via file import from {$prevStock} to {$item['stock']}.",
                             'movement_date' => now(),
                         ]);
                     }
@@ -710,6 +730,7 @@ class InventoryController extends Controller
                         'sku' => $item['sku'],
                         'name' => $item['name'],
                         'category' => $item['category'],
+                        'brand' => $item['brand'],
                         'unit' => $item['unit'],
                         'cost_price' => $item['cost_price'],
                         'price' => $item['price'],
@@ -730,8 +751,8 @@ class InventoryController extends Controller
                             'quantity' => $item['stock'],
                             'previous_stock' => 0,
                             'new_stock' => $item['stock'],
-                            'reference_number' => 'CSV-NEW-' . strtoupper(uniqid()),
-                            'reason' => 'CSV Import New Entry',
+                            'reference_number' => 'CSV-NEW-'.strtoupper(uniqid()),
+                            'reason' => 'File Import New Entry',
                             'remarks' => "New product registered with initial stock {$item['stock']}.",
                             'movement_date' => now(),
                         ]);
@@ -747,77 +768,136 @@ class InventoryController extends Controller
     /**
      * Export active inventory records to CSV.
      */
-    public function exportCsv(Request $request): StreamedResponse
+    public function exportCsv(Request $request, InventoryExporter $exporter): SymfonyResponse
+    {
+        $request->merge(['format' => 'csv']);
+
+        return $this->export($request, $exporter);
+    }
+
+    /**
+     * Download the inventory list (with the page's current filters) as CSV, Excel, PDF, PNG or JPG.
+     */
+    public function export(Request $request, InventoryExporter $exporter): SymfonyResponse
     {
         $team = $request->user()->currentTeam;
-        $fileName = 'inventory_export_' . date('Y-m-d_His') . '.csv';
+        abort_unless($team, 403, 'No active team selected.');
 
-        $thresholdSql = 'COALESCE(NULLIF(reorder_level, 0), NULLIF(min_stock, 0), 10)';
+        $validated = $request->validate([
+            'format' => ['nullable', Rule::in(InventoryExporter::FORMATS)],
+            'search' => ['nullable', 'string', 'max:200'],
+            'category' => ['nullable', 'string', 'max:100'],
+            'status' => ['nullable', 'string', 'max:50'],
+        ]);
 
-        $products = Product::where('team_id', $team->id)
-            ->where('is_active', true)
-            ->with('supplier:id,name')
-            ->orderByRaw("
-                CASE 
-                    WHEN stock <= 0 THEN 1 
-                    WHEN stock <= {$thresholdSql} THEN 2 
-                    ELSE 3 
-                END ASC
-            ")->orderBy('name', 'asc')
-            ->get();
+        $search = $validated['search'] ?? null;
+        $category = $validated['category'] ?? 'All Categories';
+        $status = $validated['status'] ?? 'All';
+        $products = $this->productListQuery($team->id, $search, $category, $status)->get();
 
-        $headers = [
-            'Content-Type' => 'text/csv',
-            'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
-            'Pragma' => 'no-cache',
-            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
-            'Expires' => '0',
-        ];
+        $filters = array_filter([
+            $search ? "Search: \"{$search}\"" : null,
+            $category !== 'All Categories' ? "Category: {$category}" : null,
+            $status !== 'All' ? "Status: {$status}" : null,
+        ]);
 
-        $columns = [
-            'SKU',
-            'Product Name',
-            'Category',
-            'Unit',
-            'Cost Price',
-            'Selling Price',
-            'Current Stock',
-            'Reorder Level',
-            'Reorder Quantity',
-            'Supplier',
-            'Status',
-            'Description',
-        ];
+        return $exporter->download($validated['format'] ?? 'csv', $products, [
+            'team' => $team->name,
+            'filters' => $filters ? implode(', ', $filters) : 'All active products',
+        ]);
+    }
 
-        return response()->stream(function () use ($columns, $products) {
-            $file = fopen('php://output', 'w');
-            fputcsv($file, $columns);
+    /**
+     * Read an uploaded inventory file (PDF, Excel, CSV, JPG, PNG) into rows of text cells.
+     * Spreadsheets are read as they are. PDFs and images are rebuilt from word positions so
+     * their columns stay apart (FileReader::readTable); plain text is the fallback.
+     *
+     * @return array{0: array<int, array<int, string>>, 1: string} rows and how they were read
+     */
+    private function readImportFile(UploadedFile $file, FileReader $reader): array
+    {
+        $path = $file->getRealPath() ?: $file->getPathname();
+        $name = strtolower($file->getClientOriginalExtension()) === 'txt' ? 'import.csv' : $file->getClientOriginalName();
+        $type = $reader->detectType($path, $name);
 
-            foreach ($products as $p) {
-                fputcsv($file, [
-                    $p->sku,
-                    $p->name,
-                    $p->category,
-                    $p->unit ?? 'pcs',
-                    number_format($p->cost_price, 2, '.', ''),
-                    number_format($p->price, 2, '.', ''),
-                    $p->stock,
-                    $p->reorder_level ?: $p->min_stock,
-                    $p->reorder_quantity ?: 50,
-                    $p->supplier ? $p->supplier->name : 'N/A',
-                    $p->status,
-                    $p->description ?? '',
-                ]);
+        try {
+            $read = $reader->readTable($path, $type, fn (array $cells) => $this->isHeaderRow($cells, true))
+                ?? $reader->read($path, $type);
+        } catch (ExtractionException $e) {
+            // The shared reader's wording is written for the quotation form's material list.
+            throw new ExtractionException(match ($e->reason) {
+                'ocr_unavailable' => 'Text recognition (OCR) is not available on the server right now, so photos and scanned PDFs cannot be read. Please upload an Excel or CSV file instead.',
+                'ocr_failed' => 'Text recognition failed or took too long for this file. Please try a clearer image, or upload an Excel or CSV file.',
+                'pdf_render_failed' => 'We could not read this scanned PDF. Please upload a clearer copy, or an Excel or CSV file.',
+                default => $e->getMessage(),
+            }, $e->reason);
+        }
+
+        $rows = isset($read['rows'])
+            ? $read['rows']
+            : array_map(fn ($line) => explode("\t", $line), MaterialParser::cleanLines($read['pages']));
+
+        $rows = array_map(fn ($row) => array_map(function ($cell) {
+            if (is_float($cell) && floor($cell) === $cell) {
+                $cell = (int) $cell;
             }
 
-            fclose($file);
-        }, 200, $headers);
+            return is_scalar($cell) && ! is_bool($cell) ? trim(preg_replace('/^\xEF\xBB\xBF/', '', (string) $cell)) : '';
+        }, array_values($row)), $rows);
+
+        return [$rows, $read['method']];
+    }
+
+    /**
+     * Column positions in a header row (-1 when absent). $exactOnly skips the loose
+     * "contains" matching, for telling a header apart from data rows below a title.
+     */
+    private function importColumns(array $row, bool $exactOnly = false): array
+    {
+        $headers = array_map(fn ($h) => preg_replace('/[^a-z0-9]/', '', strtolower((string) $h)), $row);
+        $find = fn (array $candidates) => $this->findHeaderIndex($headers, $candidates, $exactOnly);
+
+        return [
+            'sku' => $find(['sku', 'code', 'partnumber', 'itemcode', 'id']),
+            'name' => $find(['productname', 'name', 'itemname', 'description', 'title', 'product']),
+            'category' => $find(['category', 'cat', 'type', 'group']),
+            'brand' => $find(['brand', 'brandname', 'manufacturer', 'make']),
+            'unit' => $find(['unit', 'uom', 'measure']),
+            'cost' => $find(['costprice', 'cost', 'purchaseprice', 'unitcost']),
+            'price' => $find(['price', 'sellingprice', 'unitprice', 'rate']),
+            'stock' => $find(['stock', 'currentstock', 'qty', 'quantity', 'count']),
+            'reorder_level' => $find(['reorderlevel', 'minstock', 'threshold', 'minlevel', 'reorder']),
+            'reorder_qty' => $find(['reorderquantity', 'reorderqty', 'suggestedqty', 'orderqty']),
+        ];
+    }
+
+    /** A header row names both an SKU column and a product name column. */
+    private function isHeaderRow(array $row, bool $exactOnly): bool
+    {
+        $cols = $this->importColumns($row, $exactOnly);
+
+        return $cols['sku'] !== -1 && $cols['name'] !== -1 && $cols['sku'] !== $cols['name'];
+    }
+
+    /** Preview requests get JSON; the final import (an Inertia visit) gets a validation error. */
+    private function importFailure(Request $request, string $message): JsonResponse
+    {
+        if ($request->boolean('execute')) {
+            throw ValidationException::withMessages(['file' => $message]);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => $message,
+            'valid_rows' => [],
+            'invalid_rows' => [],
+        ], 422);
     }
 
     /**
      * Helper to find matching header index.
      */
-    private function findHeaderIndex(array $headers, array $candidates): int
+    private function findHeaderIndex(array $headers, array $candidates, bool $exactOnly = false): int
     {
         // Exact match first
         foreach ($candidates as $cand) {
@@ -826,6 +906,9 @@ class InventoryController extends Controller
                     return $idx;
                 }
             }
+        }
+        if ($exactOnly) {
+            return -1;
         }
 
         // Substring match
@@ -836,6 +919,7 @@ class InventoryController extends Controller
                 }
             }
         }
+
         return -1;
     }
 

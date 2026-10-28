@@ -2,8 +2,6 @@
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import { computed, defineAsyncComponent, shallowRef } from 'vue';
 import PendingInvitationsModal from '@/components/PendingInvitationsModal.vue';
-import FadeContent from '@/components/vue-bits/FadeContent.vue';
-import SpotlightCard from '@/components/vue-bits/SpotlightCard.vue';
 import { dashboard } from '@/routes';
 import { index as quotationsRoute } from '@/routes/admin/quotations';
 import { index as inventoryRoute } from '@/routes/inventory';
@@ -175,18 +173,13 @@ defineOptions({
 
     <div class="workspace-page">
         <!-- Dashboard Header -->
-        <FadeContent class="mb-4 flex flex-col gap-1">
-            <span
-                class="text-xs font-bold uppercase tracking-wider text-[#4b5320] dark:text-[#F8B803]"
-            >
-                WORKSPACE OVERVIEW
-            </span>
+        <div class="flex flex-col">
             <h1
-                class="text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl dark:text-white"
+                class="page-title"
             >
                 Hello, {{ firstName }}!
             </h1>
-            <p class="text-sm text-gray-600 dark:text-neutral-400">
+            <p class="page-subtitle">
                 <template v-if="isFirstTimeLogin">
                     Welcome to MRP ElectroDesk. Let's get started.
                 </template>
@@ -194,7 +187,7 @@ defineOptions({
                     Welcome back to MRP ElectroDesk.
                 </template>
             </p>
-        </FadeContent>
+        </div>
 
         <div v-if="$page.props.currentTeam" class="flex flex-wrap gap-3">
             <Link
@@ -208,141 +201,26 @@ defineOptions({
             >
         </div>
         <!-- Stat Cards -->
-        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <SpotlightCard
-                class="relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow duration-200 hover:shadow-md"
-            >
-                <div class="flex items-start justify-between">
-                    <div>
-                        <p class="mb-1 text-sm font-medium text-gray-500">
-                            Total Products
-                        </p>
-                        <h3
-                            class="text-2xl font-bold text-gray-900 sm:text-3xl"
-                        >
-                            {{ stats?.totalProducts?.toLocaleString() ?? 0 }}
-                        </h3>
-                    </div>
-                    <div
-                        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-100 bg-gray-50 text-[#F8B803]"
-                    >
-                        <svg
-                            class="h-5 w-5"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
-                            />
-                        </svg>
-                    </div>
-                </div>
-            </SpotlightCard>
-
-            <SpotlightCard
-                class="relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow duration-200 hover:shadow-md"
-            >
-                <div class="flex items-start justify-between">
-                    <div>
-                        <p class="mb-1 text-sm font-medium text-gray-500">
-                            Low Stock Items
-                        </p>
-                        <h3 class="text-2xl font-bold text-red-600 sm:text-3xl">
-                            {{ stats?.lowStockCount?.toLocaleString() ?? 0 }}
-                        </h3>
-                    </div>
-                    <div
-                        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-100 bg-red-50 text-red-500"
-                    >
-                        <svg
-                            class="h-5 w-5"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                            />
-                        </svg>
-                    </div>
-                </div>
-            </SpotlightCard>
-
-            <SpotlightCard
-                class="relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow duration-200 hover:shadow-md"
-            >
-                <div class="flex items-start justify-between">
-                    <div>
-                        <p class="mb-1 text-sm font-medium text-gray-500">
-                            Today's Sales
-                        </p>
-                        <h3
-                            class="text-2xl font-bold text-gray-900 sm:text-3xl"
-                        >
-                            {{ formatCurrency(stats?.todaySales) }}
-                        </h3>
-                    </div>
-                    <div
-                        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-green-100 bg-green-50 text-green-600"
-                    >
-                        <svg
-                            class="h-5 w-5"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
-                        </svg>
-                    </div>
-                </div>
-            </SpotlightCard>
-
-            <SpotlightCard
-                class="relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow duration-200 hover:shadow-md"
-            >
-                <div class="flex items-start justify-between">
-                    <div>
-                        <p class="mb-1 text-sm font-medium text-gray-500">
-                            Top Supplier (AHP)
-                        </p>
-                        <h3 class="text-lg font-bold text-[#4b5320]">
-                            {{ stats?.topSupplier?.name ?? 'No Supplier' }}
-                        </h3>
-                        <p class="mt-1 text-xs text-gray-500">
-                            Score: {{ stats?.topSupplier?.score ?? 'N/A' }}
-                        </p>
-                    </div>
-                    <div
-                        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#F8B803]/20 bg-[#F8B803]/10 text-[#F8B803]"
-                    >
-                        <svg
-                            class="h-5 w-5"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
-                        </svg>
-                    </div>
-                </div>
-            </SpotlightCard>
+        <div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <div class="rounded-xl border border-gray-200 bg-white px-4 py-3">
+                <p class="text-xs text-gray-500">Total products</p>
+                <p class="mt-1 text-2xl font-semibold text-gray-900">{{ stats?.totalProducts?.toLocaleString() ?? 0 }}</p>
+            </div>
+            <div class="rounded-xl border border-gray-200 bg-white px-4 py-3">
+                <p class="text-xs text-gray-500">Low stock items</p>
+                <p :class="(stats?.lowStockCount ?? 0) > 0 ? 'text-red-600' : 'text-gray-900'" class="mt-1 text-2xl font-semibold">
+                    {{ stats?.lowStockCount?.toLocaleString() ?? 0 }}
+                </p>
+            </div>
+            <div class="rounded-xl border border-gray-200 bg-white px-4 py-3">
+                <p class="text-xs text-gray-500">Today's sales</p>
+                <p class="mt-1 text-2xl font-semibold text-gray-900">{{ formatCurrency(stats?.todaySales) }}</p>
+            </div>
+            <div class="rounded-xl border border-gray-200 bg-white px-4 py-3">
+                <p class="text-xs text-gray-500">Top supplier (AHP)</p>
+                <p class="mt-1 truncate text-lg font-semibold text-gray-900">{{ stats?.topSupplier?.name ?? 'No supplier yet' }}</p>
+                <p v-if="stats?.topSupplier?.score" class="text-xs text-gray-500">Score {{ stats.topSupplier.score }}</p>
+            </div>
         </div>
 
         <div
@@ -350,9 +228,9 @@ defineOptions({
         >
             <!-- Chart Area — lazy-loaded via Suspense, skeleton shown while loading -->
             <div
-                class="min-w-0 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
+                class="min-w-0 rounded-xl border border-gray-200 bg-white p-6"
             >
-                <h3 class="mb-4 text-lg font-bold text-gray-900">
+                <h3 class="mb-4 text-lg font-semibold text-gray-900">
                     Sales &amp; Demand Forecast (SMA)
                 </h3>
                 <div class="h-[280px] w-full sm:h-[300px]">
@@ -385,9 +263,9 @@ defineOptions({
 
             <!-- Recent Activity Feed -->
             <div
-                class="max-h-[400px] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
+                class="max-h-[400px] overflow-y-auto rounded-xl border border-gray-200 bg-white p-6"
             >
-                <h3 class="mb-4 text-lg font-bold text-gray-900">
+                <h3 class="mb-4 text-lg font-semibold text-gray-900">
                     Recent Activity Feed
                 </h3>
                 <ul class="divide-y divide-gray-100">

@@ -4,18 +4,23 @@ namespace App\Http\Controllers;
 
 use App\Enums\QuotationStatus;
 use App\Models\Client;
+use App\Models\OrderFulfillment;
 use App\Models\Product;
 use App\Models\Quotation;
-use App\Models\QuotationItem;
 use App\Models\Sale;
-use App\Models\SaleItem;
 use App\Models\StockMovement;
 use App\Models\Team;
+use App\Services\MaterialList\ExtractionException;
+use App\Services\MaterialList\FileReader;
+use App\Services\MaterialList\MaterialParser;
+use App\Services\MaterialList\ProductMatcher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -37,7 +42,7 @@ class QuotationController extends Controller
             ->update(['status' => QuotationStatus::Expired->value]);
 
         $query = Quotation::query()
-            ->with(['items', 'client', 'preparedBy', 'sale'])
+            ->with(['items.product', 'client', 'preparedBy', 'sale.fulfillment', 'files'])
             ->where('team_id', $team->id);
 
         // Search query
@@ -350,6 +355,10 @@ class QuotationController extends Controller
 
         $sale = DB::transaction(function () use ($team, $request, $quotation) {
             $invoiceNumber = Sale::generateInvoiceNumber($team->id);
+            $grandTotal = (float) $quotation->grand_total;
+            $amountPaid = (float) $request->input('amount_paid', $grandTotal);
+            $outstanding = max(0, round($grandTotal - $amountPaid, 2));
+            $isFullyPaid = $outstanding <= 0.001;
 
             // Create Sale record
             $sale = Sale::create([
@@ -365,11 +374,33 @@ class QuotationController extends Controller
                 'subtotal' => $quotation->subtotal,
                 'discount' => $quotation->discount,
                 'tax_amount' => $quotation->tax_amount,
-                'grand_total' => $quotation->grand_total,
-                'status' => 'Completed',
+                'grand_total' => $grandTotal,
+                'status' => $isFullyPaid ? 'Completed' : 'Pending Payment',
                 'payment_method' => $request->input('payment_method', 'Bank Transfer / Cash'),
-                'notes' => "Converted from Quotation {$quotation->quotation_number}. " . ($quotation->notes ?? ''),
+                'payment_reference' => $request->input('payment_reference'),
+                'amount_paid' => $amountPaid,
+                'outstanding_balance' => $outstanding,
+                'payment_date' => now(),
+                'payment_status' => $isFullyPaid ? 'Verified' : 'Pending Verification',
+                'verified_by_id' => $isFullyPaid ? $request->user()->id : null,
+                'verified_at' => $isFullyPaid ? now() : null,
+                'notes' => "Converted from Quotation {$quotation->quotation_number}. ".($quotation->notes ?? ''),
                 'processed_by_id' => $request->user()->id,
+            ]);
+
+            // Initialize Order Fulfillment tracking
+            OrderFulfillment::create([
+                'team_id' => $team->id,
+                'sale_id' => $sale->id,
+                'fulfillment_number' => OrderFulfillment::generateFulfillmentNumber($team->id),
+                'fulfillment_type' => $request->input('fulfillment_type', 'Delivery'),
+                'recipient_name' => $request->input('recipient_name') ?: ($quotation->contact_person ?: $quotation->client_name),
+                'contact_number' => $request->input('contact_number') ?: ($quotation->phone ?: 'N/A'),
+                'delivery_address' => $request->input('delivery_address') ?: $quotation->address,
+                'delivery_schedule' => $request->input('delivery_schedule'),
+                'instructions' => $request->input('delivery_instructions') ?: $quotation->notes,
+                'status' => 'Preparing',
+                'handled_by_id' => $request->user()->id,
             ]);
 
             // Transfer items & deduct inventory
@@ -417,7 +448,194 @@ class QuotationController extends Controller
             return $sale;
         });
 
-        return back()->with('success', "Quotation successfully converted to Sale Invoice {$sale->invoice_number}. Inventory has been updated.");
+        return back()->with('success', "Quotation successfully converted to Sale Invoice {$sale->invoice_number}. Fulfillment order initialized.");
+    }
+
+    /**
+     * Download or view attached quotation specification file.
+     */
+    public function downloadAttachment(Request $request, mixed $current_team = null, mixed $quotation = null)
+    {
+        $quotation = $this->resolveQuotation($quotation, $current_team);
+        $team = $this->getTeam($request, $current_team);
+        abort_if(! $team || $quotation->team_id !== $team->id, 403, 'Unauthorized quotation access.');
+
+        // ?file=materials: the client's original material-list file instead of the general attachment.
+        $isMaterialFile = $request->query('file') === 'materials';
+        $path = $isMaterialFile ? $quotation->material_file_path : $quotation->attachment_path;
+        abort_if(! $path, 404, 'No attachment associated with this quotation.');
+        abort_if(! Storage::disk('local')->exists($path), 404, 'Attachment file not found.');
+
+        return Storage::disk('local')->response(
+            $path,
+            $isMaterialFile ? ($quotation->material_file_name ?: basename($path)) : null,
+            ['Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff']
+        );
+    }
+
+    /**
+     * Open a product-list file the client sent with a request. Staff only (route group), and
+     * only for a quotation of the current team; the file must belong to that quotation.
+     */
+    public function downloadFile(Request $request, mixed $current_team = null, mixed $quotation = null, mixed $file = null)
+    {
+        $quotation = $this->resolveQuotation($quotation ?? $request->route('quotation'));
+        $team = $this->getTeam($request, $current_team);
+        abort_if(! $team || $quotation->team_id !== $team->id, 403, 'Unauthorized quotation access.');
+
+        $record = $quotation->files()->whereKey((int) ($file ?? $request->route('file')))->first();
+        abort_if(! $record || ! Storage::disk('local')->exists($record->path), 404, 'File not found.');
+
+        return Storage::disk('local')->response($record->path, $record->original_name, [
+            'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    /**
+     * Import a material list (PDF, Excel, CSV, JPG or PNG) as a new Draft quotation.
+     *
+     * Without `execute` it only reads the file and returns the lines for staff to check. With
+     * `execute` it creates the quotation: lines whose product code matches the catalog get the
+     * catalog price, every other line is a custom item at ₱0.00 for staff to price. The file's
+     * fingerprint is stored, so importing the same file again is refused instead of duplicated.
+     */
+    public function importMaterials(Request $request, FileReader $reader): JsonResponse|RedirectResponse
+    {
+        $team = $this->getTeam($request);
+        abort_if(! $team, 404, 'Team not found.');
+
+        $request->validate([
+            'file' => ['required', 'file', 'max:10240', 'extensions:'.implode(',', FileReader::EXTENSIONS)],
+            'client_name' => ['required', 'string', 'max:255'],
+            'contact_person' => ['nullable', 'string', 'max:255'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'execute' => ['nullable', 'boolean'],
+        ], [
+            'file.max' => 'The file is larger than 10 MB. Please upload a smaller file.',
+            'file.extensions' => 'This file type is not supported. Please upload a PDF, Excel (.xlsx/.xls), CSV, JPG or PNG file.',
+            'client_name.required' => 'Please enter the client or company name.',
+        ]);
+
+        $fail = fn (string $message, int $status = 422, array $extra = []) => $request->boolean('execute')
+            ? back()->withErrors(['file' => $message])
+            : response()->json(['success' => false, 'message' => $message] + $extra, $status);
+
+        $file = $request->file('file');
+        $path = $file->getRealPath() ?: $file->getPathname();
+        $hash = hash_file('sha256', $path);
+
+        $duplicate = Quotation::where('team_id', $team->id)->where('source_file_sha256', $hash)->first(['id', 'quotation_number']);
+        if ($duplicate) {
+            return $fail("This file was already imported as quotation {$duplicate->quotation_number}. Open that quotation instead of importing it again.", 409, ['duplicate_of' => $duplicate->quotation_number]);
+        }
+
+        @set_time_limit(180); // OCR of a scanned file can take a while
+
+        try {
+            $type = $reader->detectType($path, $file->getClientOriginalName());
+            $read = $reader->read($path, $type);
+            $parsed = isset($read['rows'])
+                ? MaterialParser::parseTable($read['rows'], null, null, $read['method'])
+                : MaterialParser::parseText(MaterialParser::cleanLines($read['pages']), $read['method']);
+        } catch (ExtractionException $e) {
+            return $fail(str_replace(['Please type your material list below instead.', ', or type your material list below', 'Please type your material list below, or upload an Excel/CSV file.'], ['', '', 'Please upload an Excel or CSV file instead.'], $e->getMessage()));
+        }
+
+        $items = (new ProductMatcher($team->id))->matchAll($parsed['items']);
+        $valid = array_values(array_filter($items, fn ($i) => ($i['errors'] ?? []) === []));
+        $ocr = in_array($read['method'], ['ocr', 'pdf-ocr'], true);
+
+        if ($valid === []) {
+            return $fail(isset($read['rows'])
+                ? 'No materials were found. The file needs a description column and a quantity column (for example "Description" and "Qty").'
+                : 'No materials with a quantity were found in this file. Please check the file, or use an Excel or CSV file.');
+        }
+
+        if (! $request->boolean('execute')) {
+            return response()->json([
+                'success' => true,
+                'method' => $read['method'],
+                'warning' => $ocr ? 'Read with text recognition (OCR). Check every line against the file after importing.' : null,
+                'valid_count' => count($valid),
+                'invalid_count' => count($items) - count($valid),
+                'unparsed_count' => count($parsed['unparsed_lines'] ?? []),
+                'items' => array_map(fn ($i) => [
+                    'description' => $i['description'],
+                    'quantity' => $i['quantity'],
+                    'unit' => $i['unit'],
+                    'brand' => $i['brand'],
+                    'errors' => $i['errors'] ?? [],
+                    'match' => $i['match'] ? ['sku' => $i['match']['sku'], 'name' => $i['match']['name'], 'price' => $i['match']['price']] : null,
+                ], array_slice($items, 0, 200)),
+            ]);
+        }
+
+        $quotation = DB::transaction(function () use ($request, $team, $file, $hash, $valid, $parsed) {
+            $client = Client::firstOrCreate(
+                ['team_id' => $team->id, 'company_name' => $request->input('client_name')],
+                ['contact_person' => $request->input('contact_person'), 'email' => $request->input('email'), 'phone' => $request->input('phone')]
+            );
+
+            $subtotal = 0.0;
+            $lines = [];
+            foreach ($valid as $item) {
+                $price = $item['match'] && (float) $item['match']['price'] > 0 ? round((float) $item['match']['price'], 2) : 0.0;
+                $lines[] = [
+                    'product_id' => $item['match']['product_id'] ?? null,
+                    'sku' => $item['match']['sku'] ?? 'CUSTOM',
+                    'product_name' => Str::limit($item['match']['name'] ?? trim($item['description'].($item['brand'] ? " — {$item['brand']}" : '')), 250),
+                    'quantity' => (int) $item['quantity'],
+                    'unit_price' => $price,
+                    'discount' => 0.00,
+                    'subtotal' => round($price * (int) $item['quantity'], 2),
+                ];
+                $subtotal += round($price * (int) $item['quantity'], 2);
+            }
+
+            $taxRate = (float) config('quotation.tax_rate', 12);
+            $taxAmount = round($subtotal * $taxRate / 100, 2);
+            $unpriced = count(array_filter($lines, fn ($l) => $l['unit_price'] <= 0));
+            $originalName = Str::limit(basename(str_replace('\\', '/', $file->getClientOriginalName())), 200, '');
+
+            $quotation = Quotation::create([
+                'team_id' => $team->id,
+                'quotation_number' => Quotation::generateNumber($team->id, collect($lines)->firstWhere('product_id')['sku'] ?? null),
+                'client_id' => $client->id,
+                'client_name' => $client->company_name,
+                'contact_person' => $request->input('contact_person') ?: $client->contact_person,
+                'email' => $request->input('email') ?: $client->email,
+                'phone' => $request->input('phone') ?: $client->phone,
+                'quotation_date' => now()->toDateString(),
+                'valid_until' => now()->addDays(30)->toDateString(),
+                'subtotal' => round($subtotal, 2),
+                'discount' => 0.00,
+                'tax_rate' => $taxRate,
+                'tax_amount' => $taxAmount,
+                'grand_total' => round($subtotal + $taxAmount, 2),
+                'status' => QuotationStatus::Draft,
+                'notes' => "Imported from material list file: {$originalName}\n".count($lines).' line(s) read'
+                    .($unpriced ? ", {$unpriced} need pricing and product matching by staff." : '.')
+                    .(count($parsed['unparsed_lines'] ?? []) ? "\n".count($parsed['unparsed_lines']).' line(s) of the file could not be read as materials: check the original file.' : ''),
+                'terms_and_conditions' => $this->defaultTerms(),
+                'prepared_by_id' => $request->user()?->id,
+                'material_file_path' => $file->storeAs('quotations/attachments', 'material-list-'.Str::uuid().'.'.strtolower($file->getClientOriginalExtension()), 'local'),
+                'material_file_name' => $originalName,
+                'source_file_sha256' => $hash,
+                'request_details' => [
+                    'source' => 'staff_import',
+                    'file_name' => $originalName,
+                    'imported_by' => $request->user()?->name,
+                    'submitted_at' => now()->toIso8601String(),
+                ],
+            ]);
+            $quotation->items()->createMany($lines);
+
+            return $quotation;
+        });
+
+        return back()->with('success', "Created draft quotation {$quotation->quotation_number} with {$quotation->items()->count()} line(s). Check the lines against the original file and set the prices.");
     }
 
     /**
@@ -443,7 +661,7 @@ class QuotationController extends Controller
             return $teamParam;
         }
 
-        if (is_string($teamParam) && !empty($teamParam)) {
+        if (is_string($teamParam) && ! empty($teamParam)) {
             $found = Team::where('slug', $teamParam)->first();
             if ($found) {
                 return $found;
@@ -460,6 +678,7 @@ class QuotationController extends Controller
         if ($team instanceof Team) {
             return $team;
         }
+
         return $request->user()?->currentTeam;
     }
 
@@ -493,10 +712,10 @@ class QuotationController extends Controller
     protected function defaultTerms(): string
     {
         return "1. Price Validity: Quotation is valid until the stated expiration date.\n"
-             . "2. Payment Terms: 50% down payment upon order confirmation, 50% upon delivery/completion.\n"
-             . "3. Delivery: Within 5-7 business days upon receipt of purchase order and down payment.\n"
-             . "4. Warranty: 1-Year standard manufacturer warranty against factory defects.\n"
-             . "5. Acceptance: To confirm this quote, please sign and return a copy via email.";
+             ."2. Payment Terms: 50% down payment upon order confirmation, 50% upon delivery/completion.\n"
+             ."3. Delivery: Within 5-7 business days upon receipt of purchase order and down payment.\n"
+             ."4. Warranty: 1-Year standard manufacturer warranty against factory defects.\n"
+             .'5. Acceptance: To confirm this quote, please sign and return a copy via email.';
     }
 
     /**
@@ -514,6 +733,9 @@ class QuotationController extends Controller
             'execute' => ['nullable', 'boolean'],
             'default_client_name' => ['nullable', 'string', 'max:255'],
         ]);
+
+        // Replace mode archives (inventory) or overwrites (quotations) existing records, so it is admin-only.
+        abort_if($request->input('mode') === 'replace' && ! $request->user()->isAdmin(), 403, 'Only administrators can use Replace mode.');
 
         $file = $request->file('file');
         $filePath = $file->getRealPath() ?: $file->getPathname();
@@ -562,6 +784,7 @@ class QuotationController extends Controller
         $rawHeaders = $lines[0];
         $headers = array_map(function ($h) {
             $cleaned = preg_replace('/^\xEF\xBB\xBF/', '', (string) $h);
+
             return preg_replace('/[^a-z0-9]/', '', strtolower($cleaned));
         }, $rawHeaders);
 
@@ -681,7 +904,7 @@ class QuotationController extends Controller
                     'date' => $parsedDate,
                     'display_date' => $displayDate,
                     'quote_number' => $rawQuoteNum,
-                    'sku' => $extractedSku ?: 'SKU-' . strtoupper(substr(md5($desc), 0, 6)),
+                    'sku' => $extractedSku ?: 'SKU-'.strtoupper(substr(md5($desc), 0, 6)),
                     'quantity' => $qty,
                     'description' => $desc,
                     'unit_price' => $unitPrice,
@@ -690,10 +913,21 @@ class QuotationController extends Controller
             }
         }
 
+        // Quote numbers already in the system are skipped on import (never duplicated), unless an
+        // administrator chooses Replace mode.
+        $existingNumbers = Quotation::where('team_id', $team->id)
+            ->whereIn('quotation_number', array_unique(array_column($validRows, 'quote_number')))
+            ->pluck('quotation_number')->flip();
+        foreach ($validRows as &$validRow) {
+            $validRow['exists'] = isset($existingNumbers[$validRow['quote_number']]);
+        }
+        unset($validRow);
+
         // Preview validation mode
         if (! $request->boolean('execute')) {
             return response()->json([
                 'success' => true,
+                'existing_count' => count(array_unique(array_column(array_filter($validRows, fn ($r) => $r['exists']), 'quote_number'))),
                 'total_rows' => count($lines) - 1,
                 'valid_count' => count($validRows),
                 'invalid_count' => count($invalidRows),
@@ -716,7 +950,8 @@ class QuotationController extends Controller
             $grouped[$qNum][] = $item;
         }
 
-        DB::transaction(function () use ($team, $grouped, $mode, $defaultClientName, $request) {
+        $skipped = [];
+        DB::transaction(function () use ($team, $grouped, $mode, $defaultClientName, $request, &$skipped) {
             $client = Client::firstOrCreate(
                 [
                     'team_id' => $team->id,
@@ -745,19 +980,15 @@ class QuotationController extends Controller
                         'status' => QuotationStatus::Pending,
                     ]);
                     $quotation->items()->delete();
-                } else {
-                    $finalQuoteNumber = $quoteNumber;
-                    if ($existing && $mode === 'append') {
-                        $counter = 1;
-                        do {
-                            $finalQuoteNumber = sprintf('%s-%02d', $quoteNumber, $counter);
-                            $counter++;
-                        } while (Quotation::where('team_id', $team->id)->where('quotation_number', $finalQuoteNumber)->exists());
-                    }
+                } elseif ($existing) {
+                    // Importing the same file again must not create a second copy of the quotation.
+                    $skipped[] = $quoteNumber;
 
+                    continue;
+                } else {
                     $quotation = Quotation::create([
                         'team_id' => $team->id,
-                        'quotation_number' => $finalQuoteNumber,
+                        'quotation_number' => $quoteNumber,
                         'client_id' => $client->id,
                         'client_name' => $client->company_name,
                         'quotation_date' => $qDate,
@@ -778,7 +1009,7 @@ class QuotationController extends Controller
                     $matchedProduct = Product::where('team_id', $team->id)
                         ->where(function ($q) use ($item) {
                             $q->where('sku', $item['sku'])
-                              ->orWhere('name', $item['description']);
+                                ->orWhere('name', $item['description']);
                         })->first();
 
                     $quotation->items()->create([
@@ -794,14 +1025,15 @@ class QuotationController extends Controller
             }
         });
 
+        $imported = count($grouped) - count($skipped);
+        $message = "Imported {$imported} quotation(s)."
+            .($skipped ? ' Skipped '.count($skipped).' that already exist: '.implode(', ', array_slice($skipped, 0, 5)).(count($skipped) > 5 ? '…' : '').'.' : '');
+
         if ($request->wantsJson()) {
-            return response()->json([
-                'success' => true,
-                'message' => 'Successfully imported ' . count($grouped) . ' quotation(s) with ' . count($validRows) . ' line item(s).',
-            ]);
+            return response()->json(['success' => true, 'message' => $message, 'skipped' => $skipped]);
         }
 
-        return back()->with('success', 'Successfully imported ' . count($grouped) . ' quotation(s) with ' . count($validRows) . ' line item(s).');
+        return back()->with('success', $message);
     }
 
     /**
@@ -822,6 +1054,7 @@ class QuotationController extends Controller
                 }
             }
         }
+
         return -1;
     }
 }

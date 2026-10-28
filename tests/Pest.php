@@ -1,6 +1,9 @@
 <?php
 
+use App\Models\TrustedDevice;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /*
@@ -44,11 +47,11 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function createTrustedDeviceFor(?\App\Models\User $user = null): array
+function createTrustedDeviceFor(?User $user = null): array
 {
-    $rawCredential = \Illuminate\Support\Str::random(64);
-    $device = \App\Models\TrustedDevice::create([
-        'device_uuid' => (string) \Illuminate\Support\Str::uuid(),
+    $rawCredential = Str::random(64);
+    $device = TrustedDevice::create([
+        'device_uuid' => (string) Str::uuid(),
         'device_name' => 'Test Authorized Device',
         'user_id' => $user?->id,
         'status' => 'approved',
@@ -66,3 +69,25 @@ function createTrustedDeviceFor(?\App\Models\User $user = null): array
     ];
 }
 
+/**
+ * Tesseract-style TSV for a text layout, for faking OCR in tests. Each character is 5px wide
+ * (a space is about 0.4 of the 12px letter height, as in real text) and each line 30px tall, so columns can be
+ * drawn with spaces; two or more spaces read as a column gap:
+ *
+ *     ocrTsv(["SKU      Product Name", "BRK-60   Circuit Breaker"])
+ *
+ * @param  array<int, string>  $lines
+ */
+function ocrTsv(array $lines): string
+{
+    $tsv = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n";
+    foreach ($lines as $n => $line) {
+        preg_match_all('/\S+/u', $line, $words, PREG_OFFSET_CAPTURE);
+        foreach ($words[0] as $i => [$word, $byte]) {
+            $x = mb_strlen(substr($line, 0, $byte)) * 5;
+            $tsv .= implode("\t", [5, 1, 1, 1, $n + 1, $i + 1, $x, 20 + $n * 30, mb_strlen($word) * 5, 12, 95, $word])."\n";
+        }
+    }
+
+    return $tsv;
+}

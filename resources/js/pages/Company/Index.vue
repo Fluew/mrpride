@@ -25,13 +25,13 @@ import PublicLayout from '@/layouts/PublicLayout.vue';
             <div class="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                 <FadeContent class="max-w-3xl">
                     <div
-                        class="mb-6 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/15 px-3 py-1 text-sm font-semibold text-white shadow-sm backdrop-blur-md"
+                        class="mb-6 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/15 px-3 py-1 text-sm font-semibold text-white backdrop-blur-md"
                     >
                         <Info class="h-4 w-4 text-[#F8B803]" />
                         Company Profile
                     </div>
                     <h1
-                        class="mb-6 text-4xl leading-tight font-extrabold tracking-tight text-[#F8B803] md:text-5xl"
+                        class="mb-6 text-4xl leading-tight font-semibold tracking-tight text-[#F8B803] md:text-5xl"
                     >
                         About MR-Pride Electrical Supplies
                     </h1>
@@ -58,20 +58,20 @@ import PublicLayout from '@/layouts/PublicLayout.vue';
                 <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
                     <!-- Vision -->
                     <SpotlightCard
-                        class="group relative overflow-hidden rounded-3xl border border-gray-100 bg-gray-50 p-6 shadow-sm transition-colors duration-300 hover:border-[#F8B803]/30 sm:p-9"
+                        class="group relative overflow-hidden rounded-xl border border-gray-100 bg-gray-50 p-6 transition-colors duration-300 hover:border-[#F8B803]/30 sm:p-9"
                     >
                         <div
-                            class="absolute -top-4 -right-4 text-[#F8B803] opacity-10 transition-transform duration-500 group-hover:scale-110"
+                            class="absolute -top-4 -right-4 text-[#F8B803] opacity-10 transition-transform duration-500"
                         >
                             <Eye class="h-48 w-48" />
                         </div>
                         <div class="relative z-10">
                             <div
-                                class="mb-6 flex h-14 w-14 items-center justify-center rounded-xl border border-gray-100 bg-white shadow-sm"
+                                class="mb-6 flex h-14 w-14 items-center justify-center rounded-xl border border-gray-100 bg-white"
                             >
                                 <Eye class="h-7 w-7 text-[#F8B803]" />
                             </div>
-                            <h2 class="mb-4 text-3xl font-bold text-gray-900">
+                            <h2 class="mb-4 text-3xl font-semibold text-gray-900">
                                 Vision
                             </h2>
                             <p class="text-lg leading-relaxed text-gray-600">
@@ -82,20 +82,20 @@ import PublicLayout from '@/layouts/PublicLayout.vue';
 
                     <!-- Mission -->
                     <SpotlightCard
-                        class="group relative overflow-hidden rounded-3xl border border-gray-100 bg-gray-50 p-6 shadow-sm transition-colors duration-300 hover:border-[#4b5320]/30 sm:p-9"
+                        class="group relative overflow-hidden rounded-xl border border-gray-100 bg-gray-50 p-6 transition-colors duration-300 hover:border-[#4b5320]/30 sm:p-9"
                     >
                         <div
-                            class="absolute -top-4 -right-4 text-[#4b5320] opacity-10 transition-transform duration-500 group-hover:scale-110"
+                            class="absolute -top-4 -right-4 text-[#4b5320] opacity-10 transition-transform duration-500"
                         >
                             <Target class="h-48 w-48" />
                         </div>
                         <div class="relative z-10">
                             <div
-                                class="mb-6 flex h-14 w-14 items-center justify-center rounded-xl border border-gray-100 bg-white shadow-sm"
+                                class="mb-6 flex h-14 w-14 items-center justify-center rounded-xl border border-gray-100 bg-white"
                             >
                                 <Target class="h-7 w-7 text-[#4b5320]" />
                             </div>
-                            <h2 class="mb-4 text-3xl font-bold text-gray-900">
+                            <h2 class="mb-4 text-3xl font-semibold text-gray-900">
                                 Mission
                             </h2>
                             <p class="text-lg leading-relaxed text-gray-600">
@@ -112,12 +112,12 @@ import PublicLayout from '@/layouts/PublicLayout.vue';
             <div class="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
                 <div class="mb-16">
                     <div
-                        class="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/20 bg-white/10 shadow-sm backdrop-blur-md"
+                        class="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-xl border border-white/20 bg-white/10 backdrop-blur-md"
                     >
                         <Star class="h-8 w-8 text-[#F8B803]" />
                     </div>
                     <h2
-                        class="mb-4 text-3xl font-bold text-white md:text-4xl"
+                        class="mb-4 text-3xl font-semibold text-white md:text-4xl"
                     >
                         Our Core Values
                     </h2>
@@ -130,27 +130,27 @@ import PublicLayout from '@/layouts/PublicLayout.vue';
                     class="mx-auto flex max-w-4xl flex-wrap justify-center gap-4 md:gap-8"
                 >
                     <div
-                        class="rounded-full border border-white/30 bg-white px-8 py-4 text-xl font-bold text-gray-900 shadow-md transition-all duration-300 hover:scale-105 hover:border-[#F8B803]"
+                        class="rounded-full border border-white/30 bg-white px-8 py-4 text-xl font-semibold text-gray-900 shadow-md transition-colors duration-300 hover:border-[#F8B803]"
                     >
                         Honesty
                     </div>
                     <div
-                        class="rounded-full border border-white/30 bg-white px-8 py-4 text-xl font-bold text-gray-900 shadow-md transition-all duration-300 hover:scale-105 hover:border-[#F8B803]"
+                        class="rounded-full border border-white/30 bg-white px-8 py-4 text-xl font-semibold text-gray-900 shadow-md transition-colors duration-300 hover:border-[#F8B803]"
                     >
                         Respect
                     </div>
                     <div
-                        class="rounded-full border border-white/30 bg-white px-8 py-4 text-xl font-bold text-gray-900 shadow-md transition-all duration-300 hover:scale-105 hover:border-[#F8B803]"
+                        class="rounded-full border border-white/30 bg-white px-8 py-4 text-xl font-semibold text-gray-900 shadow-md transition-colors duration-300 hover:border-[#F8B803]"
                     >
                         Passion
                     </div>
                     <div
-                        class="rounded-full border border-white/30 bg-white px-8 py-4 text-xl font-bold text-gray-900 shadow-md transition-all duration-300 hover:scale-105 hover:border-[#F8B803]"
+                        class="rounded-full border border-white/30 bg-white px-8 py-4 text-xl font-semibold text-gray-900 shadow-md transition-colors duration-300 hover:border-[#F8B803]"
                     >
                         Quality
                     </div>
                     <div
-                        class="rounded-full border border-white/30 bg-white px-8 py-4 text-xl font-bold text-gray-900 shadow-md transition-all duration-300 hover:scale-105 hover:border-[#F8B803]"
+                        class="rounded-full border border-white/30 bg-white px-8 py-4 text-xl font-semibold text-gray-900 shadow-md transition-colors duration-300 hover:border-[#F8B803]"
                     >
                         Commitment
                     </div>

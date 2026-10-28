@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules\Password;
@@ -25,7 +26,7 @@ class ChangePasswordController extends Controller
         $daysSinceChange = $user->password_changed_at ? $user->password_changed_at->diffInDays(now()) : 90;
         $reason = $user->must_change_password
             ? 'Initial login: You are using a temporary initial password. Please choose a permanent, secure password to continue.'
-            : 'Security policy: Your password was last changed ' . $daysSinceChange . ' days ago and has expired (90-day rotation required).';
+            : 'Security policy: Your password was last changed '.$daysSinceChange.' days ago and has expired (90-day rotation required).';
 
         return Inertia::render('auth/ChangePassword', [
             'reason' => $reason,
@@ -44,15 +45,8 @@ class ChangePasswordController extends Controller
 
         $validated = $request->validate([
             'current_password' => ['required', 'string'],
-            'password' => [
-                'required',
-                'confirmed',
-                Password::min(8)
-                    ->letters()
-                    ->mixedCase()
-                    ->numbers()
-                    ->symbols(),
-            ],
+            // Same permanent-password policy as everywhere else (see AppServiceProvider).
+            'password' => ['required', 'confirmed', Password::default()],
         ]);
 
         // Validate current password
@@ -92,21 +86,21 @@ class ChangePasswordController extends Controller
             'password_history' => $history,
         ])->save();
 
-        // Invalidate other active sessions for this user
-        $currentSessionId = $request->session()->getId();
-        DB::table('sessions')
-            ->where('user_id', $user->id)
-            ->where('id', '!=', $currentSessionId)
-            ->delete();
-
         AuditLogger::log(
             'auth.password.changed',
-            "Password successfully updated for {$user->email}. Other active sessions invalidated.",
+            "Password successfully updated for {$user->email}. All sessions ended; the user must log in again.",
             $user,
-            ['reason' => $user->must_change_password ? 'initial_change' : 'expired_rotation'],
+            ['reason' => $wasInitialChange ? 'initial_change' : 'expired_rotation'],
             $request
         );
 
-        return redirect('/dashboard')->with('success', 'Your password has been successfully updated and secured.');
+        // The old (temporary) password is gone. End every session, including this one, so the
+        // user logs in again with the new password.
+        DB::table('sessions')->where('user_id', $user->id)->delete();
+        Auth::guard('web')->logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect()->route('login')->with('status', 'Your password has been changed. Please log in with your new password.');
     }
 }

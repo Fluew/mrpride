@@ -357,7 +357,7 @@ onUnmounted(() => observer?.disconnect());
                 class="relative z-10 mx-auto max-w-7xl px-4 pt-14 pb-10 sm:px-6 sm:pt-20 lg:px-8"
             >
                 <p
-                    class="mb-5 flex items-center gap-3 text-xs font-bold tracking-[0.2em] text-[#F8B803] uppercase"
+                    class="mb-5 flex items-center gap-3 text-xs font-semibold text-[#F8B803]"
                 >
                     <span
                         class="h-0.5 w-9 bg-[#F8B803]"
@@ -370,7 +370,7 @@ onUnmounted(() => observer?.disconnect());
                 >
                     <div class="max-w-3xl">
                         <h1
-                            class="text-4xl font-extrabold tracking-tight text-white sm:text-6xl"
+                            class="text-4xl font-semibold tracking-tight text-white sm:text-6xl"
                         >
                             PRODUCT LIST<span class="text-[#F8B803]">.</span>
                         </h1>
@@ -400,7 +400,7 @@ onUnmounted(() => observer?.disconnect());
                         v-model="searchQuery"
                         type="text"
                         placeholder="Search by product, brand, equipment (e.g. Breaker, Makita, PVC, Welding)..."
-                        class="w-full rounded-2xl border border-white/20 bg-black/60 py-3.5 pr-12 pl-12 text-sm text-white shadow-lg backdrop-blur-md transition-all placeholder:text-gray-300 focus:border-[#F8B803] focus:bg-black/80 focus:ring-2 focus:ring-[#F8B803]/30 focus:outline-none sm:text-base"
+                        class="w-full rounded-xl border border-white/20 bg-black/60 py-3.5 pr-12 pl-12 text-sm text-white shadow-lg backdrop-blur-md transition-colors placeholder:text-gray-300 focus:border-[#F8B803] focus:bg-black/80 focus:ring-2 focus:ring-[#F8B803]/30 focus:outline-none sm:text-base"
                     />
                     <button
                         v-if="searchQuery"
@@ -455,7 +455,7 @@ onUnmounted(() => observer?.disconnect());
                         :key="category.id"
                         :href="`#${category.id}`"
                         :class="[
-                            'group flex items-center gap-3 rounded-xl border px-4 py-4 text-sm font-semibold shadow-sm backdrop-blur-md transition-all focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#F8B803]',
+                            'group flex items-center gap-3 rounded-xl border px-4 py-4 text-sm font-semibold backdrop-blur-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#F8B803]',
                             selectedCategory === category.id
                                 ? 'border-[#F8B803] bg-black/85 text-[#F8B803]'
                                 : 'border-white/20 bg-black/50 text-white hover:border-[#F8B803] hover:bg-black/75',
@@ -464,7 +464,7 @@ onUnmounted(() => observer?.disconnect());
                     >
                         <component
                             :is="category.icon"
-                            class="size-5 shrink-0 text-[#F8B803] transition-transform group-hover:scale-110"
+                            class="size-5 shrink-0 text-[#F8B803] transition-transform"
                             aria-hidden="true"
                         />
                         {{ category.label }}
@@ -484,14 +484,14 @@ onUnmounted(() => observer?.disconnect());
             <!-- No Matches Empty State -->
             <div
                 v-if="filteredCategories.length === 0"
-                class="rounded-3xl border border-gray-200 bg-white p-10 text-center shadow-sm sm:p-14"
+                class="rounded-xl border border-gray-200 bg-white p-10 text-center sm:p-14"
             >
                 <div
-                    class="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-[#4b5320]/10 text-[#4b5320]"
+                    class="mx-auto mb-4 flex size-16 items-center justify-center rounded-xl bg-[#4b5320]/10 text-[#4b5320]"
                 >
                     <Search class="size-8" />
                 </div>
-                <h3 class="mb-2 text-xl font-bold text-gray-900">
+                <h3 class="mb-2 text-xl font-semibold text-gray-900">
                     No products or brands found
                 </h3>
                 <p class="mx-auto mb-6 max-w-md text-sm text-gray-500">
@@ -525,7 +525,7 @@ onUnmounted(() => observer?.disconnect());
                 </div>
                 <button
                     @click="resetFilters"
-                    class="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-[#4b5320] px-6 py-3 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#3d441a]"
+                    class="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-[#4b5320] px-6 py-3 text-xs font-semibold text-white transition-colors hover:bg-[#3d441a]"
                 >
                     <RotateCcw class="size-3.5" />
                     Clear search
@@ -540,23 +540,23 @@ onUnmounted(() => observer?.disconnect());
                 ref="categorySections"
                 tabindex="-1"
                 :aria-labelledby="`${category.id}-title`"
-                class="category-section scroll-mt-24 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-[box-shadow,border-color] duration-300 hover:border-[#4b5320]/30 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#4b5320]"
+                class="category-section scroll-mt-24 overflow-hidden rounded-xl border border-gray-200 bg-white transition-[box-shadow,border-color] duration-300 hover:border-[#4b5320]/30 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#4b5320]"
             >
                 <div
                     class="grid gap-8 p-6 sm:p-9 lg:grid-cols-[1.15fr_1fr] lg:gap-12 lg:p-10"
                 >
                     <div>
                         <div
-                            class="mb-5 flex items-center gap-3 text-xs font-bold tracking-[0.16em] text-[#4b5320] uppercase"
+                            class="mb-5 flex items-center gap-3 text-xs font-semibold text-[#4b5320]"
                         >
                             <span
-                                class="flex size-9 items-center justify-center rounded-lg bg-[#4b5320]/10 text-sm font-black"
+                                class="flex size-9 items-center justify-center rounded-lg bg-[#4b5320]/10 text-sm font-semibold"
                                 >{{ category.code }}</span
                             >Product category
                         </div>
                         <h2
                             :id="`${category.id}-title`"
-                            class="max-w-xl text-2xl leading-tight font-bold tracking-tight text-gray-900 uppercase sm:text-3xl"
+                            class="max-w-xl text-2xl leading-tight font-semibold tracking-tight text-gray-900 sm:text-3xl"
                         >
                             {{ category.title }}
                         </h2>
@@ -576,14 +576,14 @@ onUnmounted(() => observer?.disconnect());
                             class="mt-5 rounded-xl border border-[#F8B803]/25 bg-[#F8B803]/10 p-3.5 text-xs text-gray-800"
                         >
                             <span
-                                class="mb-1 block text-[11px] font-bold tracking-wider text-gray-900 uppercase"
+                                class="mb-1 block text-[11px] font-semibold text-gray-900"
                                 >Matching Brand Partners:</span
                             >
                             <div class="mt-1 flex flex-wrap gap-1.5">
                                 <span
                                     v-for="b in category.matchingBrands"
                                     :key="b"
-                                    class="rounded-md border border-[#F8B803]/30 bg-white px-2 py-0.5 font-semibold text-gray-900 shadow-2xs"
+                                    class="rounded-md border border-[#F8B803]/30 bg-white px-2 py-0.5 font-semibold text-gray-900"
                                 >
                                     {{ b }}
                                 </span>
@@ -593,7 +593,7 @@ onUnmounted(() => observer?.disconnect());
                         <!-- Product List -->
                         <div class="mt-7 flex items-center justify-between">
                             <h3
-                                class="text-xs font-bold tracking-widest text-gray-500 uppercase"
+                                class="text-xs font-semibold text-gray-500"
                             >
                                 Our product range
                             </h3>
@@ -652,7 +652,7 @@ onUnmounted(() => observer?.disconnect());
                                     category.code === 'A' ? 'eager' : 'lazy'
                                 "
                                 decoding="async"
-                                class="h-full w-full object-contain transition-transform duration-500 group-hover:scale-[1.03] motion-reduce:transform-none motion-reduce:transition-none"
+                                class="h-full w-full object-contain transition-transform duration-500 motion-reduce:transform-none motion-reduce:transition-none"
                             />
                         </div>
                         <figcaption
@@ -669,12 +669,12 @@ onUnmounted(() => observer?.disconnect());
                 >
                     <div class="mb-5 flex items-center justify-between">
                         <h3
-                            class="text-xs font-bold tracking-widest text-gray-900 uppercase sm:text-sm"
+                            class="text-xs font-semibold text-gray-900 sm:text-sm"
                         >
                             Brand Partners
                         </h3>
                         <span
-                            class="hidden text-[11px] font-semibold tracking-wider text-gray-400 uppercase sm:inline"
+                            class="hidden text-[11px] font-semibold text-gray-400 sm:inline"
                         >
                             Authorized Manufacturers & Suppliers
                         </span>

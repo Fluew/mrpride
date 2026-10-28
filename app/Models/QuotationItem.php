@@ -31,6 +31,25 @@ class QuotationItem extends Model
         ];
     }
 
+    protected $appends = [
+        'available_stock',
+        'shortage',
+    ];
+
+    public function getAvailableStockAttribute(): int
+    {
+        return $this->product?->stock ?? 0;
+    }
+
+    public function getShortageAttribute(): int
+    {
+        if (! $this->product_id || ! $this->product) {
+            return 0;
+        }
+
+        return max(0, (int) $this->quantity - (int) $this->product->stock);
+    }
+
     public function quotation(): BelongsTo
     {
         return $this->belongsTo(Quotation::class);

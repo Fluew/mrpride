@@ -1,11 +1,25 @@
 <?php
 
 use App\Enums\TeamRole;
+use App\Http\Middleware\EnsureAdminOrStaff;
+use App\Http\Middleware\EnsureDeviceVerified;
+use App\Http\Middleware\EnsurePasswordNotExpired;
 use App\Models\Team;
 use App\Models\TeamInvitation;
 use App\Models\User;
 use App\Notifications\Teams\TeamInvitation as TeamInvitationNotification;
 use Illuminate\Support\Facades\Notification;
+
+// These tests cover the starter-kit settings/teams logic with plain factory users. The access
+// rules on these routes (admin/staff only, trusted device, password expiry) are covered in
+// tests/Feature/InternalAccessTest.php.
+beforeEach(function () {
+    $this->withoutMiddleware([
+        EnsureAdminOrStaff::class,
+        EnsureDeviceVerified::class,
+        EnsurePasswordNotExpired::class,
+    ]);
+});
 
 test('team invitations can be created', function () {
     Notification::fake();

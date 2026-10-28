@@ -7,11 +7,11 @@ use App\Models\Team;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\ResendService;
+use App\Support\Csv;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -84,10 +84,10 @@ class InquiryController extends Controller
                 'customer_service',
             ]);
         })
-        ->where('status', 'active')
-        ->select(['id', 'name', 'email', 'role'])
-        ->orderBy('name')
-        ->get();
+            ->where('status', 'active')
+            ->select(['id', 'name', 'email', 'role'])
+            ->orderBy('name')
+            ->get();
 
         $inquiries = $query->orderByDesc('created_at')->paginate(15)->withQueryString();
 
@@ -370,12 +370,12 @@ class InquiryController extends Controller
 
         $headers = [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="inquiries_' . now()->format('Ymd_His') . '.csv"',
+            'Content-Disposition' => 'attachment; filename="inquiries_'.now()->format('Ymd_His').'.csv"',
         ];
 
         return response()->stream(function () use ($inquiries) {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, [
+            Csv::put($handle, [
                 'ID',
                 'Date Received',
                 'Customer Name',
@@ -393,7 +393,7 @@ class InquiryController extends Controller
             ]);
 
             foreach ($inquiries as $inquiry) {
-                fputcsv($handle, [
+                Csv::put($handle, [
                     $inquiry->id,
                     $inquiry->created_at?->format('Y-m-d H:i:s'),
                     $inquiry->name,

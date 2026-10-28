@@ -150,7 +150,7 @@ const showPassword = ref(false);
 
             <Button
                 type="submit"
-                class="mt-2 w-full cursor-pointer bg-[#F8B803] font-bold text-gray-950 shadow-md transition-all hover:bg-[#fac52e] hover:shadow-lg focus-visible:ring-2 focus-visible:ring-[#F8B803] focus-visible:ring-offset-2"
+                class="mt-2 w-full cursor-pointer bg-[#F8B803] font-semibold text-gray-950 shadow-md transition-colors hover:bg-[#fac52e] focus-visible:ring-2 focus-visible:ring-[#F8B803] focus-visible:ring-offset-2"
                 :disabled="processing"
                 data-test="login-button"
             >

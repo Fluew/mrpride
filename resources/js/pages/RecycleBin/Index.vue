@@ -423,7 +423,7 @@ const getTypeBadgeClasses = (type: string) => {
     <!-- Toast Notification -->
     <div
         v-if="notificationMessage"
-        class="fixed top-5 right-5 z-[100] max-w-md px-4 py-3 rounded-xl shadow-xl border text-sm flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-200"
+        class="fixed top-5 right-5 z-[100] max-w-md px-4 py-3 rounded-xl shadow-xl border text-sm flex items-center gap-3 animate-in fade-in duration-200"
         :class="[
             notificationType === 'success' ? 'bg-emerald-50 text-emerald-900 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-100 dark:border-emerald-800' :
             notificationType === 'error' ? 'bg-rose-50 text-rose-900 border-rose-200 dark:bg-rose-950 dark:text-rose-100 dark:border-rose-800' :
@@ -437,109 +437,45 @@ const getTypeBadgeClasses = (type: string) => {
         <button @click="notificationMessage = ''" class="ml-auto text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">&times;</button>
     </div>
 
-    <div class="workspace-page p-4 sm:p-6 max-w-[1600px] mx-auto space-y-6">
+    <div class="workspace-page">
         <!-- Page Header -->
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div>
-                <div class="flex items-center gap-2.5">
-                    <div class="flex size-11 items-center justify-center rounded-xl bg-[#4b5320] text-[#F8B803] shadow-md shadow-[#4b5320]/20">
-                        <Archive class="size-6" />
-                    </div>
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <h1 class="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Archive / Recycle Bin</h1>
-                            <span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800">
-                                Admin Only
-                            </span>
-                        </div>
-                        <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                            A centralized page for recoverable deleted records. Restore items to active use or permanently delete them with audit logging.
-                        </p>
-                    </div>
-                </div>
+                <h1 class="page-title">Archive / Recycle Bin</h1>
+                <p class="page-subtitle">Restore deleted records or delete them permanently. Every action is logged.</p>
             </div>
 
             <!-- Header Action Buttons -->
-            <div class="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
-                <SpecularButton
-                    type="button"
-                    variant="destructive"
-                    size="md"
-                    :radius="10"
-                    :disabled="stats.total === 0 || isProcessing"
-                    @click="openEmptyBinModal"
-                >
-                    <Trash2 class="w-4 h-4 mr-1.5" />
-                    <span>Empty Recycle Bin</span>
-                </SpecularButton>
-
+            <div class="flex flex-wrap items-center justify-start lg:justify-end gap-2.5 w-full lg:w-auto">
                 <SpecularButton
                     type="button"
                     variant="secondary"
                     size="md"
-                    :radius="10"
+                    :radius="12"
                     @click="router.reload({ preserveScroll: true })"
                 >
-                    <RefreshCw class="w-4 h-4 mr-1.5" />
+                    <RefreshCw class="w-4 h-4 text-gray-500" />
                     <span>Refresh</span>
+                </SpecularButton>
+
+                <!-- Destructive, rarely used: kept quiet so it is never mistaken for the main action. -->
+                <SpecularButton
+                    type="button"
+                    variant="secondary"
+                    size="md"
+                    :radius="12"
+                    textColor="#e11d48"
+                    :disabled="stats.total === 0 || isProcessing"
+                    @click="openEmptyBinModal"
+                >
+                    <Trash2 class="w-4 h-4" />
+                    <span>Empty Recycle Bin</span>
                 </SpecularButton>
             </div>
         </div>
 
-        <!-- Metrics Overview Grid -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <!-- Total Archived -->
-            <div class="p-4 rounded-2xl bg-white dark:bg-gray-800/90 border border-gray-200/80 dark:border-gray-700/80 shadow-xs flex items-center justify-between">
-                <div>
-                    <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 block">Total Recoverable Records</span>
-                    <span class="text-2xl font-black text-gray-900 dark:text-white mt-1 block">{{ stats.total }}</span>
-                    <span class="text-[11px] text-gray-400 dark:text-gray-500 block mt-0.5">Across all catalog & operational modules</span>
-                </div>
-                <div class="p-3 bg-amber-50 dark:bg-amber-950/50 text-[#F8B803] rounded-xl border border-amber-100 dark:border-amber-800/50">
-                    <Archive class="w-6 h-6" />
-                </div>
-            </div>
-
-            <!-- Deleted Today -->
-            <div class="p-4 rounded-2xl bg-white dark:bg-gray-800/90 border border-gray-200/80 dark:border-gray-700/80 shadow-xs flex items-center justify-between">
-                <div>
-                    <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 block">Deleted Today</span>
-                    <span class="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1 block">{{ stats.deleted_today }}</span>
-                    <span class="text-[11px] text-gray-400 dark:text-gray-500 block mt-0.5">Recently archived in the last 24h</span>
-                </div>
-                <div class="p-3 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 rounded-xl border border-emerald-100 dark:border-emerald-800/50">
-                    <Clock class="w-6 h-6" />
-                </div>
-            </div>
-
-            <!-- Distinct Types -->
-            <div class="p-4 rounded-2xl bg-white dark:bg-gray-800/90 border border-gray-200/80 dark:border-gray-700/80 shadow-xs flex items-center justify-between">
-                <div>
-                    <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 block">Active Record Types</span>
-                    <span class="text-2xl font-black text-[#4b5320] dark:text-[#F8B803] mt-1 block">{{ stats.types_with_records }} / {{ availableTypes.length }}</span>
-                    <span class="text-[11px] text-gray-400 dark:text-gray-500 block mt-0.5">Modules with archived entities</span>
-                </div>
-                <div class="p-3 bg-lime-50 dark:bg-lime-950/50 text-[#4b5320] rounded-xl border border-lime-100 dark:border-lime-800/50">
-                    <Layers class="w-6 h-6" />
-                </div>
-            </div>
-
-            <!-- Security & Retention Policy Card -->
-            <div class="p-4 rounded-2xl bg-gradient-to-br from-[#4b5320]/10 via-[#F8B803]/5 to-transparent border border-[#4b5320]/20 dark:border-[#F8B803]/20 shadow-xs flex items-center justify-between">
-                <div>
-                    <span class="text-xs font-bold text-gray-900 dark:text-white block">Audit-Logged Operations</span>
-                    <span class="text-[11px] text-gray-600 dark:text-gray-300 mt-1 block leading-relaxed">
-                        Restores and permanent deletions require administrator privileges and are automatically logged with timestamps and user identification.
-                    </span>
-                </div>
-                <div class="p-2.5 bg-[#4b5320] text-[#F8B803] rounded-xl shadow-xs shrink-0 ml-3">
-                    <ShieldAlert class="w-5 h-5" />
-                </div>
-            </div>
-        </div>
-
         <!-- Filter Tabs & Search Bar -->
-        <div class="bg-white dark:bg-gray-800/90 border border-gray-200/80 dark:border-gray-700/80 rounded-2xl p-4 shadow-xs space-y-3">
+        <div class="space-y-3">
             <div class="flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center">
                 <!-- Search Box -->
                 <div class="relative flex-1 max-w-md">
@@ -562,7 +498,7 @@ const getTypeBadgeClasses = (type: string) => {
                 <!-- Record Count Indicator -->
                 <div class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5 self-center">
                     <Filter class="w-3.5 h-3.5 text-gray-400" />
-                    <span>Showing {{ records.from || 0 }} - {{ records.to || 0 }} of {{ records.total }} records</span>
+                    <span>Showing {{ records.from || 0 }}–{{ records.to || 0 }} of {{ records.total }}<template v-if="stats.deleted_today"> · {{ stats.deleted_today }} deleted today</template></span>
                 </div>
             </div>
 
@@ -571,17 +507,13 @@ const getTypeBadgeClasses = (type: string) => {
                 <button
                     type="button"
                     @click="filterByType('all')"
-                    class="px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition flex items-center gap-1.5"
+                    class="px-3 py-1.5 rounded-lg text-sm font-medium shrink-0 transition-colors flex items-center gap-1.5"
                     :class="selectedType === 'all'
-                        ? 'bg-[#4b5320] text-white shadow-xs'
-                        : 'bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'"
+                        ? 'bg-gray-100 text-gray-900'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800'"
                 >
-                    <Archive class="w-3.5 h-3.5" />
                     <span>All Records</span>
-                    <span
-                        class="px-1.5 py-0.2 rounded-full text-[10px]"
-                        :class="selectedType === 'all' ? 'bg-white/20 text-white' : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200'"
-                    >
+                    <span class="text-xs text-gray-400">
                         {{ counts.all || 0 }}
                     </span>
                 </button>
@@ -591,17 +523,13 @@ const getTypeBadgeClasses = (type: string) => {
                     :key="t.key"
                     type="button"
                     @click="filterByType(t.key)"
-                    class="px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition flex items-center gap-1.5"
+                    class="px-3 py-1.5 rounded-lg text-sm font-medium shrink-0 transition-colors flex items-center gap-1.5"
                     :class="selectedType === t.key
-                        ? 'bg-[#4b5320] text-white shadow-xs'
-                        : 'bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'"
+                        ? 'bg-gray-100 text-gray-900'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800'"
                 >
-                    <component :is="getTypeIcon(t.key)" class="w-3.5 h-3.5" />
                     <span>{{ t.label }}</span>
-                    <span
-                        class="px-1.5 py-0.2 rounded-full text-[10px]"
-                        :class="selectedType === t.key ? 'bg-white/20 text-white' : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200'"
-                    >
+                    <span class="text-xs text-gray-400">
                         {{ counts[t.key] || 0 }}
                     </span>
                 </button>
@@ -611,7 +539,7 @@ const getTypeBadgeClasses = (type: string) => {
         <!-- Bulk Action Floating / Sticky Bar (When items are checked) -->
         <div
             v-if="selectedIds.length > 0"
-            class="p-3 bg-gray-900 text-white rounded-2xl shadow-xl flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-150"
+            class="p-3 bg-gray-900 text-white rounded-xl shadow-xl flex flex-wrap items-center justify-between gap-3 animate-in fade-in duration-150"
         >
             <div class="flex items-center gap-3">
                 <span class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-white/10">
@@ -650,10 +578,10 @@ const getTypeBadgeClasses = (type: string) => {
         </div>
 
         <!-- Trashed Records Table Container -->
-        <div class="bg-white dark:bg-gray-800/90 border border-gray-200/80 dark:border-gray-700/80 rounded-2xl shadow-xs overflow-hidden">
+        <div class="bg-white dark:bg-gray-800/90 border border-gray-200/80 dark:border-gray-700/80 rounded-xl overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
-                    <thead class="bg-gray-50/80 dark:bg-gray-900/60 border-b border-gray-200/80 dark:border-gray-700/80 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    <thead class="bg-gray-50/80 dark:bg-gray-900/60 border-b border-gray-200/80 dark:border-gray-700/80 text-[11px] font-semibold text-gray-500 dark:text-gray-400">
                         <tr>
                             <th class="p-3.5 w-10 text-center">
                                 <input
@@ -691,7 +619,7 @@ const getTypeBadgeClasses = (type: string) => {
                             <!-- Record Type Badge -->
                             <td class="p-3.5 whitespace-nowrap">
                                 <span
-                                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border"
+                                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border"
                                     :class="getTypeBadgeClasses(record.type)"
                                 >
                                     <component :is="getTypeIcon(record.type)" class="w-3.5 h-3.5 shrink-0" />
@@ -701,7 +629,7 @@ const getTypeBadgeClasses = (type: string) => {
 
                             <!-- Title & Identifier -->
                             <td class="p-3.5 max-w-xs">
-                                <div class="font-bold text-gray-900 dark:text-white truncate text-xs sm:text-sm">
+                                <div class="font-semibold text-gray-900 dark:text-white truncate text-xs sm:text-sm">
                                     {{ record.title }}
                                 </div>
                                 <div class="text-[11px] text-gray-500 dark:text-gray-400 font-mono mt-0.5 truncate">
@@ -729,7 +657,7 @@ const getTypeBadgeClasses = (type: string) => {
                             <!-- Deleted By User -->
                             <td class="p-3.5 whitespace-nowrap">
                                 <div v-if="record.deleted_by" class="flex items-center gap-2">
-                                    <div class="w-6 h-6 rounded-full bg-[#4b5320]/15 dark:bg-[#F8B803]/20 text-[#4b5320] dark:text-[#F8B803] flex items-center justify-center font-bold text-[10px]">
+                                    <div class="w-6 h-6 rounded-full bg-[#4b5320]/15 dark:bg-[#F8B803]/20 text-[#4b5320] dark:text-[#F8B803] flex items-center justify-center font-semibold text-[10px]">
                                         {{ record.deleted_by.name ? record.deleted_by.name.charAt(0).toUpperCase() : 'U' }}
                                     </div>
                                     <div>
@@ -788,10 +716,10 @@ const getTypeBadgeClasses = (type: string) => {
                         <tr v-if="records.data.length === 0">
                             <td colspan="7" class="py-16 text-center">
                                 <div class="max-w-md mx-auto space-y-3">
-                                    <div class="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-400 mx-auto flex items-center justify-center">
+                                    <div class="w-14 h-14 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-400 mx-auto flex items-center justify-center">
                                         <Archive class="w-7 h-7" />
                                     </div>
-                                    <h3 class="text-base font-bold text-gray-900 dark:text-white">
+                                    <h3 class="text-base font-semibold text-gray-900 dark:text-white">
                                         {{ searchQuery || selectedType !== 'all' ? 'No Matching Archived Records' : 'Recycle Bin is Empty' }}
                                     </h3>
                                     <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
@@ -852,9 +780,9 @@ const getTypeBadgeClasses = (type: string) => {
     <!-- ========================================================================= -->
     <div
         v-if="showDetailsModal && activeRecord"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto"
     >
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-8">
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl w-full max-w-2xl shadow-xl overflow-hidden animate-in fade-in duration-150 my-8">
             <!-- Modal Header -->
             <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-start">
                 <div class="flex items-start gap-3">
@@ -864,14 +792,14 @@ const getTypeBadgeClasses = (type: string) => {
                     <div>
                         <div class="flex items-center gap-2">
                             <span
-                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border"
+                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border"
                                 :class="getTypeBadgeClasses(activeRecord.type)"
                             >
                                 {{ activeRecord.type_label }}
                             </span>
                             <span class="text-xs text-gray-400">ID: {{ activeRecord.id }}</span>
                         </div>
-                        <h3 class="text-lg font-bold text-gray-900 dark:text-white mt-1">{{ activeRecord.title }}</h3>
+                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mt-1">{{ activeRecord.title }}</h3>
                         <p class="text-xs text-gray-500 font-mono">{{ activeRecord.identifier }}</p>
                     </div>
                 </div>
@@ -887,12 +815,12 @@ const getTypeBadgeClasses = (type: string) => {
                 <div class="p-4 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-200/80 dark:border-gray-700/80 space-y-2 text-xs">
                     <div class="flex items-center justify-between py-1 border-b border-gray-200/60 dark:border-gray-700/60">
                         <span class="text-gray-500 font-medium">Deleted When:</span>
-                        <span class="font-bold text-gray-900 dark:text-white">{{ activeRecord.deleted_at }} ({{ activeRecord.deleted_at_human }})</span>
+                        <span class="font-semibold text-gray-900 dark:text-white">{{ activeRecord.deleted_at }} ({{ activeRecord.deleted_at_human }})</span>
                     </div>
 
                     <div class="flex items-center justify-between py-1 border-b border-gray-200/60 dark:border-gray-700/60">
                         <span class="text-gray-500 font-medium">Deleted By User:</span>
-                        <span class="font-bold text-gray-900 dark:text-white">
+                        <span class="font-semibold text-gray-900 dark:text-white">
                             {{ activeRecord.deleted_by ? `${activeRecord.deleted_by.name} (${activeRecord.deleted_by.email} • ${activeRecord.deleted_by.role})` : 'System / Previous Admin' }}
                         </span>
                     </div>
@@ -905,7 +833,7 @@ const getTypeBadgeClasses = (type: string) => {
 
                 <!-- Attributes Table -->
                 <div>
-                    <h4 class="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">Original Record Properties</h4>
+                    <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">Original Record Properties</h4>
                     <div class="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
                         <table class="w-full text-left text-xs divide-y divide-gray-100 dark:divide-gray-700">
                             <tbody class="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-800">
@@ -966,13 +894,13 @@ const getTypeBadgeClasses = (type: string) => {
     <!-- ========================================================================= -->
     <div
         v-if="showRestoreModal && recordToRestore"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
     >
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6 rounded-xl w-full max-w-md shadow-xl animate-in fade-in duration-150">
             <div class="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center mb-4 border border-emerald-100 dark:border-emerald-800">
                 <RotateCcw class="w-6 h-6" />
             </div>
-            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Restore Archived Record</h3>
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">Restore Archived Record</h3>
             <p class="text-gray-600 dark:text-gray-300 text-sm mb-4 leading-relaxed">
                 Are you sure you want to restore <strong class="text-gray-900 dark:text-white">"{{ recordToRestore.title }}"</strong> ({{ recordToRestore.type_label }}) back to active status?
             </p>
@@ -1009,18 +937,18 @@ const getTypeBadgeClasses = (type: string) => {
     <!-- ========================================================================= -->
     <div
         v-if="showForceDeleteModal && recordToForceDelete"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
     >
-        <div class="bg-white dark:bg-gray-800 border border-rose-200 dark:border-rose-900/60 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+        <div class="bg-white dark:bg-gray-800 border border-rose-200 dark:border-rose-900/60 p-6 rounded-xl w-full max-w-md shadow-xl animate-in fade-in duration-150">
             <div class="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center mb-4 border border-rose-100 dark:border-rose-800">
                 <AlertTriangle class="w-6 h-6" />
             </div>
-            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Permanently Delete Record</h3>
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">Permanently Delete Record</h3>
             <p class="text-gray-600 dark:text-gray-300 text-sm mb-4 leading-relaxed">
                 Warning: You are about to permanently purge <strong class="text-gray-900 dark:text-white">"{{ recordToForceDelete.title }}"</strong> ({{ recordToForceDelete.type_label }}) from the database.
             </p>
             <div class="p-3.5 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-800/60 text-xs text-rose-800 dark:text-rose-300 mb-4 space-y-1">
-                <div class="font-bold flex items-center gap-1.5">
+                <div class="font-semibold flex items-center gap-1.5">
                     <ShieldAlert class="w-4 h-4 text-rose-600 shrink-0" />
                     <span>Restricted Admin Action</span>
                 </div>
@@ -1028,7 +956,7 @@ const getTypeBadgeClasses = (type: string) => {
             </div>
             <div class="mt-2 mb-6">
                 <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 dark:bg-rose-950 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-800">YES</span> if you wish to delete:
+                    Type <span class="font-mono font-semibold text-rose-600 bg-rose-50 dark:bg-rose-950 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-800">YES</span> if you wish to delete:
                 </label>
                 <input
                     v-model="forceDeleteConfirmInput"
@@ -1067,13 +995,13 @@ const getTypeBadgeClasses = (type: string) => {
     <!-- ========================================================================= -->
     <div
         v-if="showBulkRestoreModal"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
     >
-        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6 rounded-xl w-full max-w-md shadow-xl animate-in fade-in duration-150">
             <div class="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center mb-4 border border-emerald-100 dark:border-emerald-800">
                 <RotateCcw class="w-6 h-6" />
             </div>
-            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Bulk Restore Records</h3>
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">Bulk Restore Records</h3>
             <p class="text-gray-600 dark:text-gray-300 text-sm mb-4 leading-relaxed">
                 Are you sure you want to restore all <strong class="text-gray-900 dark:text-white">{{ selectedIds.length }} selected records</strong> back to active status?
             </p>
@@ -1107,13 +1035,13 @@ const getTypeBadgeClasses = (type: string) => {
     <!-- ========================================================================= -->
     <div
         v-if="showBulkForceDeleteModal"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
     >
-        <div class="bg-white dark:bg-gray-800 border border-rose-200 dark:border-rose-900/60 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+        <div class="bg-white dark:bg-gray-800 border border-rose-200 dark:border-rose-900/60 p-6 rounded-xl w-full max-w-md shadow-xl animate-in fade-in duration-150">
             <div class="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center mb-4 border border-rose-100 dark:border-rose-800">
                 <AlertTriangle class="w-6 h-6" />
             </div>
-            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Bulk Permanent Delete</h3>
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">Bulk Permanent Delete</h3>
             <p class="text-gray-600 dark:text-gray-300 text-sm mb-4 leading-relaxed">
                 Warning: You are about to permanently purge <strong class="text-gray-900 dark:text-white">{{ selectedIds.length }} records</strong> from the system database. This cannot be undone.
             </p>
@@ -1122,7 +1050,7 @@ const getTypeBadgeClasses = (type: string) => {
             </div>
             <div class="mt-2 mb-6">
                 <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 dark:bg-rose-950 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-800">YES</span> if you wish to delete:
+                    Type <span class="font-mono font-semibold text-rose-600 bg-rose-50 dark:bg-rose-950 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-800">YES</span> if you wish to delete:
                 </label>
                 <input
                     v-model="bulkForceDeleteConfirmInput"
@@ -1161,23 +1089,23 @@ const getTypeBadgeClasses = (type: string) => {
     <!-- ========================================================================= -->
     <div
         v-if="showEmptyBinModal"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
     >
-        <div class="bg-white dark:bg-gray-800 border border-rose-200 dark:border-rose-900/60 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+        <div class="bg-white dark:bg-gray-800 border border-rose-200 dark:border-rose-900/60 p-6 rounded-xl w-full max-w-md shadow-xl animate-in fade-in duration-150">
             <div class="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center mb-4 border border-rose-100 dark:border-rose-800">
                 <Trash2 class="w-6 h-6" />
             </div>
-            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Empty Entire Recycle Bin?</h3>
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">Empty Entire Recycle Bin?</h3>
             <p class="text-gray-600 dark:text-gray-300 text-sm mb-4 leading-relaxed">
                 Are you sure you want to permanently delete <strong class="text-gray-900 dark:text-white">all {{ stats.total }} records</strong> currently in the Recycle Bin?
             </p>
             <div class="p-3.5 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-800 text-xs text-rose-800 dark:text-rose-300 mb-4 space-y-1">
-                <span class="font-bold block">Irreversible Database Purge</span>
+                <span class="font-semibold block">Irreversible Database Purge</span>
                 <span>Every recoverable item across all modules will be completely erased. This operation will be logged to the security audit trail.</span>
             </div>
             <div class="mt-2 mb-6">
                 <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 dark:bg-rose-950 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-800">YES</span> if you wish to delete:
+                    Type <span class="font-mono font-semibold text-rose-600 bg-rose-50 dark:bg-rose-950 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-800">YES</span> if you wish to delete:
                 </label>
                 <input
                     v-model="emptyBinConfirmInput"

@@ -118,29 +118,33 @@ const promptRevokeOtherSessions = () => {
             <!-- Header Section -->
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                    <h1 class="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
+                    <h1 class="page-title">
                         Active Sessions
                     </h1>
-                    <p class="text-sm text-gray-500 mt-1">
+                    <p class="page-subtitle">
                         Monitor active browser sessions and revoke unauthorized or stale logins.
                     </p>
                 </div>
 
-                <button
-                    type="button"
-                    @click="promptRevokeOtherSessions"
-                    class="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-semibold text-red-700 hover:bg-red-100 shadow-xs cursor-pointer transition-colors"
-                >
-                    <LogOut class="size-4" />
-                    Sign Out All Other Sessions
-                </button>
+                <div class="flex flex-wrap items-center justify-start lg:justify-end gap-2.5 w-full lg:w-auto">
+                    <SpecularButton
+                        type="button"
+                        variant="danger"
+                        size="md"
+                        :radius="12"
+                        @click="promptRevokeOtherSessions"
+                    >
+                        <LogOut class="size-4 mr-1.5 inline" />
+                        Sign Out All Other Sessions
+                    </SpecularButton>
+                </div>
             </div>
 
             <!-- Sessions Table -->
-            <div class="rounded-2xl border border-gray-200 bg-white shadow-xs overflow-hidden">
+            <div class="rounded-xl border border-gray-200 bg-white overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-sm text-gray-600">
-                        <thead class="bg-gray-50/80 border-b border-gray-200 text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        <thead class="bg-gray-50/80 border-b border-gray-200 text-xs font-semibold text-gray-700">
                             <tr>
                                 <th class="px-6 py-4">Workstation / Device</th>
                                 <th v-if="isAdmin" class="px-6 py-4">Account</th>
@@ -161,7 +165,7 @@ const promptRevokeOtherSessions = () => {
                                                 <span>{{ s.device_name }}</span>
                                                 <span
                                                     v-if="s.is_current"
-                                                    class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200"
+                                                    class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200"
                                                 >
                                                     Current Session
                                                 </span>
@@ -212,8 +216,8 @@ const promptRevokeOtherSessions = () => {
     </AppSidebarLayout>
 
     <!-- Action Confirmation Modal -->
-    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl animate-in fade-in duration-150">
             <div
                 :class="[
                     'w-11 h-11 rounded-full flex items-center justify-center mb-4 border',
@@ -225,7 +229,7 @@ const promptRevokeOtherSessions = () => {
                 <AlertTriangle v-if="confirmOptions.confirmVariant === 'destructive'" class="w-6 h-6" />
                 <CheckCircle2 v-else class="w-6 h-6" />
             </div>
-            <h3 class="text-xl font-bold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
+            <h3 class="text-xl font-semibold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
             <p class="text-gray-600 text-sm mb-4 leading-relaxed">
                 {{ confirmOptions.description }}
             </p>
@@ -239,7 +243,7 @@ const promptRevokeOtherSessions = () => {
 
             <div v-if="confirmOptions.confirmVariant === 'destructive'" class="mt-2 mb-5">
                 <label class="block text-xs font-semibold text-gray-700 mb-1.5">
-                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                    Type <span class="font-mono font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
                 </label>
                 <input
                     v-model="confirmActionInput"

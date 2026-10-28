@@ -2,11 +2,27 @@
 
 namespace App\Http\Middleware;
 
+use Closure;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
 {
+    /**
+     * Encrypt Inertia's client-side history entries for authenticated sessions.
+     *
+     * Page props are otherwise stored in plain text in the browser's history state, which
+     * the Back button restores without contacting the server. Encrypted entries become
+     * unreadable once the key is cleared on logout (see LogoutResponse).
+     */
+    public function handle(Request $request, Closure $next)
+    {
+        Inertia::encryptHistory($request->user() !== null);
+
+        return parent::handle($request, $next);
+    }
+
     /**
      * The root template that's loaded on the first page visit.
      *
@@ -42,6 +58,11 @@ class HandleInertiaRequests extends Middleware
             'name' => config('app.name'),
             'auth' => [
                 'user' => $user,
+                // Modules the current user may access (read from the database on each request).
+                'modules' => fn () => $user ? $user->assignedModules() : [],
+                // From User::isAdmin(). UI hints only; the server enforces both (role / admin_delete middleware).
+                'is_admin' => (bool) $user?->isAdmin(),
+                'can_delete' => (bool) $user?->isAdmin(),
                 'is_first_login' => fn () => (bool) $request->session()->get('is_first_login', false),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',

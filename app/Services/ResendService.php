@@ -15,8 +15,11 @@ use Resend\ValueObjects\Transporter\Headers;
 class ResendService
 {
     protected string $apiKey;
+
     protected string $fromName;
+
     protected string $fromEmail;
+
     protected ?string $caCertPath;
 
     public function __construct()
@@ -52,104 +55,109 @@ class ResendService
     /**
      * Send an OTP email for password reset.
      *
-     * @param string $toEmail
-     * @param string $otp
-     * @param string $userName
      * @return array{success: bool, id: ?string, error: ?string}
      */
     public function sendPasswordResetOtp(string $toEmail, string $otp, string $userName = 'User'): array
     {
-        $from = "{$this->fromName} <{$this->fromEmail}>";
-        $subject = 'Your Mr. Pride Password Reset OTP Code';
         $html = $this->buildOtpEmailHtml($userName, $otp);
 
-        try {
-            // First attempt with Resend SDK Client
-            $resend = $this->client();
-            $result = $resend->emails->send([
-                'from' => $from,
-                'to' => [$toEmail],
-                'subject' => $subject,
-                'html' => $html,
-            ]);
+        return $this->deliver($toEmail, 'Your Mr. Pride Password Reset OTP Code', $html, 'password reset code');
+    }
 
-            $id = $result->id ?? null;
+    /**
+     * Send a customer email (quotation, invoice, delivery notice) built by App\Services\CustomerEmails.
+     *
+     * @return array{success: bool, id: ?string, error: ?string}
+     */
+    public function sendCustomerEmail(string $toEmail, string $subject, string $html, string $kind): array
+    {
+        return $this->deliver($toEmail, $subject, $html, $kind);
+    }
 
-            Log::info("Resend OTP email sent successfully to {$toEmail}", ['resend_id' => $id]);
+    /**
+     * Development redirect: in APP_ENV=local, when RESEND_DEV_REDIRECT_TO is set, every email goes
+     * to that address instead (the Resend sandbox sender onboarding@resend.dev can only deliver to
+     * the Resend account owner). The subject shows who it was really for. Never active elsewhere.
+     */
+    public function devRedirectAddress(): ?string
+    {
+        $to = trim((string) config('services.resend.dev_redirect_to', ''));
 
-            return [
-                'success' => true,
-                'id' => $id,
-                'error' => null,
-            ];
-        } catch (\Throwable $sdkError) {
-            Log::warning("Resend SDK call failed, attempting fallback HTTP request: " . $sdkError->getMessage());
+        return app()->isLocal() && $to !== '' ? $to : null;
+    }
 
+    /**
+     * Send one email: Resend SDK → Resend HTTP API → Laravel's mailer (only if it really delivers).
+     * Never reports success unless the message was handed to a real transport, and never writes
+     * the email body (which may hold codes or links) to the log.
+     *
+     * @return array{success: bool, id: ?string, error: ?string}
+     */
+    protected function deliver(string $toEmail, string $subject, string $html, string $kind): array
+    {
+        $recipient = $toEmail;
+        if ($redirect = $this->devRedirectAddress()) {
+            $recipient = $redirect;
+            $subject = "[DEV for {$toEmail}] {$subject}";
+        }
+
+        $payload = [
+            'from' => "{$this->fromName} <{$this->fromEmail}>",
+            'to' => [$recipient],
+            'subject' => $subject,
+            'html' => $html,
+        ];
+        $resendError = 'Resend API key is not configured.';
+
+        if (! empty($this->apiKey)) {
             try {
-                // Fallback to Laravel HTTP client
-                $http = Http::asJson()->withToken($this->apiKey);
-                if ($this->caCertPath) {
-                    $http = $http->withOptions(['verify' => $this->caCertPath]);
-                } else {
-                    $http = $http->withoutVerifying();
-                }
+                $result = $this->client()->emails->send($payload);
+                $id = $result->id ?? null;
+                Log::info("Resend: {$kind} sent to {$recipient}".($redirect ? " (dev redirect for {$toEmail})" : ''), ['resend_id' => $id]);
 
-                $response = $http->post('https://api.resend.com/emails', [
-                    'from' => $from,
-                    'to' => [$toEmail],
-                    'subject' => $subject,
-                    'html' => $html,
-                ]);
+                return ['success' => true, 'id' => $id, 'error' => null];
+            } catch (\Throwable $sdkError) {
+                $resendError = $sdkError->getMessage();
+                Log::warning("Resend SDK failed for {$kind} to {$recipient}: {$resendError}");
+            }
+
+            // Same request through Laravel's HTTP client (helps when the SDK's SSL setup fails).
+            try {
+                $http = Http::asJson()->withToken($this->apiKey);
+                $http = $this->caCertPath ? $http->withOptions(['verify' => $this->caCertPath]) : $http->withoutVerifying();
+                $response = $http->post('https://api.resend.com/emails', $payload);
 
                 if ($response->successful()) {
-                    $data = $response->json();
-                    $id = $data['id'] ?? null;
-                    Log::info("Resend OTP email sent via HTTP fallback to {$toEmail}", ['resend_id' => $id]);
+                    $id = $response->json('id');
+                    Log::info("Resend (HTTP): {$kind} sent to {$recipient}", ['resend_id' => $id]);
 
-                    return [
-                        'success' => true,
-                        'id' => $id,
-                        'error' => null,
-                    ];
+                    return ['success' => true, 'id' => $id, 'error' => null];
                 }
 
-                $errorBody = $response->body();
-                Log::warning("Resend HTTP request failed ({$response->status()}): {$errorBody}");
-
-                // Attempt Laravel native Mail fallback if configured (e.g. SMTP)
-                try {
-                    $defaultMailer = config('mail.default', 'log');
-                    if ($defaultMailer && $defaultMailer !== 'log') {
-                        Mail::html($html, function ($message) use ($toEmail, $subject) {
-                            $message->to($toEmail)->subject($subject);
-                        });
-
-                        Log::info("OTP email successfully dispatched via Laravel Mail ({$defaultMailer}) to {$toEmail}");
-
-                        return [
-                            'success' => true,
-                            'id' => 'mail-' . uniqid(),
-                            'error' => null,
-                        ];
-                    }
-                } catch (\Throwable $mailError) {
-                    Log::error("Laravel Mail fallback failed: " . $mailError->getMessage());
-                }
-
-                return [
-                    'success' => false,
-                    'id' => null,
-                    'error' => "Resend API error ({$response->status()}): {$errorBody}",
-                ];
+                $resendError = "Resend API error ({$response->status()}): ".($response->json('message') ?? $response->body());
+                Log::warning("Resend HTTP failed for {$kind} to {$recipient}: {$resendError}");
             } catch (\Throwable $httpError) {
-                Log::error("Resend fallback also failed: " . $httpError->getMessage());
-
-                return [
-                    'success' => false,
-                    'id' => null,
-                    'error' => $httpError->getMessage(),
-                ];
+                $resendError = $httpError->getMessage();
+                Log::warning("Resend HTTP failed for {$kind} to {$recipient}: {$resendError}");
             }
+        }
+
+        // Laravel's own mailer, but not the "log" driver: that only writes the email (with any
+        // code or link in it) to storage/logs and would wrongly count as "sent".
+        $mailer = (string) config('mail.default', 'log');
+        if ($mailer === 'log') {
+            return ['success' => false, 'id' => null, 'error' => $resendError];
+        }
+
+        try {
+            Mail::html($html, fn ($message) => $message->to($recipient)->subject($subject));
+            Log::info("Laravel Mail ({$mailer}): {$kind} sent to {$recipient}");
+
+            return ['success' => true, 'id' => 'mail-'.uniqid(), 'error' => null];
+        } catch (\Throwable $mailError) {
+            Log::warning("Laravel Mail ({$mailer}) failed for {$kind} to {$recipient}: ".$mailError->getMessage());
+
+            return ['success' => false, 'id' => null, 'error' => $resendError.' / Mail: '.$mailError->getMessage()];
         }
     }
 
@@ -233,11 +241,6 @@ HTML;
     /**
      * Send an inquiry reply to a customer.
      *
-     * @param string $toEmail
-     * @param string $customerName
-     * @param string $subject
-     * @param string $replyContent
-     * @param string $originalMessage
      * @return array{success: bool, id: ?string, error: ?string}
      */
     public function sendInquiryReply(
@@ -247,45 +250,15 @@ HTML;
         string $replyContent,
         string $originalMessage = ''
     ): array {
-        $from = "{$this->fromName} <{$this->fromEmail}>";
-        $emailSubject = 'Re: ' . ($subject ?: 'Your inquiry with MR-Pride Electrical Supplies');
+        $emailSubject = 'Re: '.($subject ?: 'Your inquiry with MR-Pride Electrical Supplies');
         $html = $this->buildInquiryReplyEmailHtml($customerName, $emailSubject, $replyContent, $originalMessage);
 
-        try {
-            if (! empty($this->apiKey)) {
-                $resend = $this->client();
-                $result = $resend->emails->send([
-                    'from' => $from,
-                    'to' => [$toEmail],
-                    'subject' => $emailSubject,
-                    'html' => $html,
-                ]);
+        return $this->deliver($toEmail, $emailSubject, $html, 'inquiry reply');
+    }
 
-                $id = $result->id ?? null;
-                Log::info("Inquiry reply email sent via Resend to {$toEmail}", ['resend_id' => $id]);
-
-                return ['success' => true, 'id' => $id, 'error' => null];
-            }
-        } catch (\Throwable $sdkError) {
-            Log::warning("Resend SDK reply send failed: " . $sdkError->getMessage());
-        }
-
-        // Try Laravel Mail fallback
-        try {
-            Mail::html($html, function ($msg) use ($toEmail, $emailSubject) {
-                $msg->to($toEmail)->subject($emailSubject);
-            });
-            return ['success' => true, 'id' => 'mail-sent', 'error' => null];
-        } catch (\Throwable $mailError) {
-            Log::info("Mail delivery not available in local environment: " . $mailError->getMessage());
     /**
      * Send a device enrollment invitation to an employee.
      *
-     * @param string $toEmail
-     * @param string $userName
-     * @param string $enrollmentCode
-     * @param string $enrollmentLink
-     * @param int $expiresInMinutes
      * @return array{success: bool, id: ?string, error: ?string}
      */
     public function sendDeviceEnrollmentInvitation(
@@ -295,40 +268,10 @@ HTML;
         string $enrollmentLink,
         int $expiresInMinutes = 5
     ): array {
-        $from = "{$this->fromName} <{$this->fromEmail}>";
         $emailSubject = 'MRP ElectroDesk - Trusted Device Enrollment Invitation (Valid for 5 Minutes)';
         $html = $this->buildDeviceEnrollmentEmailHtml($userName, $toEmail, $enrollmentCode, $enrollmentLink, $expiresInMinutes);
 
-        try {
-            if (! empty($this->apiKey)) {
-                $resend = $this->client();
-                $result = $resend->emails->send([
-                    'from' => $from,
-                    'to' => [$toEmail],
-                    'subject' => $emailSubject,
-                    'html' => $html,
-                ]);
-
-                $id = $result->id ?? null;
-                Log::info("Device enrollment email sent via Resend to {$toEmail}", ['resend_id' => $id]);
-
-                return ['success' => true, 'id' => $id, 'error' => null];
-            }
-        } catch (\Throwable $sdkError) {
-            Log::warning("Resend SDK device invitation send failed: " . $sdkError->getMessage());
-        }
-
-        // Try Laravel Mail fallback
-        try {
-            Mail::html($html, function ($msg) use ($toEmail, $emailSubject) {
-                $msg->to($toEmail)->subject($emailSubject);
-            });
-            Log::info("Device enrollment invitation sent via Laravel Mail to {$toEmail}");
-            return ['success' => true, 'id' => 'mail-sent', 'error' => null];
-        } catch (\Throwable $mailError) {
-            Log::info("Mail delivery not available in local environment: " . $mailError->getMessage());
-            return ['success' => false, 'id' => null, 'error' => $mailError->getMessage()];
-        }
+        return $this->deliver($toEmail, $emailSubject, $html, 'device enrollment invitation');
     }
 
     /**
@@ -489,4 +432,3 @@ HTML : '';
 HTML;
     }
 }
-

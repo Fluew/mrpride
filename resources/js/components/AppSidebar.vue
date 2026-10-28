@@ -41,9 +41,9 @@ import { index as users } from '@/routes/users';
 import type { NavItem } from '@/types';
 
 const page = usePage();
-const currentUser = computed(() => (page.props as any).auth?.user);
-const isAdmin = computed(() => ['admin', 'superadmin', 'owner'].includes(currentUser.value?.role));
-const userRole = computed(() => currentUser.value?.role || '');
+// Set by the server from User::isAdmin() so the sidebar and the backend agree on who is an admin.
+const isAdmin = computed(() => Boolean((page.props as any).auth?.is_admin));
+const assignedModules = computed<string[]>(() => (page.props as any).auth?.modules ?? []);
 
 const operations = computed<NavItem[]>(() => {
     const team = page.props.currentTeam?.slug;
@@ -69,34 +69,21 @@ const operations = computed<NavItem[]>(() => {
         ];
     }
 
-    // 1 MODULE PER STAFF ONLY - ONLY THAT ROLE THEY ARE ASSIGNED WITH IS SHOWN TO THEM
-    const r = userRole.value;
-    if (r === 'staff_inventory' || r === 'staff') {
-        return [{ title: 'Inventory', href: inventory(team), icon: Package }];
-    }
-    if (r === 'staff_quotations') {
-        return [{ title: 'Quotations', href: quotations(team), icon: FileText }];
-    }
-    if (r === 'staff_procurement') {
-        return [{ title: 'Procurement', href: procurement(team), icon: ShoppingCart }];
-    }
-    if (r === 'staff_deliveries') {
-        return [{ title: 'Deliveries', href: `/${team}/deliveries`, icon: Truck }];
-    }
-    if (r === 'staff_sales') {
-        return [{ title: 'Sales', href: sales(team), icon: Banknote }];
-    }
-    if (r === 'staff_forecast') {
-        return [{ title: 'Demand Forecasting', href: forecast(team), icon: LineChart }];
-    }
-    if (r === 'staff_suppliers') {
-        return [{ title: 'Suppliers', href: suppliers(team), icon: Truck }];
-    }
-    if (r === 'staff_reports') {
-        return [{ title: 'Reports & Analytics', href: reports(team), icon: PieChart }];
-    }
+    // STAFF SEE ONLY THE MODULES ASSIGNED TO THEM (assigned modules are shared by the server on every request)
+    const staffItems: Record<string, NavItem> = {
+        inventory: { title: 'Inventory', href: inventory(team), icon: Package },
+        quotations: { title: 'Quotations', href: quotations(team), icon: FileText },
+        procurement: { title: 'Procurement', href: procurement(team), icon: ShoppingCart },
+        deliveries: { title: 'Deliveries', href: `/${team}/deliveries`, icon: Truck },
+        sales: { title: 'Sales', href: sales(team), icon: Banknote },
+        forecast: { title: 'Demand Forecasting', href: forecast(team), icon: LineChart },
+        suppliers: { title: 'Suppliers', href: suppliers(team), icon: Truck },
+        reports: { title: 'Reports & Analytics', href: reports(team), icon: PieChart },
+    };
 
-    return [];
+    return assignedModules.value
+        .filter((module) => staffItems[module])
+        .map((module) => staffItems[module]);
 });
 
 const dashboardUrl = computed(() => {

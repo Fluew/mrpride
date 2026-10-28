@@ -113,5 +113,6 @@ return [
     */
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
+    'skip_device_verification' => (bool) env('SKIP_DEVICE_VERIFICATION', false),
 
 ];

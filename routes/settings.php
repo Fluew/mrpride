@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Settings\MaintenanceController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\Teams\TeamController;
@@ -8,14 +9,19 @@ use App\Http\Controllers\Teams\TeamMemberController;
 use App\Http\Middleware\EnsureTeamMembership;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth'])->group(function () {
+// Settings and Teams are part of the internal Admin/Staff interface (they render inside the
+// dashboard layout), so they get the same checks as the workspace: customers get 404, and the
+// trusted-device and password-expiry rules apply.
+$internal = ['admin_or_staff', 'device_verified', 'password_valid'];
+
+Route::middleware(['auth', ...$internal, 'no_cache'])->group(function () {
     Route::redirect('settings', '/settings/profile');
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
 });
 
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', ...$internal, 'no_cache'])->group(function () {
     Route::delete('settings/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     Route::get('settings/security', [SecurityController::class, 'edit'])
@@ -45,9 +51,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Maintenance Mode (Admin only)
     Route::middleware(['role:admin'])->group(function () {
-        Route::get('settings/maintenance', [\App\Http\Controllers\Settings\MaintenanceController::class, 'index'])->name('settings.maintenance');
-        Route::post('settings/maintenance/enable', [\App\Http\Controllers\Settings\MaintenanceController::class, 'enable'])->name('settings.maintenance.enable');
-        Route::post('settings/maintenance/disable', [\App\Http\Controllers\Settings\MaintenanceController::class, 'disable'])->name('settings.maintenance.disable');
-        Route::match(['GET', 'POST'], 'settings/maintenance/verify', [\App\Http\Controllers\Settings\MaintenanceController::class, 'verify'])->name('settings.maintenance.verify');
+        Route::get('settings/maintenance', [MaintenanceController::class, 'index'])->name('settings.maintenance');
+        Route::post('settings/maintenance/enable', [MaintenanceController::class, 'enable'])->name('settings.maintenance.enable');
+        Route::post('settings/maintenance/disable', [MaintenanceController::class, 'disable'])->name('settings.maintenance.disable');
+        Route::match(['GET', 'POST'], 'settings/maintenance/verify', [MaintenanceController::class, 'verify'])->name('settings.maintenance.verify');
     });
 });

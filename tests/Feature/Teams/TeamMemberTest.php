@@ -1,8 +1,22 @@
 <?php
 
 use App\Enums\TeamRole;
+use App\Http\Middleware\EnsureAdminOrStaff;
+use App\Http\Middleware\EnsureDeviceVerified;
+use App\Http\Middleware\EnsurePasswordNotExpired;
 use App\Models\Team;
 use App\Models\User;
+
+// These tests cover the starter-kit settings/teams logic with plain factory users. The access
+// rules on these routes (admin/staff only, trusted device, password expiry) are covered in
+// tests/Feature/InternalAccessTest.php.
+beforeEach(function () {
+    $this->withoutMiddleware([
+        EnsureAdminOrStaff::class,
+        EnsureDeviceVerified::class,
+        EnsurePasswordNotExpired::class,
+    ]);
+});
 
 test('team member roles can be updated by owners', function () {
     $owner = User::factory()->create();

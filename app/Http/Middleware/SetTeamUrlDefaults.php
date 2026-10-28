@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Team;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
@@ -16,7 +17,17 @@ class SetTeamUrlDefaults
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if ($currentTeam = $request->user()?->currentTeam) {
+        $user = $request->user();
+        $currentTeam = $user?->currentTeam
+            ?: $user?->teams()->first()
+            ?: Team::first();
+
+        if ($currentTeam) {
+            if ($user && ! $user->current_team_id) {
+                $user->forceFill(['current_team_id' => $currentTeam->id])->saveQuietly();
+                $user->setRelation('currentTeam', $currentTeam);
+            }
+
             URL::defaults([
                 'current_team' => $currentTeam->slug,
                 'team' => $currentTeam->slug,

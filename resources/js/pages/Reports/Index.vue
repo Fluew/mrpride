@@ -576,25 +576,18 @@ const horizontalBarOptions = {
         </div>
 
         <!-- ─── Main Header (Screen Only) ─────────────────────────── -->
-        <div class="print:hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+        <div class="print:hidden flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-4">
             <div>
-                <div class="flex items-center gap-2.5">
-                    <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Reports &amp; Analytics</h1>
-                    <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#4b5320]/10 text-[#4b5320] border border-[#4b5320]/20">
-                        Live BI Engine
-                    </span>
-                </div>
-                <p class="text-gray-500 mt-1 text-sm">
-                    Monitor business performance, analyze inventory and sales trends, review forecasts, and generate detailed reports across business operations.
-                </p>
+                <h1 class="page-title">Reports &amp; Analytics</h1>
+                <p class="page-subtitle">Sales, inventory and forecast reports for any period.</p>
             </div>
 
             <!-- Top Actions -->
-            <div class="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+            <div class="flex flex-wrap items-center justify-start lg:justify-end gap-2.5 w-full lg:w-auto">
                 <SpecularButton
                     variant="secondary"
-                    size="sm"
-                    :radius="8"
+                    size="md"
+                    :radius="12"
                     @click="printReport"
                     class="flex-1 sm:flex-none"
                     title="Print formal report document"
@@ -605,8 +598,8 @@ const horizontalBarOptions = {
 
                 <SpecularButton
                     variant="secondary"
-                    size="sm"
-                    :radius="8"
+                    size="md"
+                    :radius="12"
                     @click="goToInventory"
                     class="flex-1 sm:flex-none"
                     title="Navigate to master catalog"
@@ -617,8 +610,8 @@ const horizontalBarOptions = {
 
                 <SpecularButton
                     variant="brand"
-                    size="sm"
-                    :radius="8"
+                    size="md"
+                    :radius="12"
                     @click="downloadReport('all')"
                     class="flex-1 sm:flex-none"
                     title="Export complete catalog and supplier dataset"
@@ -632,18 +625,18 @@ const horizontalBarOptions = {
         <!-- ─── SECTION A: BUSINESS PERFORMANCE OVERVIEW & KPIS ───── -->
         <div class="mb-6 space-y-4">
             <!-- Global Date & Scope Filter Bar -->
-            <div class="print:hidden bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+            <div class="print:hidden">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <div class="flex flex-wrap items-center gap-2.5">
-                        <span class="text-xs font-bold text-gray-600 uppercase tracking-wider flex items-center gap-1.5">
-                            <Calendar class="w-3.5 h-3.5 text-[#4b5320]" />
+                        <span class="text-xs font-semibold text-gray-600 flex items-center gap-1.5">
+                            <Calendar class="w-3.5 h-3.5 text-gray-400" />
                             Report Period:
                         </span>
 
                         <select
                             v-model="selectedPreset"
                             @change="onPresetChange"
-                            class="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs text-gray-900 font-medium focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] focus:outline-none"
+                            class="bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-900 font-medium focus:border-gray-400 focus:outline-none"
                         >
                             <option value="all_time">All-Time Records</option>
                             <option value="today">Today</option>
@@ -659,13 +652,13 @@ const horizontalBarOptions = {
                             <input
                                 v-model="customFromDate"
                                 type="date"
-                                class="bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#F8B803]"
+                                class="bg-white border border-gray-200 rounded-lg px-2.5 py-1 text-xs text-gray-900 focus:outline-none focus:border-gray-400"
                             />
                             <span class="text-xs text-gray-400">to</span>
                             <input
                                 v-model="customToDate"
                                 type="date"
-                                class="bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1 text-xs text-gray-900 focus:outline-none focus:border-[#F8B803]"
+                                class="bg-white border border-gray-200 rounded-lg px-2.5 py-1 text-xs text-gray-900 focus:outline-none focus:border-gray-400"
                             />
                             <button
                                 @click="applyDateFilter"
@@ -694,111 +687,49 @@ const horizontalBarOptions = {
                 </div>
             </div>
 
-            <!-- Primary KPI Cards Grid -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <!-- 1. Active Catalog Valuation -->
-                <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm relative overflow-hidden group">
-                    <div class="flex justify-between items-start mb-1">
-                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Active Catalog Valuation</span>
-                        <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                            <Package class="w-4 h-4" />
-                        </div>
-                    </div>
-                    <div class="text-2xl font-black text-gray-900 tracking-tight">{{ formatCurrency(metrics.totalValuation) }}</div>
-                    <div class="flex items-center justify-between text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
-                        <span>{{ metrics.inventoryCount }} registered items</span>
-                        <span class="text-emerald-700 font-semibold">{{ metrics.inStockCount }} healthy stock</span>
-                    </div>
-                    <div class="text-[10px] text-gray-400 mt-1 leading-tight line-clamp-1" :title="metrics.valuationBasisNote">
-                        Basis: Actual cost price (or retail) × stock
-                    </div>
+            <!-- Primary KPIs: value plus one supporting detail. Cards that open a tab say so on hover. -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div class="bg-white border border-gray-200 rounded-xl px-4 py-3" :title="metrics.valuationBasisNote">
+                    <div class="text-xs text-gray-500">Catalog valuation</div>
+                    <div class="mt-1 text-2xl font-semibold text-gray-900">{{ formatCurrency(metrics.totalValuation) }}</div>
+                    <div class="mt-1 text-xs text-gray-500">{{ metrics.inventoryCount }} items at cost price</div>
                 </div>
 
-                <!-- 2. Low Stock Alerts -->
-                <div
-                    @click="activeTab = 'low-stock'"
-                    class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm relative overflow-hidden group cursor-pointer hover:border-amber-300 hover:shadow-md transition-all"
-                >
-                    <div class="flex justify-between items-start mb-1">
-                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Low Stock Alerts</span>
-                        <div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-                            <AlertTriangle class="w-4 h-4" />
-                        </div>
-                    </div>
-                    <div class="text-2xl font-black text-amber-600 tracking-tight">{{ metrics.lowStockCount }} items</div>
-                    <div class="flex items-center justify-between text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
-                        <span class="text-rose-600 font-semibold">{{ metrics.outOfStockCount }} out of stock</span>
-                        <span class="text-amber-700 font-medium">{{ metrics.lowStockCount - metrics.outOfStockCount }} low threshold</span>
-                    </div>
-                    <div class="text-[10px] text-gray-400 mt-1 flex items-center gap-1 group-hover:text-amber-700 transition-colors">
-                        <span>Click to view shortage audit</span>
-                        <ChevronRight class="w-3 h-3" />
-                    </div>
-                </div>
+                <button type="button" @click="activeTab = 'low-stock'" class="text-left bg-white border border-gray-200 rounded-xl px-4 py-3 hover:bg-gray-50 transition-colors">
+                    <div class="text-xs text-gray-500">Low stock</div>
+                    <div :class="metrics.lowStockCount > 0 ? 'text-amber-600' : 'text-gray-900'" class="mt-1 text-2xl font-semibold">{{ metrics.lowStockCount }} items</div>
+                    <div class="mt-1 text-xs" :class="metrics.outOfStockCount > 0 ? 'text-rose-600' : 'text-gray-500'">{{ metrics.outOfStockCount }} out of stock</div>
+                </button>
 
-                <!-- 3. Recorded Sales Revenue -->
-                <div
-                    @click="activeTab = 'sales'"
-                    class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm relative overflow-hidden group cursor-pointer hover:border-[#F8B803] hover:shadow-md transition-all"
-                >
-                    <div class="flex justify-between items-start mb-1">
-                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Recorded Sales Revenue</span>
-                        <div class="w-8 h-8 rounded-lg bg-amber-50 text-[#F8B803] flex items-center justify-center">
-                            <Banknote class="w-4 h-4" />
-                        </div>
-                    </div>
-                    <div class="text-2xl font-black text-gray-900 tracking-tight">{{ formatCurrency(metrics.totalRevenue) }}</div>
-                    <div class="flex items-center justify-between text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
-                        <span>{{ metrics.salesCount }} completed receipts</span>
-                        <span class="text-[#4b5320] font-semibold">{{ quotationsSalesAnalytics.conversion.rate }}% conv. rate</span>
-                    </div>
-                    <div class="text-[10px] text-gray-400 mt-1">
-                        Quotations excluded; settled revenue only
-                    </div>
-                </div>
+                <button type="button" @click="activeTab = 'sales'" class="text-left bg-white border border-gray-200 rounded-xl px-4 py-3 hover:bg-gray-50 transition-colors">
+                    <div class="text-xs text-gray-500">Sales revenue</div>
+                    <div class="mt-1 text-2xl font-semibold text-gray-900">{{ formatCurrency(metrics.totalRevenue) }}</div>
+                    <div class="mt-1 text-xs text-gray-500">{{ metrics.salesCount }} completed sales</div>
+                </button>
 
-                <!-- 4. Procurement & Purchases -->
-                <div
-                    @click="activeTab = 'procurement'"
-                    class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm relative overflow-hidden group cursor-pointer hover:border-blue-300 hover:shadow-md transition-all"
-                >
-                    <div class="flex justify-between items-start mb-1">
-                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Procurement Spend</span>
-                        <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                            <ShoppingCart class="w-4 h-4" />
-                        </div>
-                    </div>
-                    <div class="text-2xl font-black text-gray-900 tracking-tight">{{ formatCurrency(metrics.totalPurchasesEstimatedCost) }}</div>
-                    <div class="flex items-center justify-between text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
-                        <span>{{ metrics.totalPurchasesCount }} purchase requests</span>
-                        <span class="text-blue-700 font-semibold">{{ procurementAnalytics.statusDistribution['Ordered'] || 0 }} ordered</span>
-                    </div>
-                    <div class="text-[10px] text-gray-400 mt-1 flex items-center gap-1 group-hover:text-blue-700 transition-colors">
-                        <span>Click to review purchase ledger</span>
-                        <ChevronRight class="w-3 h-3" />
-                    </div>
-                </div>
+                <button type="button" @click="activeTab = 'procurement'" class="text-left bg-white border border-gray-200 rounded-xl px-4 py-3 hover:bg-gray-50 transition-colors">
+                    <div class="text-xs text-gray-500">Procurement spend</div>
+                    <div class="mt-1 text-2xl font-semibold text-gray-900">{{ formatCurrency(metrics.totalPurchasesEstimatedCost) }}</div>
+                    <div class="mt-1 text-xs text-gray-500">{{ metrics.totalPurchasesCount }} purchase requests</div>
+                </button>
             </div>
 
-            <!-- Secondary Quick Indicators -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                <div class="bg-gradient-to-r from-amber-50/70 to-white border border-amber-200/60 rounded-xl p-3 flex items-center justify-between">
-                    <span class="text-gray-600 font-medium">Pending Quotations:</span>
-                    <span class="font-bold text-gray-900">
-                        {{ metrics.pendingQuotationsCount }} pending ({{ formatCurrency(metrics.pendingQuotationsValue) }})
-                    </span>
+            <!-- Secondary indicators -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+                <div class="flex items-center justify-between border-b border-gray-100 py-2">
+                    <span class="text-gray-500">Pending quotations</span>
+                    <span class="font-medium text-gray-900">{{ metrics.pendingQuotationsCount }} ({{ formatCurrency(metrics.pendingQuotationsValue) }})</span>
                 </div>
-                <div class="bg-gradient-to-r from-emerald-50/70 to-white border border-emerald-200/60 rounded-xl p-3 flex items-center justify-between">
-                    <span class="text-gray-600 font-medium">Quotation Conversion Rate:</span>
-                    <span class="font-bold text-emerald-800">
+                <div class="flex items-center justify-between border-b border-gray-100 py-2">
+                    <span class="text-gray-500">Quotation conversion</span>
+                    <span class="font-medium text-gray-900">
                         {{ quotationsSalesAnalytics.conversion.rate }}% ({{ quotationsSalesAnalytics.conversion.converted }} of {{ quotationsSalesAnalytics.conversion.total }})
                     </span>
                 </div>
-                <div class="bg-gradient-to-r from-[#4b5320]/5 to-white border border-[#4b5320]/20 rounded-xl p-3 flex items-center justify-between">
-                    <span class="text-gray-600 font-medium">Top Evaluated Supplier (AHP):</span>
-                    <span class="font-bold text-[#4b5320] flex items-center gap-1">
-                        <Award class="w-3.5 h-3.5 text-[#F8B803]" />
-                        {{ ahpAnalytics.topSuppliers[0]?.name || 'No evaluation yet' }} ({{ ahpAnalytics.topSuppliers[0]?.ahp_score ? Number(ahpAnalytics.topSuppliers[0].ahp_score).toFixed(3) : '0.000' }})
+                <div class="flex items-center justify-between border-b border-gray-100 py-2">
+                    <span class="text-gray-500">Top supplier (AHP)</span>
+                    <span class="font-medium text-gray-900">
+                        {{ ahpAnalytics.topSuppliers[0]?.name || 'No evaluation yet' }}<template v-if="ahpAnalytics.topSuppliers[0]?.ahp_score"> ({{ Number(ahpAnalytics.topSuppliers[0].ahp_score).toFixed(3) }})</template>
                     </span>
                 </div>
             </div>
@@ -821,10 +752,10 @@ const horizontalBarOptions = {
                     :key="tab.key"
                     @click="activeTab = tab.key as TabKey"
                     :class="[
-                        'flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer',
+                        'flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap cursor-pointer',
                         activeTab === tab.key
-                            ? 'bg-[#4b5320] text-white shadow-sm'
-                            : 'bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-50 border border-gray-200'
+                            ? 'bg-gray-100 text-gray-900'
+                            : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
                     ]"
                 >
                     <component :is="tab.icon" class="w-4 h-4" />
@@ -838,10 +769,10 @@ const horizontalBarOptions = {
             <div v-if="activeTab === 'overview'" class="space-y-6">
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <!-- Sales Revenue Trend -->
-                    <div class="lg:col-span-2 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex flex-col">
+                    <div class="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5 flex flex-col">
                         <div class="flex justify-between items-start mb-4">
                             <div>
-                                <h3 class="text-base font-bold text-gray-900">Monthly Revenue Velocity</h3>
+                                <h3 class="text-base font-semibold text-gray-900">Monthly Revenue Velocity</h3>
                                 <p class="text-xs text-gray-400">Actual sales income aggregated per billing cycle</p>
                             </div>
                             <span class="text-xs font-semibold px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full">
@@ -854,9 +785,9 @@ const horizontalBarOptions = {
                     </div>
 
                     <!-- Stock Health Donut -->
-                    <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+                    <div class="bg-white border border-gray-200 rounded-xl p-5 flex flex-col justify-between">
                         <div>
-                            <h3 class="text-base font-bold text-gray-900 mb-1">Catalog Stock Health</h3>
+                            <h3 class="text-base font-semibold text-gray-900 mb-1">Catalog Stock Health</h3>
                             <p class="text-xs text-gray-400 mb-4">Real-time breakdown of warehouse thresholds</p>
                             <div class="h-48 relative flex items-center justify-center">
                                 <Doughnut :data="stockDonutData" :options="standardChartOptions" />
@@ -864,15 +795,15 @@ const horizontalBarOptions = {
                         </div>
                         <div class="grid grid-cols-3 gap-2 text-center pt-3 border-t border-gray-100 text-xs">
                             <div>
-                                <span class="block text-emerald-600 font-bold">{{ metrics.inStockCount }}</span>
+                                <span class="block text-emerald-600 font-semibold">{{ metrics.inStockCount }}</span>
                                 <span class="text-gray-400 text-[10px]">In Stock</span>
                             </div>
                             <div>
-                                <span class="block text-amber-600 font-bold">{{ metrics.lowStockCount - metrics.outOfStockCount }}</span>
+                                <span class="block text-amber-600 font-semibold">{{ metrics.lowStockCount - metrics.outOfStockCount }}</span>
                                 <span class="text-gray-400 text-[10px]">Low Stock</span>
                             </div>
                             <div>
-                                <span class="block text-rose-600 font-bold">{{ metrics.outOfStockCount }}</span>
+                                <span class="block text-rose-600 font-semibold">{{ metrics.outOfStockCount }}</span>
                                 <span class="text-gray-400 text-[10px]">Out of Stock</span>
                             </div>
                         </div>
@@ -882,10 +813,10 @@ const horizontalBarOptions = {
                 <!-- Row 2: Categories & Top Products -->
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <!-- Inventory by Category Bar Chart -->
-                    <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                    <div class="bg-white border border-gray-200 rounded-xl p-5">
                         <div class="flex justify-between items-start mb-4">
                             <div>
-                                <h3 class="text-base font-bold text-gray-900">Stock Units by Product Category</h3>
+                                <h3 class="text-base font-semibold text-gray-900">Stock Units by Product Category</h3>
                                 <p class="text-xs text-gray-400">Inventory volume distribution across classifications</p>
                             </div>
                         </div>
@@ -895,10 +826,10 @@ const horizontalBarOptions = {
                     </div>
 
                     <!-- Top Products by Valuation -->
-                    <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex flex-col">
+                    <div class="bg-white border border-gray-200 rounded-xl p-5 flex flex-col">
                         <div class="flex justify-between items-start mb-4">
                             <div>
-                                <h3 class="text-base font-bold text-gray-900">Top Products by Inventory Value</h3>
+                                <h3 class="text-base font-semibold text-gray-900">Top Products by Inventory Value</h3>
                                 <p class="text-xs text-gray-400">Capital tied up in current on-hand warehouse stock</p>
                             </div>
                             <button
@@ -921,16 +852,16 @@ const horizontalBarOptions = {
             <div v-else-if="activeTab === 'inventory'" class="space-y-6">
                 <!-- Visualizations -->
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                        <h4 class="text-sm font-bold text-gray-900 mb-1">Status Distribution</h4>
+                    <div class="bg-white border border-gray-200 rounded-xl p-5">
+                        <h4 class="text-sm font-semibold text-gray-900 mb-1">Status Distribution</h4>
                         <p class="text-xs text-gray-400 mb-3">Ratio of healthy vs understocked catalog items</p>
                         <div class="h-52">
                             <Doughnut :data="stockDonutData" :options="standardChartOptions" />
                         </div>
                     </div>
 
-                    <div class="lg:col-span-2 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                        <h4 class="text-sm font-bold text-gray-900 mb-1">Inventory Valuation by Category</h4>
+                    <div class="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
+                        <h4 class="text-sm font-semibold text-gray-900 mb-1">Inventory Valuation by Category</h4>
                         <p class="text-xs text-gray-400 mb-3">Capital value allocated across product lines</p>
                         <div class="h-52">
                             <Bar :data="topValueBarData" :options="horizontalBarOptions" />
@@ -939,10 +870,10 @@ const horizontalBarOptions = {
                 </div>
 
                 <!-- Section C: Filterable Detailed Inventory Table -->
-                <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
                     <div class="p-4 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                         <div>
-                            <h3 class="text-base font-bold text-gray-900">Inventory Status Manifest</h3>
+                            <h3 class="text-base font-semibold text-gray-900">Inventory Status Manifest</h3>
                             <p class="text-xs text-gray-500">Live catalog quantities, threshold levels, and valuation bases</p>
                         </div>
 
@@ -955,14 +886,14 @@ const horizontalBarOptions = {
                                     v-model="invSearch"
                                     type="text"
                                     placeholder="Search items..."
-                                    class="w-full bg-gray-50 border border-gray-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-[#F8B803]"
+                                    class="w-full bg-gray-50 border border-gray-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-gray-400"
                                 />
                             </div>
 
                             <!-- Category Filter -->
                             <select
                                 v-model="invCategoryFilter"
-                                class="bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 text-xs text-gray-900 font-medium focus:outline-none"
+                                class="bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 font-medium focus:outline-none"
                             >
                                 <option value="All">All Categories</option>
                                 <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
@@ -971,7 +902,7 @@ const horizontalBarOptions = {
                             <!-- Status Filter -->
                             <select
                                 v-model="invStatusFilter"
-                                class="bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 text-xs text-gray-900 font-medium focus:outline-none"
+                                class="bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 font-medium focus:outline-none"
                             >
                                 <option value="All">All Statuses</option>
                                 <option value="In Stock">In Stock</option>
@@ -997,7 +928,7 @@ const horizontalBarOptions = {
                     <div class="overflow-x-auto">
                         <table class="w-full text-left border-collapse text-xs">
                             <thead>
-                                <tr class="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[11px]">
+                                <tr class="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-semibold text-[11px]">
                                     <th class="py-3 px-4">SKU</th>
                                     <th class="py-3 px-4">Product Name</th>
                                     <th class="py-3 px-4">Category</th>
@@ -1021,21 +952,21 @@ const horizontalBarOptions = {
                                     class="hover:bg-gray-50/70 transition-colors"
                                 >
                                     <td class="py-3 px-4 font-mono font-medium text-gray-700">{{ item.sku }}</td>
-                                    <td class="py-3 px-4 font-bold text-gray-900">{{ item.name }}</td>
+                                    <td class="py-3 px-4 font-semibold text-gray-900">{{ item.name }}</td>
                                     <td class="py-3 px-4 text-gray-600">
                                         <span class="px-2 py-0.5 rounded bg-gray-100 text-gray-700 text-[10px] font-medium">
                                             {{ item.category }}
                                         </span>
                                     </td>
                                     <td class="py-3 px-4 text-gray-600">{{ item.supplier_name }}</td>
-                                    <td class="py-3 px-4 text-center font-bold text-gray-900">{{ item.current_stock }} {{ item.unit }}</td>
+                                    <td class="py-3 px-4 text-center font-semibold text-gray-900">{{ item.current_stock }} {{ item.unit }}</td>
                                     <td class="py-3 px-4 text-center text-gray-500">{{ item.reorder_threshold }}</td>
                                     <td class="py-3 px-4 text-right font-medium text-gray-700">₱{{ Number(item.cost_price || item.price).toFixed(2) }}</td>
-                                    <td class="py-3 px-4 text-right font-bold text-gray-900">₱{{ Number(item.total_valuation).toFixed(2) }}</td>
+                                    <td class="py-3 px-4 text-right font-semibold text-gray-900">₱{{ Number(item.total_valuation).toFixed(2) }}</td>
                                     <td class="py-3 px-4 text-center">
                                         <span
                                             :class="[
-                                                'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase',
+                                                'px-2 py-0.5 rounded-full text-[10px] font-semibold',
                                                 item.stock_status === 'Out of Stock' ? 'bg-red-100 text-red-700 border border-red-200' :
                                                 item.stock_status === 'Low Stock' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
                                                 'bg-emerald-100 text-emerald-800 border border-emerald-200'
@@ -1075,17 +1006,17 @@ const horizontalBarOptions = {
             <div v-else-if="activeTab === 'low-stock'" class="space-y-6">
                 <!-- Visualizations -->
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                        <h4 class="text-sm font-bold text-gray-900 mb-1">Stock Shortage Severity</h4>
+                    <div class="bg-white border border-gray-200 rounded-xl p-5">
+                        <h4 class="text-sm font-semibold text-gray-900 mb-1">Stock Shortage Severity</h4>
                         <p class="text-xs text-gray-400 mb-3">Units below configured minimum reorder thresholds</p>
                         <div class="h-56">
                             <Bar :data="lowStockSeverityData" :options="horizontalBarOptions" />
                         </div>
                     </div>
 
-                    <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+                    <div class="bg-white border border-gray-200 rounded-xl p-5 flex flex-col justify-between">
                         <div>
-                            <h4 class="text-sm font-bold text-gray-900 mb-1">Restock Priority Rules</h4>
+                            <h4 class="text-sm font-semibold text-gray-900 mb-1">Restock Priority Rules</h4>
                             <p class="text-xs text-gray-400 mb-3">Automated replenishment calculation methodology</p>
                             <div class="space-y-2 text-xs text-gray-600">
                                 <div class="p-3 rounded-xl bg-red-50 border border-red-200 flex items-start gap-2">
@@ -1116,10 +1047,10 @@ const horizontalBarOptions = {
                 </div>
 
                 <!-- Prioritization Table -->
-                <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
                     <div class="p-4 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                         <div>
-                            <h3 class="text-base font-bold text-gray-900">Restock Prioritization Audit</h3>
+                            <h3 class="text-base font-semibold text-gray-900">Restock Prioritization Audit</h3>
                             <p class="text-xs text-gray-500">Ordered by shortage severity (Out of Stock items first)</p>
                         </div>
 
@@ -1136,7 +1067,7 @@ const horizontalBarOptions = {
 
                             <select
                                 v-model="lowStockCategoryFilter"
-                                class="bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 text-xs text-gray-900 font-medium focus:outline-none"
+                                class="bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 font-medium focus:outline-none"
                             >
                                 <option value="All">All Categories</option>
                                 <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
@@ -1157,13 +1088,13 @@ const horizontalBarOptions = {
                     <div class="overflow-x-auto">
                         <table class="w-full text-left border-collapse text-xs">
                             <thead>
-                                <tr class="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[11px]">
+                                <tr class="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-semibold text-[11px]">
                                     <th class="py-3 px-4">Product Name</th>
                                     <th class="py-3 px-4">SKU</th>
                                     <th class="py-3 px-4 text-center">Available Stock</th>
                                     <th class="py-3 px-4 text-center">Threshold</th>
                                     <th class="py-3 px-4 text-center">Deficit Shortage</th>
-                                    <th class="py-3 px-4 text-center font-bold text-[#4b5320]">Suggested Reorder</th>
+                                    <th class="py-3 px-4 text-center font-semibold text-[#4b5320]">Suggested Reorder</th>
                                     <th class="py-3 px-4">Primary Supplier</th>
                                     <th class="py-3 px-4 text-center">Urgency</th>
                                 </tr>
@@ -1182,19 +1113,19 @@ const horizontalBarOptions = {
                                         item.stock <= 0 ? 'bg-red-50/30 hover:bg-red-50/60' : 'hover:bg-gray-50/70'
                                     ]"
                                 >
-                                    <td class="py-3 px-4 font-bold text-gray-900">{{ item.name }}</td>
+                                    <td class="py-3 px-4 font-semibold text-gray-900">{{ item.name }}</td>
                                     <td class="py-3 px-4 font-mono text-gray-600">{{ item.sku }}</td>
-                                    <td class="py-3 px-4 text-center font-bold" :class="item.stock <= 0 ? 'text-red-600' : 'text-amber-600'">
+                                    <td class="py-3 px-4 text-center font-semibold" :class="item.stock <= 0 ? 'text-red-600' : 'text-amber-600'">
                                         {{ item.stock }}
                                     </td>
                                     <td class="py-3 px-4 text-center text-gray-500">{{ item.reorder_level }}</td>
-                                    <td class="py-3 px-4 text-center font-bold text-red-600">-{{ item.shortage }}</td>
-                                    <td class="py-3 px-4 text-center font-black text-[#4b5320]">+{{ item.suggested_reorder }} units</td>
+                                    <td class="py-3 px-4 text-center font-semibold text-red-600">-{{ item.shortage }}</td>
+                                    <td class="py-3 px-4 text-center font-semibold text-[#4b5320]">+{{ item.suggested_reorder }} units</td>
                                     <td class="py-3 px-4 text-gray-600">{{ item.supplier_name }}</td>
                                     <td class="py-3 px-4 text-center">
                                         <span
                                             :class="[
-                                                'px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase',
+                                                'px-2.5 py-0.5 rounded-full text-[10px] font-semibold',
                                                 item.urgency === 'Out of Stock' ? 'bg-red-100 text-red-700 border border-red-200' :
                                                 item.urgency === 'Critical Low' ? 'bg-rose-100 text-rose-800 border border-rose-200' :
                                                 'bg-amber-100 text-amber-800 border border-amber-200'
@@ -1216,10 +1147,10 @@ const horizontalBarOptions = {
             <div v-else-if="activeTab === 'sales'" class="space-y-6">
                 <!-- Visualizations -->
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="lg:col-span-2 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                    <div class="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
                         <div class="flex justify-between items-start mb-4">
                             <div>
-                                <h4 class="text-sm font-bold text-gray-900">Revenue Generation Timeline</h4>
+                                <h4 class="text-sm font-semibold text-gray-900">Revenue Generation Timeline</h4>
                                 <p class="text-xs text-gray-400">Settled invoices excluding pending or rejected quotes</p>
                             </div>
                             <span class="text-xs font-semibold px-2 py-0.5 bg-emerald-50 text-emerald-800 rounded">
@@ -1231,8 +1162,8 @@ const horizontalBarOptions = {
                         </div>
                     </div>
 
-                    <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                        <h4 class="text-sm font-bold text-gray-900 mb-1">Quotation Statuses</h4>
+                    <div class="bg-white border border-gray-200 rounded-xl p-5">
+                        <h4 class="text-sm font-semibold text-gray-900 mb-1">Quotation Statuses</h4>
                         <p class="text-xs text-gray-400 mb-3">Conversion funnel breakdown</p>
                         <div class="h-44">
                             <Doughnut :data="quotationStatusDonutData" :options="standardChartOptions" />
@@ -1244,15 +1175,15 @@ const horizontalBarOptions = {
                 </div>
 
                 <!-- Sub-tab Selector for Sales vs Quotations -->
-                <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
                     <div class="p-4 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                         <div class="flex items-center gap-2">
                             <button
                                 @click="salesSubTab = 'sales'"
                                 :class="[
-                                    'px-3 py-1.5 rounded-xl text-xs font-bold transition-all',
+                                    'px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors',
                                     salesSubTab === 'sales'
-                                        ? 'bg-[#4b5320] text-white shadow-xs'
+                                        ? 'bg-gray-100 text-gray-900'
                                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                 ]"
                             >
@@ -1261,9 +1192,9 @@ const horizontalBarOptions = {
                             <button
                                 @click="salesSubTab = 'quotations'"
                                 :class="[
-                                    'px-3 py-1.5 rounded-xl text-xs font-bold transition-all',
+                                    'px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors',
                                     salesSubTab === 'quotations'
-                                        ? 'bg-[#4b5320] text-white shadow-xs'
+                                        ? 'bg-gray-100 text-gray-900'
                                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                 ]"
                             >
@@ -1298,7 +1229,7 @@ const horizontalBarOptions = {
                     <div v-if="salesSubTab === 'sales'" class="overflow-x-auto">
                         <table class="w-full text-left border-collapse text-xs">
                             <thead>
-                                <tr class="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[11px]">
+                                <tr class="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-semibold text-[11px]">
                                     <th class="py-3 px-4">Invoice #</th>
                                     <th class="py-3 px-4">Customer Name</th>
                                     <th class="py-3 px-4">Sale Date</th>
@@ -1314,15 +1245,15 @@ const horizontalBarOptions = {
                                     <td colspan="8" class="py-8 text-center text-gray-400">No matching sales records found.</td>
                                 </tr>
                                 <tr v-for="s in filteredSales" :key="s.id" class="hover:bg-gray-50/70 transition-colors">
-                                    <td class="py-3 px-4 font-mono font-bold text-gray-900">{{ s.invoice_number }}</td>
+                                    <td class="py-3 px-4 font-mono font-semibold text-gray-900">{{ s.invoice_number }}</td>
                                     <td class="py-3 px-4 font-medium text-gray-800">{{ s.client_name }}</td>
                                     <td class="py-3 px-4 text-gray-500">{{ s.sale_date }}</td>
                                     <td class="py-3 px-4 text-right text-gray-600">₱{{ s.subtotal.toFixed(2) }}</td>
                                     <td class="py-3 px-4 text-right text-gray-600">₱{{ s.tax_amount.toFixed(2) }}</td>
-                                    <td class="py-3 px-4 text-right font-black text-gray-900">₱{{ s.grand_total.toFixed(2) }}</td>
+                                    <td class="py-3 px-4 text-right font-semibold text-gray-900">₱{{ s.grand_total.toFixed(2) }}</td>
                                     <td class="py-3 px-4 text-gray-600">{{ s.payment_method }}</td>
                                     <td class="py-3 px-4 text-center">
-                                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
                                             {{ s.status }}
                                         </span>
                                     </td>
@@ -1335,7 +1266,7 @@ const horizontalBarOptions = {
                     <div v-else class="overflow-x-auto">
                         <table class="w-full text-left border-collapse text-xs">
                             <thead>
-                                <tr class="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[11px]">
+                                <tr class="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-semibold text-[11px]">
                                     <th class="py-3 px-4">Quote #</th>
                                     <th class="py-3 px-4">Customer Name</th>
                                     <th class="py-3 px-4">Date Issued</th>
@@ -1350,18 +1281,18 @@ const horizontalBarOptions = {
                                     <td colspan="7" class="py-8 text-center text-gray-400">No matching quotation records found.</td>
                                 </tr>
                                 <tr v-for="q in filteredQuotations" :key="q.id" class="hover:bg-gray-50/70 transition-colors">
-                                    <td class="py-3 px-4 font-mono font-bold text-gray-900">{{ q.quotation_number }}</td>
+                                    <td class="py-3 px-4 font-mono font-semibold text-gray-900">{{ q.quotation_number }}</td>
                                     <td class="py-3 px-4 font-medium text-gray-800">{{ q.client_name }}</td>
                                     <td class="py-3 px-4 text-gray-500">{{ q.quotation_date ? q.quotation_date.split('T')[0] : '—' }}</td>
                                     <td class="py-3 px-4 text-gray-500">{{ q.valid_until ? q.valid_until.split('T')[0] : '—' }}</td>
-                                    <td class="py-3 px-4 text-right font-bold text-gray-900">₱{{ q.grand_total.toFixed(2) }}</td>
+                                    <td class="py-3 px-4 text-right font-semibold text-gray-900">₱{{ q.grand_total.toFixed(2) }}</td>
                                     <td class="py-3 px-4 text-center">
-                                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-700">
+                                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-700">
                                             {{ q.status }}
                                         </span>
                                     </td>
                                     <td class="py-3 px-4 text-center">
-                                        <span v-if="q.is_converted" class="text-emerald-600 font-bold flex items-center justify-center gap-1">
+                                        <span v-if="q.is_converted" class="text-emerald-600 font-semibold flex items-center justify-center gap-1">
                                             <CheckCircle2 class="w-3.5 h-3.5" /> Converted
                                         </span>
                                         <span v-else class="text-gray-400">—</span>
@@ -1378,10 +1309,10 @@ const horizontalBarOptions = {
             <!-- ═════════════════════════════════════════════════════ -->
             <div v-else-if="activeTab === 'forecast'" class="space-y-6">
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="lg:col-span-2 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                    <div class="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
                         <div class="flex justify-between items-start mb-4">
                             <div>
-                                <h4 class="text-sm font-bold text-gray-900">12-Month Demand vs SMA Predictive Model</h4>
+                                <h4 class="text-sm font-semibold text-gray-900">12-Month Demand vs SMA Predictive Model</h4>
                                 <p class="text-xs text-gray-400">Calculated from warehouse outgoing stock movements</p>
                             </div>
                             <SpecularButton
@@ -1399,15 +1330,15 @@ const horizontalBarOptions = {
                         </div>
                     </div>
 
-                    <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+                    <div class="bg-white border border-gray-200 rounded-xl p-5 flex flex-col justify-between">
                         <div>
-                            <h4 class="text-sm font-bold text-gray-900 mb-2">SMA Calculation Transparent Breakdown</h4>
+                            <h4 class="text-sm font-semibold text-gray-900 mb-2">SMA Calculation Transparent Breakdown</h4>
                             <p class="text-xs text-gray-500 mb-4 leading-relaxed">
                                 MR-PRIDE uses a 3-month Simple Moving Average with an 8% seasonal expansion factor for baseline buffer safety.
                             </p>
                             <div class="p-3 bg-gray-50 border border-gray-100 rounded-xl font-mono text-xs text-gray-700 space-y-1">
                                 <div>SMA(n) = [ D(m-1) + D(m-2) + D(m-3) ] / 3</div>
-                                <div class="text-[#4b5320] font-bold">Forecast = SMA(n) × 1.08</div>
+                                <div class="text-[#4b5320] font-semibold">Forecast = SMA(n) × 1.08</div>
                             </div>
                             <p class="text-[11px] text-gray-400 mt-3">
                                 Transparent formula compliant for capstone audit and panel inspection.
@@ -1427,14 +1358,14 @@ const horizontalBarOptions = {
                 </div>
 
                 <!-- Monthly Forecast Table -->
-                <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
                     <div class="p-4 border-b border-gray-200">
-                        <h3 class="text-base font-bold text-gray-900">Monthly Forecast Table (Year {{ forecastAnalytics.year }})</h3>
+                        <h3 class="text-base font-semibold text-gray-900">Monthly Forecast Table (Year {{ forecastAnalytics.year }})</h3>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-left border-collapse text-xs">
                             <thead>
-                                <tr class="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-bold uppercase text-[11px]">
+                                <tr class="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-semibold text-[11px]">
                                     <th class="py-3 px-4">Period</th>
                                     <th class="py-3 px-4 text-center">Historical Demand (Units)</th>
                                     <th class="py-3 px-4 text-center">SMA-3 Forecast (Units)</th>
@@ -1443,9 +1374,9 @@ const horizontalBarOptions = {
                             </thead>
                             <tbody class="divide-y divide-gray-100">
                                 <tr v-for="(mLabel, idx) in forecastAnalytics.labels" :key="mLabel" class="hover:bg-gray-50/70">
-                                    <td class="py-3 px-4 font-bold text-gray-900">{{ mLabel }} {{ forecastAnalytics.year }}</td>
+                                    <td class="py-3 px-4 font-semibold text-gray-900">{{ mLabel }} {{ forecastAnalytics.year }}</td>
                                     <td class="py-3 px-4 text-center font-medium">{{ forecastAnalytics.historical[idx] }} units</td>
-                                    <td class="py-3 px-4 text-center font-bold text-[#4b5320]">
+                                    <td class="py-3 px-4 text-center font-semibold text-[#4b5320]">
                                         {{ forecastAnalytics.forecast[idx] !== null ? `${forecastAnalytics.forecast[idx]} units` : '— (N/A)' }}
                                     </td>
                                     <td class="py-3 px-4 text-right text-gray-500">
@@ -1463,36 +1394,36 @@ const horizontalBarOptions = {
             <!-- ═════════════════════════════════════════════════════ -->
             <div v-else-if="activeTab === 'procurement'" class="space-y-6">
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                        <h4 class="text-sm font-bold text-gray-900 mb-1">Purchase Request Statuses</h4>
+                    <div class="bg-white border border-gray-200 rounded-xl p-5">
+                        <h4 class="text-sm font-semibold text-gray-900 mb-1">Purchase Request Statuses</h4>
                         <p class="text-xs text-gray-400 mb-3">Requisition fulfillment distribution</p>
                         <div class="h-48">
                             <Doughnut :data="procurementDonutData" :options="standardChartOptions" />
                         </div>
                     </div>
 
-                    <div class="lg:col-span-2 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+                    <div class="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5 flex flex-col justify-between">
                         <div>
-                            <h4 class="text-sm font-bold text-gray-900 mb-1">Procurement Operational Summary</h4>
+                            <h4 class="text-sm font-semibold text-gray-900 mb-1">Procurement Operational Summary</h4>
                             <p class="text-xs text-gray-400 mb-4">Total estimated acquisition commitments</p>
                             <div class="grid grid-cols-3 gap-4">
                                 <div class="p-3 bg-gray-50 rounded-xl border border-gray-100">
                                     <span class="text-xs text-gray-500 font-semibold block">Total Requisitions</span>
-                                    <span class="text-xl font-black text-gray-900">{{ metrics.totalPurchasesCount }}</span>
+                                    <span class="text-xl font-semibold text-gray-900">{{ metrics.totalPurchasesCount }}</span>
                                 </div>
                                 <div class="p-3 bg-blue-50 rounded-xl border border-blue-100">
                                     <span class="text-xs text-blue-800 font-semibold block">Active Orders</span>
-                                    <span class="text-xl font-black text-blue-900">{{ procurementAnalytics.statusDistribution['Ordered'] || 0 }}</span>
+                                    <span class="text-xl font-semibold text-blue-900">{{ procurementAnalytics.statusDistribution['Ordered'] || 0 }}</span>
                                 </div>
                                 <div class="p-3 bg-emerald-50 rounded-xl border border-emerald-100">
                                     <span class="text-xs text-emerald-800 font-semibold block">Delivered</span>
-                                    <span class="text-xl font-black text-emerald-900">{{ procurementAnalytics.statusDistribution['Delivered'] || 0 }}</span>
+                                    <span class="text-xl font-semibold text-emerald-900">{{ procurementAnalytics.statusDistribution['Delivered'] || 0 }}</span>
                                 </div>
                             </div>
                         </div>
 
                         <div class="pt-4 border-t border-gray-100 flex justify-between items-center text-xs">
-                            <span class="text-gray-500">Total Committed Spend: <strong class="text-gray-900 font-black">{{ formatCurrency(procurementAnalytics.totalEstimatedCost) }}</strong></span>
+                            <span class="text-gray-500">Total Committed Spend: <strong class="text-gray-900 font-semibold">{{ formatCurrency(procurementAnalytics.totalEstimatedCost) }}</strong></span>
                             <SpecularButton variant="secondary" size="sm" :radius="8" @click="downloadReport('procurement')">
                                 <Download class="w-3.5 h-3.5 mr-1 inline" />
                                 Export Procurement CSV
@@ -1502,9 +1433,9 @@ const horizontalBarOptions = {
                 </div>
 
                 <!-- Requisitions Table -->
-                <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
                     <div class="p-4 border-b border-gray-200 flex justify-between items-center">
-                        <h3 class="text-base font-bold text-gray-900">Purchase Orders &amp; Requests Ledger</h3>
+                        <h3 class="text-base font-semibold text-gray-900">Purchase Orders &amp; Requests Ledger</h3>
                         <SpecularButton variant="brand" size="sm" :radius="8" @click="goToProcurement">
                             <ShoppingCart class="w-3.5 h-3.5 mr-1 inline" />
                             Manage Procurement
@@ -1513,7 +1444,7 @@ const horizontalBarOptions = {
                     <div class="overflow-x-auto">
                         <table class="w-full text-left border-collapse text-xs">
                             <thead>
-                                <tr class="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-bold uppercase text-[11px]">
+                                <tr class="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-semibold text-[11px]">
                                     <th class="py-3 px-4">Request #</th>
                                     <th class="py-3 px-4">Item Name (SKU)</th>
                                     <th class="py-3 px-4">Supplier</th>
@@ -1529,19 +1460,19 @@ const horizontalBarOptions = {
                                     <td colspan="8" class="py-8 text-center text-gray-400">No purchase requests found.</td>
                                 </tr>
                                 <tr v-for="r in procurementAnalytics.requestsList" :key="r.id" class="hover:bg-gray-50/70">
-                                    <td class="py-3 px-4 font-mono font-bold text-gray-900">{{ r.request_number }}</td>
+                                    <td class="py-3 px-4 font-mono font-semibold text-gray-900">{{ r.request_number }}</td>
                                     <td class="py-3 px-4">
-                                        <div class="font-bold text-gray-900">{{ r.product_name }}</div>
+                                        <div class="font-semibold text-gray-900">{{ r.product_name }}</div>
                                         <div class="text-[10px] text-gray-400 font-mono">{{ r.sku }}</div>
                                     </td>
                                     <td class="py-3 px-4 text-gray-700">{{ r.supplier_name }}</td>
                                     <td class="py-3 px-4 text-gray-600">{{ r.requested_by }}</td>
-                                    <td class="py-3 px-4 text-center font-bold text-gray-900">{{ r.quantity }}</td>
-                                    <td class="py-3 px-4 text-right font-black text-gray-900">₱{{ r.estimated_cost.toFixed(2) }}</td>
+                                    <td class="py-3 px-4 text-center font-semibold text-gray-900">{{ r.quantity }}</td>
+                                    <td class="py-3 px-4 text-right font-semibold text-gray-900">₱{{ r.estimated_cost.toFixed(2) }}</td>
                                     <td class="py-3 px-4 text-center">
                                         <span
                                             :class="[
-                                                'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase',
+                                                'px-2 py-0.5 rounded-full text-[10px] font-semibold',
                                                 r.status === 'Delivered' ? 'bg-emerald-100 text-emerald-800' :
                                                 r.status === 'Ordered' ? 'bg-blue-100 text-blue-800' :
                                                 r.status === 'Requested' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'
@@ -1563,10 +1494,10 @@ const horizontalBarOptions = {
             <!-- ═════════════════════════════════════════════════════ -->
             <div v-else-if="activeTab === 'ahp'" class="space-y-6">
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="lg:col-span-2 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                    <div class="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
                         <div class="flex justify-between items-start mb-4">
                             <div>
-                                <h4 class="text-sm font-bold text-gray-900">AHP Supplier Composite Ranking</h4>
+                                <h4 class="text-sm font-semibold text-gray-900">AHP Supplier Composite Ranking</h4>
                                 <p class="text-xs text-gray-400">Analytic Hierarchy Process multi-criteria prioritization scores</p>
                             </div>
                             <SpecularButton variant="secondary" size="sm" :radius="8" @click="downloadReport('ahp')">
@@ -1579,30 +1510,30 @@ const horizontalBarOptions = {
                         </div>
                     </div>
 
-                    <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+                    <div class="bg-white border border-gray-200 rounded-xl p-5 flex flex-col justify-between">
                         <div>
-                            <h4 class="text-sm font-bold text-gray-900 mb-2">AHP Criteria Weighting</h4>
+                            <h4 class="text-sm font-semibold text-gray-900 mb-2">AHP Criteria Weighting</h4>
                             <p class="text-xs text-gray-500 mb-4 leading-relaxed">
                                 Suppliers are evaluated across three normalized decision criteria:
                             </p>
                             <div class="space-y-2 text-xs">
                                 <div class="flex flex-col p-2.5 rounded-lg bg-gray-50 border border-gray-100">
                                     <div class="flex justify-between items-center mb-0.5">
-                                        <span class="font-bold text-gray-800">1. Price / Cost</span>
+                                        <span class="font-semibold text-gray-800">1. Price / Cost</span>
                                         <span class="text-gray-500 font-mono text-[11px]">Weight (0-10)</span>
                                     </div>
                                     <span class="text-[11px] text-gray-500">price competitiveness of the supplier</span>
                                 </div>
                                 <div class="flex flex-col p-2.5 rounded-lg bg-gray-50 border border-gray-100">
                                     <div class="flex justify-between items-center mb-0.5">
-                                        <span class="font-bold text-gray-800">2. Quality</span>
+                                        <span class="font-semibold text-gray-800">2. Quality</span>
                                         <span class="text-gray-500 font-mono text-[11px]">Weight (0-10)</span>
                                     </div>
                                     <span class="text-[11px] text-gray-500">quality of product of the supplier evaluated by the staffs</span>
                                 </div>
                                 <div class="flex flex-col p-2.5 rounded-lg bg-gray-50 border border-gray-100">
                                     <div class="flex justify-between items-center mb-0.5">
-                                        <span class="font-bold text-gray-800">3. Delivery Reliability</span>
+                                        <span class="font-semibold text-gray-800">3. Delivery Reliability</span>
                                         <span class="text-gray-500 font-mono text-[11px]">Weight (0-10)</span>
                                     </div>
                                     <span class="text-[11px] text-gray-500">reliability of supplier in terms on delivery to MR Pride</span>
@@ -1623,19 +1554,19 @@ const horizontalBarOptions = {
                 </div>
 
                 <!-- Supplier Ranking Table -->
-                <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
                     <div class="p-4 border-b border-gray-200">
-                        <h3 class="text-base font-bold text-gray-900">Ranked Supplier Directory</h3>
+                        <h3 class="text-base font-semibold text-gray-900">Ranked Supplier Directory</h3>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-left border-collapse text-xs">
                             <thead>
-                                <tr class="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-bold uppercase text-[11px]">
+                                <tr class="bg-gray-50/80 border-b border-gray-200 text-gray-600 font-semibold text-[11px]">
                                     <th class="py-3 px-4 text-center">Rank</th>
                                     <th class="py-3 px-4">Supplier Name</th>
                                     <th class="py-3 px-4">Contact Person</th>
                                     <th class="py-3 px-4">Phone / Email</th>
-                                    <th class="py-3 px-4 text-center font-bold text-[#4b5320]">Composite AHP Score</th>
+                                    <th class="py-3 px-4 text-center font-semibold text-[#4b5320]">Composite AHP Score</th>
                                     <th class="py-3 px-4 text-center">Price</th>
                                     <th class="py-3 px-4 text-center">Quality</th>
                                     <th class="py-3 px-4 text-center">Delivery</th>
@@ -1648,11 +1579,11 @@ const horizontalBarOptions = {
                                     <td colspan="10" class="py-8 text-center text-gray-400">No suppliers registered.</td>
                                 </tr>
                                 <tr v-for="s in ahpAnalytics.suppliersList" :key="s.id" class="hover:bg-gray-50/70">
-                                    <td class="py-3 px-4 text-center font-black text-gray-700">#{{ s.rank }}</td>
-                                    <td class="py-3 px-4 font-bold text-gray-900">{{ s.name }}</td>
+                                    <td class="py-3 px-4 text-center font-semibold text-gray-700">#{{ s.rank }}</td>
+                                    <td class="py-3 px-4 font-semibold text-gray-900">{{ s.name }}</td>
                                     <td class="py-3 px-4 text-gray-700">{{ s.contact_person }}</td>
                                     <td class="py-3 px-4 text-gray-500 font-mono">{{ s.phone }}</td>
-                                    <td class="py-3 px-4 text-center font-black text-[#4b5320] text-sm">
+                                    <td class="py-3 px-4 text-center font-semibold text-[#4b5320] text-sm">
                                         {{ Number(s.ahp_score).toFixed(3) }}
                                     </td>
                                     <td class="py-3 px-4 text-center text-gray-600">{{ s.metrics?.price ?? '—' }}/10</td>
@@ -1660,7 +1591,7 @@ const horizontalBarOptions = {
                                     <td class="py-3 px-4 text-center text-gray-600">{{ s.metrics?.delivery ?? '—' }}/10</td>
                                     <td class="py-3 px-4 text-center text-gray-600">{{ s.metrics?.service ?? '—' }}/10</td>
                                     <td class="py-3 px-4 text-center">
-                                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                        <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
                                             {{ s.status }}
                                         </span>
                                     </td>

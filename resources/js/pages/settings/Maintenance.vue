@@ -93,27 +93,13 @@ const submitDisable = () => {
         <!-- Maintenance Page Header -->
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-gray-200">
             <div>
-                <div class="flex items-center gap-2.5">
-                    <div class="size-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold shadow-xs">
-                        <Wrench class="size-5" />
-                    </div>
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <h1 class="text-2xl font-bold tracking-tight text-gray-900">Admin Maintenance</h1>
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
-                                Administrator Control
-                            </span>
-                        </div>
-                        <p class="text-sm text-gray-500 mt-0.5">
-                            Manage platform maintenance mode, transaction protections, and pre-flight health checks.
-                        </p>
-                    </div>
-                </div>
+                <h1 class="page-title">Admin Maintenance</h1>
+                <p class="page-subtitle">Maintenance mode, transaction protection and health checks.</p>
             </div>
             <div class="flex items-center gap-2">
                 <Link
                     href="/settings/profile"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg shadow-2xs hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-900 transition-colors"
                 >
                     Account Settings &rarr;
                 </Link>
@@ -121,14 +107,14 @@ const submitDisable = () => {
         </div>
 
         <!-- 1. Admin Maintenance Card -->
-        <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs space-y-5">
+        <div class="bg-white border border-gray-200 rounded-xl p-6 space-y-5">
             <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-gray-100">
                 <div class="flex items-center gap-2.5">
                     <div class="size-8 rounded-lg bg-[#4b5320]/10 text-[#4b5320] flex items-center justify-center">
                         <Wrench class="size-4" />
                     </div>
                     <div>
-                        <h2 class="text-base font-bold text-gray-900">Admin Maintenance</h2>
+                        <h2 class="text-base font-semibold text-gray-900">Admin Maintenance</h2>
                         <p class="text-xs text-gray-500">Enable or update maintenance mode to pause non-admin user operations and protect ongoing transactions.</p>
                     </div>
                 </div>
@@ -137,7 +123,7 @@ const submitDisable = () => {
                 <div class="flex items-center gap-2.5">
                     <span
                         :class="[
-                            'px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider inline-flex items-center gap-1.5',
+                            'px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1.5',
                             status.enabled
                                 ? 'bg-amber-100 text-amber-900 border border-amber-300'
                                 : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
@@ -166,7 +152,7 @@ const submitDisable = () => {
                 class="p-4 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
             >
                 <div class="space-y-1">
-                    <div class="font-bold">System is currently closed to staff and visitors.</div>
+                    <div class="font-semibold">System is currently closed to staff and visitors.</div>
                     <div class="text-amber-800">
                         Reason: <strong>{{ status.reason }}</strong>
                         <span v-if="status.expected_return_time"> • Expected Return: <strong>{{ status.expected_return_time }}</strong></span>
@@ -240,14 +226,14 @@ const submitDisable = () => {
         </div>
 
         <!-- 2. Verify Before Reopening Card -->
-        <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs space-y-4">
+        <div class="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
             <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-gray-100">
                 <div class="flex items-center gap-2.5">
                     <div class="size-8 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
                         <ShieldCheck class="size-4" />
                     </div>
                     <div>
-                        <h2 class="text-base font-bold text-gray-900">Verify Before Reopening</h2>
+                        <h2 class="text-base font-semibold text-gray-900">Verify Before Reopening</h2>
                         <p class="text-xs text-gray-500">Check database connectivity, login, device verification, sales POS, and stock deductions before reopening the platform.</p>
                     </div>
                 </div>
@@ -293,13 +279,13 @@ const submitDisable = () => {
                     <div
                         v-for="test in verificationResult.tests"
                         :key="test.id"
-                        class="rounded-xl border border-gray-200 bg-white p-3 text-xs space-y-1 shadow-2xs"
+                        class="rounded-xl border border-gray-200 bg-white p-3 text-xs space-y-1"
                     >
                         <div class="flex items-center justify-between">
-                            <span class="font-bold text-gray-900">{{ test.title }}</span>
+                            <span class="font-semibold text-gray-900">{{ test.title }}</span>
                             <span
                                 :class="[
-                                    'px-2 py-0.5 rounded-full text-[10px] font-bold uppercase inline-flex items-center gap-1',
+                                    'px-2 py-0.5 rounded-full text-[10px] font-semibold inline-flex items-center gap-1',
                                     test.status === 'passed' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
                                 ]"
                             >

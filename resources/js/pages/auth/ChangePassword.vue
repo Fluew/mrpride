@@ -37,7 +37,7 @@ const form = useForm({
     password_confirmation: '',
 });
 
-const lengthValid = computed(() => form.password.length >= 8);
+const lengthValid = computed(() => form.password.length >= 12);
 const upperLowerValid = computed(
     () => /[a-z]/.test(form.password) && /[A-Z]/.test(form.password),
 );
@@ -73,15 +73,15 @@ const submit = () => {
     <div class="space-y-4 sm:space-y-4.5">
         <!-- Notice Banner -->
         <div
-            class="flex items-start gap-3 rounded-xl border border-white/20 bg-white/10 p-3 text-white backdrop-blur-xs sm:p-3.5"
+            class="flex items-start gap-3 rounded-xl border border-white/20 bg-white/10 p-3 text-white sm:p-3.5"
         >
             <div
-                class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#F8B803] font-bold text-gray-950 sm:size-8.5"
+                class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#F8B803] font-semibold text-gray-950 sm:size-8.5"
             >
                 <ShieldAlert class="size-4.5" />
             </div>
             <div class="min-w-0 flex-1">
-                <h4 class="text-xs font-bold text-white sm:text-sm">
+                <h4 class="text-xs font-semibold text-white sm:text-sm">
                     {{
                         isTemporary
                             ? 'Initial Temporary Password Change'
@@ -240,7 +240,7 @@ const submit = () => {
                 class="space-y-1.5 rounded-xl border border-white/20 bg-white/10 p-3 text-xs text-white/90"
             >
                 <p
-                    class="text-[10px] font-bold tracking-wider text-[#F8B803] uppercase"
+                    class="text-[10px] font-semibold text-[#F8B803]"
                 >
                     Password Requirements
                 </p>
@@ -262,7 +262,7 @@ const submit = () => {
                                     : 'text-white/70'
                             "
                         >
-                            At least 8 characters
+                            At least 12 characters
                         </span>
                     </li>
                     <li class="flex items-center gap-1.5">
@@ -328,7 +328,7 @@ const submit = () => {
             <Button
                 type="submit"
                 variant="brand"
-                class="mt-1.5 w-full cursor-pointer font-bold text-white shadow-md transition-all hover:shadow-lg focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                class="mt-1.5 w-full cursor-pointer font-semibold text-white shadow-md transition-colors focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 :disabled="form.processing || !isFormValid"
             >
                 <Spinner v-if="form.processing" class="mr-2 text-white" />

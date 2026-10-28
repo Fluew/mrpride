@@ -11,13 +11,15 @@ use App\Models\PurchaseOrder;
 use App\Models\PurchaseRequest;
 use App\Models\Quotation;
 use App\Models\Sale;
+use App\Models\StockMovement;
 use App\Models\Supplier;
 use App\Models\Team;
 use App\Services\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -194,13 +196,10 @@ class RecycleBinController extends Controller
         $title = $this->getRecordTitle($model, $type);
         $typeLabel = self::TYPE_REGISTRY[$type]['label'] ?? ucfirst($type);
 
-        // Restore record
-        $model->restore();
-
-        // If product, re-enable active flag
-        if ($model instanceof Product) {
-            $model->is_active = true;
-            $model->saveQuietly();
+        try {
+            $this->restoreRecord($model, $request);
+        } catch (\RuntimeException $e) {
+            return back()->with('error', "{$typeLabel} '{$title}' was not restored: {$e->getMessage()}");
         }
 
         AuditLogger::audit(
@@ -229,6 +228,10 @@ class RecycleBinController extends Controller
 
         $title = $this->getRecordTitle($model, $type);
         $typeLabel = self::TYPE_REGISTRY[$type]['label'] ?? ucfirst($type);
+
+        if ($reason = $this->purgeBlockedReason($model, $type)) {
+            return back()->with('error', "{$typeLabel} '{$title}' cannot be permanently deleted: {$reason} It stays archived.");
+        }
 
         // Permanently erase record
         $model->forceDelete();
@@ -263,22 +266,18 @@ class RecycleBinController extends Controller
         ]);
 
         $restoredCount = 0;
+        $skippedCount = 0;
 
         foreach ($validated['items'] as $itemData) {
             try {
                 $type = $itemData['type'];
                 $id = $itemData['id'];
                 $model = $this->findTrashedRecord($team, $type, $id);
-                $model->restore();
-
-                if ($model instanceof Product) {
-                    $model->is_active = true;
-                    $model->saveQuietly();
-                }
+                $this->restoreRecord($model, $request);
 
                 $restoredCount++;
             } catch (\Throwable) {
-                continue;
+                $skippedCount++;
             }
         }
 
@@ -292,7 +291,8 @@ class RecycleBinController extends Controller
             $request
         );
 
-        return back()->with('success', "Successfully restored {$restoredCount} records to active use.");
+        return back()->with('success', "Successfully restored {$restoredCount} records to active use."
+            .($skippedCount ? " {$skippedCount} could not be restored (for example, a sale whose items are no longer in stock)." : ''));
     }
 
     /**
@@ -312,12 +312,18 @@ class RecycleBinController extends Controller
         ]);
 
         $deletedCount = 0;
+        $keptCount = 0;
 
         foreach ($validated['items'] as $itemData) {
             try {
                 $type = $itemData['type'];
                 $id = $itemData['id'];
                 $model = $this->findTrashedRecord($team, $type, $id);
+                if ($this->purgeBlockedReason($model, $type)) {
+                    $keptCount++;
+
+                    continue;
+                }
                 $model->forceDelete();
                 $deletedCount++;
             } catch (\Throwable) {
@@ -330,12 +336,13 @@ class RecycleBinController extends Controller
             "Bulk permanently purged {$deletedCount} records from the system.",
             $user,
             null,
-            ['deleted_count' => $deletedCount],
+            ['deleted_count' => $deletedCount, 'kept_count' => $keptCount],
             'success',
             $request
         );
 
-        return back()->with('success', "Successfully purged {$deletedCount} records permanently.");
+        return back()->with('success', "Successfully purged {$deletedCount} records permanently."
+            .($keptCount ? " {$keptCount} sales/products with transaction or stock history were kept archived." : ''));
     }
 
     /**
@@ -349,10 +356,17 @@ class RecycleBinController extends Controller
         $team = $this->resolveTeam($current_team, $request);
         $totalPurged = 0;
 
-        foreach (self::TYPE_REGISTRY as $config) {
+        $keptCount = 0;
+
+        foreach (self::TYPE_REGISTRY as $typeKey => $config) {
             $modelClass = $config['class'];
             $trashed = $modelClass::onlyTrashed()->where('team_id', $team->id)->get();
             foreach ($trashed as $item) {
+                if ($this->purgeBlockedReason($item, $typeKey)) {
+                    $keptCount++;
+
+                    continue;
+                }
                 $item->forceDelete();
                 $totalPurged++;
             }
@@ -363,12 +377,90 @@ class RecycleBinController extends Controller
             "Emptied entire recycle bin. Total records permanently purged: {$totalPurged}.",
             $user,
             null,
-            ['total_purged' => $totalPurged],
+            ['total_purged' => $totalPurged, 'kept_count' => $keptCount],
             'success',
             $request
         );
 
-        return back()->with('success', "Recycle Bin emptied successfully ({$totalPurged} records permanently removed).");
+        return back()->with('success', "Recycle Bin emptied successfully ({$totalPurged} records permanently removed)."
+            .($keptCount ? " {$keptCount} sales/products with transaction or stock history were kept archived." : ''));
+    }
+
+    /**
+     * Restore one archived record.
+     *
+     * Voiding a sale returned its items to stock, so restoring the sale takes them out again
+     * (with a stock movement for each line). If there is no longer enough stock, nothing is
+     * changed and a RuntimeException explains why.
+     */
+    protected function restoreRecord(mixed $model, Request $request): void
+    {
+        DB::transaction(function () use ($model, $request) {
+            if ($model instanceof Sale) {
+                $model->load('items');
+
+                foreach ($model->items as $item) {
+                    $product = $item->product_id
+                        ? Product::whereKey($item->product_id)->lockForUpdate()->first()
+                        : null;
+
+                    if (! $product) {
+                        continue; // same rule as voiding: lines without a live product were not returned to stock
+                    }
+
+                    if ($product->stock < $item->quantity) {
+                        throw new \RuntimeException("not enough stock for {$product->name} (available: {$product->stock}, needed: {$item->quantity}).");
+                    }
+
+                    $previousStock = $product->stock;
+                    $product->decrement('stock', $item->quantity);
+
+                    StockMovement::create([
+                        'team_id' => $model->team_id,
+                        'product_id' => $product->id,
+                        'user_id' => $request->user()->id,
+                        'type' => 'adjustment',
+                        'quantity' => $item->quantity,
+                        'previous_stock' => $previousStock,
+                        'new_stock' => $previousStock - $item->quantity,
+                        'reference_number' => $model->invoice_number,
+                        'reason' => "Sale {$model->invoice_number} restored from recycle bin",
+                        'movement_date' => now(),
+                    ]);
+
+                    $product->refresh();
+                    $product->updateCalculatedStatus();
+                }
+            }
+
+            $model->restore();
+
+            // If product, re-enable active flag
+            if ($model instanceof Product) {
+                $model->is_active = true;
+                $model->saveQuietly();
+            }
+        });
+    }
+
+    /**
+     * Why a record must not be permanently deleted, or null if it can be.
+     *
+     * The database cascades a hard delete to child rows (a sale takes its line items and
+     * fulfillments, a product takes its stock movements), so records that carry financial or
+     * stock history are kept archived instead.
+     */
+    protected function purgeBlockedReason(mixed $model, string $type): ?string
+    {
+        if ($type === 'sale') {
+            return 'sales are financial records.';
+        }
+
+        if ($type === 'product' && ($model->stockMovements()->exists() || $model->saleItems()->exists() || $model->quotationItems()->exists())) {
+            return 'it has stock movement, sales or quotation history.';
+        }
+
+        return null;
     }
 
     /**
@@ -425,10 +517,10 @@ class RecycleBinController extends Controller
             'quotation' => $item->client_name ? "Client: {$item->client_name}" : 'Quotation document',
             'purchase_order' => $item->item_sku ? "Item: {$item->item_sku}" : 'Purchase order',
             'purchase_request' => $item->status ? "Status: {$item->status}" : 'Purchase request',
-            'commercial_invoice' => "Date: " . ($item->invoice_date?->format('M d, Y') ?? 'N/A'),
-            'delivery' => "PO: " . ($item->purchase_order_number ?: 'N/A'),
+            'commercial_invoice' => 'Date: '.($item->invoice_date?->format('M d, Y') ?? 'N/A'),
+            'delivery' => 'PO: '.($item->purchase_order_number ?: 'N/A'),
             'inquiry' => "From: {$item->name} ({$item->email})",
-            'sale' => "Client: " . ($item->client_name ?: 'Walk-in / Client'),
+            'sale' => 'Client: '.($item->client_name ?: 'Walk-in / Client'),
             default => "ID: {$item->id}",
         };
 
@@ -441,7 +533,7 @@ class RecycleBinController extends Controller
             'purchase_request' => sprintf('Qty: %d • ₱%s', (int) $item->quantity, number_format((float) $item->estimated_cost, 2)),
             'commercial_invoice' => sprintf('Total: ₱%s • Qty: %d', number_format((float) $item->total_cost, 2), (int) $item->quantity),
             'delivery' => sprintf('Qty: %d %s • %s', (int) $item->quantity, $item->unit ?: 'units', $item->delivery_date?->format('M d, Y') ?? 'N/A'),
-            'inquiry' => $item->message ? \Illuminate\Support\Str::limit($item->message, 80) : 'Customer contact inquiry',
+            'inquiry' => $item->message ? Str::limit($item->message, 80) : 'Customer contact inquiry',
             'sale' => sprintf('₱%s • %s', number_format((float) $item->grand_total, 2), $item->payment_method ?: 'Paid'),
             default => '',
         };

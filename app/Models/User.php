@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * @property int $id
@@ -101,6 +102,7 @@ class User extends Authenticatable
             return 'User';
         }
         $parts = explode(' ', $name);
+
         return $parts[0] ?: 'User';
     }
 
@@ -151,7 +153,113 @@ class User extends Authenticatable
     }
 
     /**
-     * Get the route slug of the single module assigned to this staff member.
+     * Modules a staff account can be assigned, keyed by module slug (which doubles as the route
+     * slug), derived from STAFF_ROLES so there is a single list of modules.
+     *
+     * @return array<string, string> module slug => human label
+     */
+    public static function moduleOptions(): array
+    {
+        $options = [];
+        foreach (self::STAFF_ROLES as $role => $label) {
+            $options[substr($role, strlen('staff_'))] = $label;
+        }
+
+        return $options;
+    }
+
+    /**
+     * The single module implied by a legacy role value (null when none applies).
+     */
+    public static function legacyModuleForRole(?string $role): ?string
+    {
+        if ($role === 'staff') {
+            return 'inventory';
+        }
+
+        if ($role !== null && isset(self::STAFF_ROLES[$role])) {
+            return substr($role, strlen('staff_'));
+        }
+
+        return null;
+    }
+
+    public function modulePermissions(): HasMany
+    {
+        return $this->hasMany(UserModulePermission::class)->orderBy('id');
+    }
+
+    /**
+     * Whether this account has explicit module rows (otherwise the legacy single-role fallback applies).
+     */
+    public function hasExplicitModules(): bool
+    {
+        return $this->modulePermissions->isNotEmpty();
+    }
+
+    /**
+     * Modules this account may access, in assignment order.
+     * Admins get every module; staff get their explicit modules, or the one implied by a legacy role.
+     *
+     * @return array<int, string>
+     */
+    public function assignedModules(): array
+    {
+        if ($this->isAdmin()) {
+            return array_keys(self::moduleOptions());
+        }
+
+        if (! $this->isStaff()) {
+            return [];
+        }
+
+        if ($this->hasExplicitModules()) {
+            return $this->modulePermissions->pluck('module')->values()->all();
+        }
+
+        $legacy = self::legacyModuleForRole($this->role);
+
+        return $legacy ? [$legacy] : [];
+    }
+
+    public function hasModule(string $module): bool
+    {
+        return in_array($module, $this->assignedModules(), true);
+    }
+
+    /**
+     * @param  array<int, string>  $modules
+     */
+    public function hasAnyModule(array $modules): bool
+    {
+        return array_intersect($modules, $this->assignedModules()) !== [];
+    }
+
+    /**
+     * Replace this account's module assignments (unknown modules are ignored). The account role is
+     * kept in step so every existing `role` check keeps working: staff_<first module> for staff,
+     * and no module rows for admins / customers.
+     *
+     * @param  array<int, string>  $modules
+     */
+    public function syncModules(array $modules): void
+    {
+        $valid = array_keys(self::moduleOptions());
+        $modules = array_values(array_unique(array_filter($modules, fn ($m) => in_array($m, $valid, true))));
+
+        $this->modulePermissions()->delete();
+
+        if ($this->isStaff()) {
+            foreach ($modules as $module) {
+                $this->modulePermissions()->create(['module' => $module]);
+            }
+        }
+
+        $this->unsetRelation('modulePermissions');
+    }
+
+    /**
+     * Get the route slug of the first module assigned to this staff member.
      */
     public function assignedModuleSlug(): string
     {
@@ -159,16 +267,7 @@ class User extends Authenticatable
             return 'dashboard';
         }
 
-        return match ($this->role) {
-            'staff_quotations' => 'quotations',
-            'staff_procurement' => 'procurement',
-            'staff_deliveries' => 'deliveries',
-            'staff_sales' => 'sales',
-            'staff_forecast' => 'forecast',
-            'staff_suppliers' => 'suppliers',
-            'staff_reports' => 'reports',
-            default => 'inventory',
-        };
+        return $this->assignedModules()[0] ?? 'inventory';
     }
 
     /**
@@ -180,12 +279,15 @@ class User extends Authenticatable
             return 'Administrator';
         }
 
-        if (isset(self::STAFF_ROLES[$this->role])) {
-            return 'Staff (' . self::STAFF_ROLES[$this->role] . ')';
-        }
+        if ($this->isStaff()) {
+            $options = self::moduleOptions();
+            $labels = array_map(fn ($m) => $options[$m], $this->assignedModules());
 
-        if ($this->role === 'staff') {
-            return 'Staff (Inventory)';
+            if ($labels !== []) {
+                return 'Staff ('.implode(', ', $labels).')';
+            }
+
+            return 'Staff';
         }
 
         return 'User';
@@ -233,6 +335,28 @@ class User extends Authenticatable
         $rolesArray = is_array($roles) ? $roles : func_get_args();
 
         return in_array($this->role, $rolesArray, true);
+    }
+
+    /** Shape every generated temporary password must have, e.g. "Juan1234". */
+    public const INITIAL_PASSWORD_PATTERN = '/^[A-Z][a-z]+1234$/';
+
+    /**
+     * Temporary first-login password: the first name, normalised, followed by 1234.
+     * "juan carlos" → "Juan1234", "MARÍA" → "Maria1234". Letters only (accents are transliterated);
+     * if nothing usable is left, "User1234". Only valid until the forced first-login change.
+     */
+    public static function initialPasswordFor(string $firstName): string
+    {
+        $word = Str::before(trim($firstName), ' ');
+        $letters = preg_replace('/[^A-Za-z]/', '', Str::ascii($word));
+        $password = ($letters !== '' ? ucfirst(strtolower($letters)) : 'User').'1234';
+
+        if (! preg_match(self::INITIAL_PASSWORD_PATTERN, $password)) {
+            // Single-letter names ("J") don't fit the pattern; pad them so the format still holds.
+            $password = ucfirst(strtolower(str_pad($letters ?: 'User', 2, 'x'))).'1234';
+        }
+
+        return $password;
     }
 
     /**

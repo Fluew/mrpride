@@ -48,10 +48,10 @@ const activeLogos = computed<LogoItem[]>(() => {
 <template>
     <div class="border-t border-gray-100 bg-gray-50/70 px-4 py-8 sm:px-8 sm:py-10">
         <div class="mb-5 flex items-center justify-between">
-            <h3 class="text-xs sm:text-sm font-bold tracking-widest text-gray-900 uppercase">
+            <h3 class="text-xs sm:text-sm font-semibold text-gray-900">
                 Brand Partners
             </h3>
-            <span class="text-[11px] font-semibold tracking-wider text-gray-400 uppercase hidden sm:inline">
+            <span class="text-[11px] font-semibold text-gray-400 hidden sm:inline">
                 Authorized Manufacturers & Suppliers
             </span>
         </div>

@@ -1,9 +1,23 @@
 <?php
 
+use App\Http\Middleware\EnsureAdminOrStaff;
+use App\Http\Middleware\EnsureDeviceVerified;
+use App\Http\Middleware\EnsurePasswordNotExpired;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Fortify\Features;
+
+// These tests cover the starter-kit settings/teams logic with plain factory users. The access
+// rules on these routes (admin/staff only, trusted device, password expiry) are covered in
+// tests/Feature/InternalAccessTest.php.
+beforeEach(function () {
+    $this->withoutMiddleware([
+        EnsureAdminOrStaff::class,
+        EnsureDeviceVerified::class,
+        EnsurePasswordNotExpired::class,
+    ]);
+});
 
 test('security page is displayed', function () {
     $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
@@ -50,15 +64,16 @@ test('password can be updated', function () {
         ->from(route('security.edit'))
         ->put(route('user-password.update'), [
             'current_password' => 'password',
-            'password' => 'new-password',
-            'password_confirmation' => 'new-password',
+            // Must meet the permanent-password policy (12+ chars, mixed case, number, symbol).
+            'password' => 'New#Password123',
+            'password_confirmation' => 'New#Password123',
         ]);
 
     $response
         ->assertSessionHasNoErrors()
         ->assertRedirect(route('security.edit'));
 
-    expect(Hash::check('new-password', $user->refresh()->password))->toBeTrue();
+    expect(Hash::check('New#Password123', $user->refresh()->password))->toBeTrue();
 });
 
 test('correct password must be provided to update password', function () {

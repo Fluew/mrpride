@@ -1,7 +1,9 @@
 <?php
 
+use App\Models\Team;
 use App\Models\TrustedDevice;
 use App\Models\User;
+use App\Services\ResendService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -50,61 +52,102 @@ test('direct access to enrollment page without invitation returns 404', function
     $this->get('/device/enroll')->assertNotFound();
 });
 
-test('candidate device can view enrollment page with valid code or link', function () {
-    $device = TrustedDevice::create([
-        'device_uuid' => (string) Str::uuid(),
-        'device_name' => 'Pending Workstation',
-        'status' => 'pending',
-        'enrollment_code' => 'MRP-VIEW01',
-        'enrollment_code_expires_at' => now()->addMinutes(5),
-    ]);
-
-    $this->get('/device/enroll?code=MRP-VIEW01')->assertSuccessful();
-});
-
-test('submitting an invalid enrollment code is rejected', function () {
-    $response = $this->post('/device/enroll', [
-        'code' => 'MRP-INVALID',
-        'device_name' => 'Test Device',
-    ]);
-
-    $response->assertSessionHasErrors('code');
-});
-
-test('submitting an expired enrollment code is rejected', function () {
-    $device = TrustedDevice::create([
-        'device_uuid' => (string) Str::uuid(),
-        'device_name' => 'Expired Workstation',
-        'status' => 'pending',
-        'enrollment_code' => 'MRP-EXPD01',
-        'enrollment_code_expires_at' => now()->subMinutes(5),
-    ]);
-
-    $response = $this->post('/device/enroll', [
-        'code' => 'MRP-EXPD01',
-        'device_name' => 'Test Device',
-    ]);
-
-    $response->assertSessionHasErrors('code');
-});
-
-test('submitting a valid enrollment code registers device, approves it, and issues cookies', function () {
-    $user = User::factory()->create([
-        'role' => 'admin',
-        'password_changed_at' => now(),
-    ]);
+/**
+ * A pending invitation as DeviceEnrollmentService stores it: only hashes of the code and the
+ * link token are saved; the raw values are what the user receives by email.
+ */
+function pendingInvite(User $user, int $expiresInMinutes = 5): array
+{
+    $code = 'MRP-'.strtoupper(Str::random(6));
+    $token = Str::random(48);
 
     $device = TrustedDevice::create([
         'device_uuid' => (string) Str::uuid(),
         'device_name' => 'Pending Workstation',
         'user_id' => $user->id,
         'status' => 'pending',
-        'enrollment_code' => 'MRP-VALID1',
-        'enrollment_code_expires_at' => now()->addMinutes(30),
+        'enrollment_code' => TrustedDevice::hashSecret($code),
+        'enrollment_code_expires_at' => now()->addMinutes($expiresInMinutes),
+        'enrollment_token' => TrustedDevice::hashSecret($token),
+        'enrollment_token_expires_at' => now()->addMinutes($expiresInMinutes),
     ]);
 
+    return ['device' => $device, 'code' => $code, 'token' => $token];
+}
+
+function inviteeUser(): User
+{
+    return User::factory()->create([
+        'role' => 'staff_inventory',
+        'status' => 'pending_activation',
+        'password' => Hash::make('Juan1234'),
+        'must_change_password' => true,
+        'password_changed_at' => now(),
+    ]);
+}
+
+test('candidate device can view enrollment page with a valid link, but never sees the code', function () {
+    $user = inviteeUser();
+    $invite = pendingInvite($user);
+
+    $this->get("/device/enroll/{$invite['token']}")
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('auth/EnrollDevice')
+            ->missing('expectedCode')
+            ->where('assignedUser.email', $user->email));
+
+    // The code alone (without the link) does not open the page.
+    $this->get('/device/enroll?code='.$invite['code'])->assertNotFound();
+});
+
+test('submitting an invalid enrollment link or code is rejected', function () {
+    $user = inviteeUser();
+    $invite = pendingInvite($user);
+
+    // Unknown link
+    $this->post('/device/enroll', [
+        'token' => 'not-a-real-token', 'code' => $invite['code'], 'email' => $user->email, 'password' => 'Juan1234',
+    ])->assertSessionHasErrors('code');
+
+    // Right link, wrong code
+    $this->post('/device/enroll', [
+        'token' => $invite['token'], 'code' => 'MRP-WRONG1', 'email' => $user->email, 'password' => 'Juan1234',
+    ])->assertSessionHasErrors('code');
+
+    // The code alone, without the link, is not accepted
+    $this->post('/device/enroll', [
+        'code' => $invite['code'], 'email' => $user->email, 'password' => 'Juan1234',
+    ])->assertSessionHasErrors('token');
+
+    expect($invite['device']->fresh()->status)->toBe('pending');
+});
+
+test('submitting an expired enrollment code is rejected', function () {
+    $user = inviteeUser();
+    $invite = pendingInvite($user);
+
+    $this->travel(6)->minutes();
+
+    $this->get("/device/enroll/{$invite['token']}")->assertStatus(410);
+
+    $this->post('/device/enroll', [
+        'token' => $invite['token'], 'code' => $invite['code'], 'email' => $user->email, 'password' => 'Juan1234',
+    ])->assertSessionHasErrors('code');
+
+    expect($invite['device']->fresh()->status)->toBe('pending')
+        ->and($invite['device']->fresh()->enrollment_token)->toBeNull(); // expired invitation is wiped
+});
+
+test('submitting a valid enrollment code registers device, approves it, and issues cookies', function () {
+    $user = inviteeUser();
+    $invite = pendingInvite($user);
+
     $response = $this->post('/device/enroll', [
-        'code' => 'MRP-VALID1',
+        'token' => $invite['token'],
+        'code' => strtolower($invite['code']), // codes are not case-sensitive
+        'email' => $user->email,
+        'password' => 'Juan1234',
         'device_name' => 'My Workstation Laptop',
     ]);
 
@@ -112,34 +155,24 @@ test('submitting a valid enrollment code registers device, approves it, and issu
     $response->assertCookie('mrpride_device_credential');
     $response->assertCookie('mrpride_device_uuid');
 
-    $device->refresh();
-    expect($device->status)->toBe('approved');
-    expect($device->credential_hash)->not->toBeNull();
-    expect($device->enrollment_code)->toBeNull(); // code consumed
+    $device = $invite['device']->fresh();
+    expect($device->status)->toBe('approved')
+        ->and($device->credential_hash)->not->toBeNull()
+        ->and($device->enrollment_code)->toBeNull() // code consumed
+        ->and($device->enrollment_token)->toBeNull();
+    expect($user->fresh()->status)->toBe('active');
 });
 
 test('reusing an enrollment code is rejected', function () {
-    $device = TrustedDevice::create([
-        'device_uuid' => (string) Str::uuid(),
-        'device_name' => 'Pending Workstation',
-        'status' => 'pending',
-        'enrollment_code' => 'MRP-SINGLE',
-        'enrollment_code_expires_at' => now()->addMinutes(30),
-    ]);
+    $user = inviteeUser();
+    $invite = pendingInvite($user);
+    $payload = ['token' => $invite['token'], 'code' => $invite['code'], 'email' => $user->email, 'password' => 'Juan1234'];
 
     // First use
-    $this->post('/device/enroll', [
-        'code' => 'MRP-SINGLE',
-        'device_name' => 'First Browser',
-    ])->assertRedirect('/login');
+    $this->post('/device/enroll', $payload + ['device_name' => 'First Browser'])->assertRedirect('/login');
 
     // Second use attempt
-    $response = $this->post('/device/enroll', [
-        'code' => 'MRP-SINGLE',
-        'device_name' => 'Second Browser',
-    ]);
-
-    $response->assertSessionHasErrors('code');
+    $this->post('/device/enroll', $payload + ['device_name' => 'Second Browser'])->assertSessionHasErrors('code');
 });
 
 test('registered and active device can access login page', function () {
@@ -236,62 +269,53 @@ test('account-device mismatch rejects login without creating a session and redir
     $this->assertGuest();
 });
 
-test('shared workstation allows any authorized account in authorized_user_ids', function () {
+test('one device, one account: a legacy shared workstation only lets its owner log in', function () {
     $password = 'Secret123!';
-    $staff1 = User::factory()->create([
+    $owner = User::factory()->create([
         'role' => 'staff',
         'status' => 'active',
         'password' => Hash::make($password),
         'password_changed_at' => now(),
     ]);
 
-    $staff2 = User::factory()->create([
+    $other = User::factory()->create([
         'role' => 'staff_quotations',
         'status' => 'active',
         'password' => Hash::make($password),
         'password_changed_at' => now(),
     ]);
 
+    // Old-style shared row: owned by $owner, but listing $other as well.
     $rawCredential = Str::random(64);
     $device = TrustedDevice::create([
         'device_uuid' => (string) Str::uuid(),
         'device_name' => 'Shared Front Desk Station',
+        'user_id' => $owner->id,
         'is_shared' => true,
-        'authorized_user_ids' => [$staff1->id, $staff2->id],
+        'authorized_user_ids' => [$owner->id, $other->id],
         'status' => 'approved',
         'credential_hash' => hash('sha256', $rawCredential),
         'approved_at' => now(),
     ]);
 
-    $team1Slug = $staff1->personalTeam()?->slug ?? 'mr-pride';
+    $ownerSlug = $owner->personalTeam()?->slug ?? 'mr-pride';
 
-    // Test staff1
-    $response1 = $this->withCookie('mrpride_device_uuid', $device->device_uuid)
+    // The owner can still log in on it.
+    $this->withCookie('mrpride_device_uuid', $device->device_uuid)
         ->withCookie('mrpride_device_credential', $rawCredential)
-        ->post('/login', [
-            'email' => $staff1->email,
-            'password' => $password,
-        ]);
+        ->post('/login', ['email' => $owner->email, 'password' => $password])
+        ->assertRedirect("/{$ownerSlug}/".$owner->assignedModuleSlug());
+    $this->assertAuthenticatedAs($owner);
 
-    $response1->assertRedirect("/{$team1Slug}/" . $staff1->assignedModuleSlug());
-    $this->assertAuthenticatedAs($staff1);
-
-    // Logout
     $this->post('/logout');
     $this->assertGuest();
 
-    $team2Slug = $staff2->personalTeam()?->slug ?? 'mr-pride';
-
-    // Test staff2
-    $response2 = $this->withCookie('mrpride_device_uuid', $device->device_uuid)
+    // Another account on the same device is refused.
+    $this->withCookie('mrpride_device_uuid', $device->device_uuid)
         ->withCookie('mrpride_device_credential', $rawCredential)
-        ->post('/login', [
-            'email' => $staff2->email,
-            'password' => $password,
-        ]);
-
-    $response2->assertRedirect("/{$team2Slug}/" . $staff2->assignedModuleSlug());
-    $this->assertAuthenticatedAs($staff2);
+        ->post('/login', ['email' => $other->email, 'password' => $password])
+        ->assertSessionHasErrors(['email' => 'This account is not authorized to use this workstation. Please contact your administrator.']);
+    $this->assertGuest();
 });
 
 test('revoked device immediately loses access to protected routes and APIs with 404 page not found', function () {
@@ -363,19 +387,32 @@ test('only authenticated admins can enroll or manage trusted devices', function 
             'user_id' => $staff->id,
         ]);
 
-    $response->assertNotFound(); // role:admin middleware blocks non-admins with 404
+    $response->assertForbidden(); // role:admin middleware blocks staff with 403
 });
 
-test('end-to-end flow: admin creates pending staff, issues 10-minute invitation, staff verifies identity, enrolls browser, accesses login, and authenticates', function () {
+test('end-to-end flow: admin creates pending staff, a 5-minute invitation is emailed, staff verifies identity, enrolls browser, accesses login, and authenticates', function () {
+    // Capture the email instead of sending it.
+    $sent = new stdClass;
+    $this->mock(ResendService::class)
+        ->shouldReceive('sendDeviceEnrollmentInvitation')
+        ->andReturnUsing(function ($email, $name, $code, $link) use ($sent) {
+            $sent->email = $email;
+            $sent->code = $code;
+            $sent->link = $link;
+
+            return ['success' => true, 'id' => 'test', 'error' => null];
+        });
+
     $admin = User::factory()->create([
         'role' => 'admin',
         'status' => 'active',
         'password_changed_at' => now(),
     ]);
-    $team = $admin->personalTeam() ?? \App\Models\Team::factory()->create();
+    $team = $admin->personalTeam() ?? Team::factory()->create();
     $adminDevice = createTrustedDeviceFor($admin);
 
-    // 1. Admin creates staff account (status: pending_activation, temp password: Maria1234)
+    // 1. Admin creates staff account (status: pending_activation, temp password: Maria1234).
+    //    The 5-minute enrollment invitation is created and emailed automatically.
     $response = $this->actingAs($admin)
         ->withCookies($adminDevice['cookies'])
         ->post("/{$team->slug}/users", [
@@ -386,28 +423,21 @@ test('end-to-end flow: admin creates pending staff, issues 10-minute invitation,
         ]);
 
     $response->assertSessionHasNoErrors();
+    $response->assertSessionHas('enrollmentNotice');
     $staff = User::where('email', 'maria.santos@mrpride.com')->firstOrFail();
     expect($staff->status)->toBe('pending_activation');
     expect($staff->isPendingActivation())->toBeTrue();
     expect($staff->isActive())->toBeTrue(); // allowed to activate
     expect(Hash::check('Maria1234', $staff->password))->toBeTrue();
+    expect($sent->email)->toBe('maria.santos@mrpride.com');
 
-    // 2. Admin creates 10-minute device enrollment invitation
-    $inviteResponse = $this->actingAs($admin)
-        ->withCookies($adminDevice['cookies'])
-        ->post("/{$team->slug}/users/devices/enroll", [
-            'assignment_type' => 'single',
-            'user_id' => $staff->id,
-            'device_name' => "Maria's Inventory Laptop",
-            'expires_in_minutes' => 10,
-        ]);
-
-    $inviteResponse->assertSessionHasNoErrors();
-    $inviteResponse->assertSessionHas('enrollmentNotice');
+    // 2. Only hashes are stored; the invitation lasts 5 minutes.
     $device = TrustedDevice::where('user_id', $staff->id)->firstOrFail();
+    $token = Str::between($sent->link, '/device/enroll/', '?');
     expect($device->status)->toBe('pending');
-    expect($device->enrollment_token)->not->toBeNull();
-    expect($device->enrollment_token_expires_at->diffInMinutes(now()))->toBeLessThanOrEqual(10);
+    expect($device->enrollment_token)->toBe(TrustedDevice::hashSecret($token))->not->toBe($token);
+    expect($device->enrollment_code)->toBe(TrustedDevice::hashSecret($sent->code))->not->toBe($sent->code);
+    expect((int) round(now()->diffInMinutes($device->enrollment_token_expires_at)))->toBe(5);
 
     // 3. Before enrollment, unauthenticated/unregistered candidate browser gets 404 on /login
     auth()->logout();
@@ -416,17 +446,15 @@ test('end-to-end flow: admin creates pending staff, issues 10-minute invitation,
     $this->get('/login')->assertNotFound();
 
     // 4. Staff opens one-time enrollment link on new browser (with bound email)
-    $tokenPageResponse = $this->get("/device/enroll/{$device->enrollment_token}?email=" . urlencode('maria.santos@mrpride.com'));
-    $tokenPageResponse->assertSuccessful();
+    $this->get($sent->link)->assertSuccessful();
 
     // 4b. Forwarded link opened with another email is rejected (403 Forbidden)
-    $forwardedResponse = $this->get("/device/enroll/{$device->enrollment_token}?email=" . urlencode('other.person@mrpride.com'));
-    $forwardedResponse->assertForbidden();
+    $this->get("/device/enroll/{$token}?email=".urlencode('other.person@mrpride.com'))->assertForbidden();
 
     // 5. Staff verifies identity with enrollment code + email + temporary password
     $enrollResponse = $this->post('/device/enroll', [
-        'token' => $device->enrollment_token,
-        'code' => $device->enrollment_code,
+        'token' => $token,
+        'code' => $sent->code,
         'email' => 'maria.santos@mrpride.com',
         'password' => 'Maria1234',
         'device_name' => "Maria's Work Laptop",
@@ -462,4 +490,3 @@ test('end-to-end flow: admin creates pending staff, issues 10-minute invitation,
     $authResponse->assertRedirect('/password/change');
     $this->assertAuthenticatedAs($staff);
 });
-

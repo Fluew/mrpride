@@ -61,11 +61,11 @@ const submitResend = () => {
 
         <!-- Revoked Device Notice -->
         <div v-if="status === 'revoked'" class="space-y-6">
-            <div class="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+            <div class="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
                 <div class="mx-auto flex size-12 items-center justify-center rounded-full bg-red-100 text-red-600 mb-3">
                     <AlertTriangle class="size-6" />
                 </div>
-                <h3 class="text-lg font-bold text-red-900 mb-1">Access Suspended on this Device</h3>
+                <h3 class="text-lg font-semibold text-red-900 mb-1">Access Suspended on this Device</h3>
                 <p class="text-sm text-red-700 leading-relaxed">
                     This device (<span class="font-semibold">{{ device?.name || 'Device' }}</span>) has been revoked by an administrator for security purposes.
                 </p>
@@ -79,7 +79,7 @@ const submitResend = () => {
                 href="/logout"
                 method="post"
                 as="button"
-                class="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 shadow-xs cursor-pointer"
+                class="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer"
             >
                 <LogOut class="size-4" />
                 Return to Login
@@ -89,12 +89,12 @@ const submitResend = () => {
         <!-- Verification Form -->
         <div v-else class="space-y-6">
             <!-- Device Banner -->
-            <div class="rounded-2xl border border-amber-200/80 bg-amber-50/70 p-4 sm:p-5 flex items-start gap-4">
-                <div class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#4b5320] text-[#F8B803] shadow-xs">
+            <div class="rounded-xl border border-amber-200/80 bg-amber-50/70 p-4 sm:p-5 flex items-start gap-4">
+                <div class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#4b5320] text-[#F8B803]">
                     <Laptop class="size-5" />
                 </div>
                 <div class="min-w-0 flex-1">
-                    <h4 class="text-sm font-bold text-gray-900 flex items-center gap-2">
+                    <h4 class="text-sm font-semibold text-gray-900 flex items-center gap-2">
                         <span>Unrecognized Device Detected</span>
                         <span class="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
                             Verification Required
@@ -123,7 +123,7 @@ const submitResend = () => {
                         pattern="[0-9]*"
                         maxlength="6"
                         placeholder="••••••"
-                        class="text-center text-2xl tracking-[0.5em] font-mono h-14 rounded-xl border-gray-300 focus:border-[#4b5320] focus:ring-[#4b5320]/20 font-bold"
+                        class="text-center text-2xl tracking-[0.5em] font-mono h-14 rounded-xl border-gray-300 focus:border-[#4b5320] focus:ring-[#4b5320]/20 font-semibold"
                         autofocus
                         required
                         :disabled="verifyForm.processing"
@@ -133,7 +133,7 @@ const submitResend = () => {
 
                 <Button
                     type="submit"
-                    class="w-full h-12 rounded-xl bg-[#4b5320] hover:bg-[#3b4219] text-white font-bold text-sm shadow-md cursor-pointer transition-colors"
+                    class="w-full h-12 rounded-xl bg-[#4b5320] hover:bg-[#3b4219] text-white font-semibold text-sm shadow-md cursor-pointer transition-colors"
                     :disabled="verifyForm.processing || verifyForm.code.length !== 6"
                 >
                     <Spinner v-if="verifyForm.processing" class="mr-2" />
@@ -156,7 +156,7 @@ const submitResend = () => {
                         v-if="isAdmin"
                         type="button"
                         @click="showRecoveryMode = true"
-                        class="inline-flex items-center gap-1.5 text-[#4b5320] hover:underline font-bold cursor-pointer"
+                        class="inline-flex items-center gap-1.5 text-[#4b5320] hover:underline font-semibold cursor-pointer"
                     >
                         <KeyRound class="size-3.5 text-[#F8B803]" />
                         Lost access? Use Admin Recovery Key
@@ -183,7 +183,7 @@ const submitResend = () => {
                         v-model="recoveryForm.recovery_key"
                         type="text"
                         placeholder="RECOVER-XXXXXX-XXXXXX-XXXXXX"
-                        class="font-mono text-sm h-12 rounded-xl border-gray-300 uppercase"
+                        class="font-mono text-sm h-12 rounded-xl border-gray-300"
                         autofocus
                         required
                         :disabled="recoveryForm.processing"
@@ -202,7 +202,7 @@ const submitResend = () => {
                     </Button>
                     <Button
                         type="submit"
-                        class="flex-1 h-12 rounded-xl bg-[#4b5320] hover:bg-[#3b4219] text-white font-bold text-sm shadow-md cursor-pointer"
+                        class="flex-1 h-12 rounded-xl bg-[#4b5320] hover:bg-[#3b4219] text-white font-semibold text-sm shadow-md cursor-pointer"
                         :disabled="recoveryForm.processing || !recoveryForm.recovery_key"
                     >
                         <Spinner v-if="recoveryForm.processing" class="mr-2" />

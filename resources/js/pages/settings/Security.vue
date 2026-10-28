@@ -133,7 +133,7 @@ const confirmSavePassword = () => {
                 <Button
                     type="submit"
                     variant="brand-gold"
-                    class="cursor-pointer font-bold text-gray-950 shadow-sm transition-all hover:bg-[#fac52e] hover:shadow-md"
+                    class="cursor-pointer font-semibold text-gray-950 transition-colors hover:bg-[#fac52e]"
                     :disabled="form.processing"
                     data-test="update-password-button"
                 >
@@ -160,17 +160,17 @@ const confirmSavePassword = () => {
     <!-- Confirmation Modal -->
     <div
         v-if="showConfirmModal"
-        class="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+        class="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"
     >
         <div
-            class="w-full max-w-md animate-in fade-in zoom-in-95 rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl duration-150"
+            class="w-full max-w-md animate-in fade-in rounded-xl border border-gray-200 bg-white p-6 shadow-xl duration-150"
         >
             <div
                 class="mb-4 flex h-11 w-11 items-center justify-center rounded-full border border-amber-100 bg-amber-50 text-[#F8B803]"
             >
                 <ShieldAlert class="h-6 w-6" />
             </div>
-            <h3 class="mb-1.5 text-xl font-bold text-gray-900">
+            <h3 class="mb-1.5 text-xl font-semibold text-gray-900">
                 Update Password?
             </h3>
             <p class="mb-4 text-sm leading-relaxed text-gray-600">
@@ -192,7 +192,7 @@ const confirmSavePassword = () => {
                     variant="brand-gold"
                     size="md"
                     :radius="10"
-                    class="font-bold text-gray-950"
+                    class="font-semibold text-gray-950"
                     @click="confirmSavePassword"
                     :disabled="form.processing"
                 >

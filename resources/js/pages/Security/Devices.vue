@@ -130,12 +130,12 @@ const promptRevokeDevice = (device: DeviceItem) => {
 const promptDeleteDevice = (device: DeviceItem) => {
     openConfirmModal({
         title: 'Remove Trusted Device',
-        description: `Permanently delete "${device.device_name}" from the trusted device registry?`,
+        description: `Permanently delete "${device.device_name}" from the trusted device registry? Active sessions on this hardware will be immediately terminated.`,
         details: [
             { label: 'Device Name', value: device.device_name },
             { label: 'Account Holder', value: device.user.name },
         ],
-        confirmText: 'Delete Device',
+        confirmText: 'Remove Device',
         confirmVariant: 'destructive',
         action: () => {
             const team = (page.props as any).currentTeam?.slug;
@@ -155,10 +155,10 @@ const promptDeleteDevice = (device: DeviceItem) => {
             <!-- Header Section -->
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                    <h1 class="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
+                    <h1 class="page-title">
                         Trusted Devices
                     </h1>
-                    <p class="text-sm text-gray-500 mt-1">
+                    <p class="page-subtitle">
                         Manage recognized hardware and workstations authorized for administrative access.
                     </p>
                 </div>
@@ -167,24 +167,24 @@ const promptDeleteDevice = (device: DeviceItem) => {
             <!-- Emergency Admin Recovery Key Card (Admin Only) -->
             <div
                 v-if="isAdmin && adminRecoveryKey"
-                class="rounded-2xl border border-amber-200/90 bg-gradient-to-r from-amber-50/90 via-amber-50/50 to-white p-5 shadow-xs"
+                class="rounded-xl border border-amber-200 bg-amber-50/60 p-5"
             >
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div class="flex items-start gap-3.5">
-                        <div class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#4b5320] text-[#F8B803] shadow-xs">
+                        <div class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#4b5320] text-[#F8B803]">
                             <KeyRound class="size-5" />
                         </div>
                         <div>
-                            <h3 class="text-sm font-bold text-gray-900 flex items-center gap-2">
+                            <h3 class="text-sm font-semibold text-gray-900 flex items-center gap-2">
                                 Emergency Admin Recovery Key
-                                <span class="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 uppercase">
+                                <span class="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
                                     Single-Use
                                 </span>
                             </h3>
                             <p class="text-xs text-gray-600 mt-1 leading-relaxed max-w-2xl">
                                 If you lose access to all your trusted devices or email, use this cryptographic key on the device verification screen to restore access.
                             </p>
-                            <p class="mt-2 font-mono text-sm font-bold text-gray-900 tracking-wider bg-white px-3 py-1.5 rounded-lg border border-amber-200 inline-block">
+                            <p class="mt-2 font-mono text-sm font-semibold text-gray-900 tracking-wider bg-white px-3 py-1.5 rounded-lg border border-amber-200 inline-block">
                                 {{ adminRecoveryKey }}
                             </p>
                         </div>
@@ -192,7 +192,7 @@ const promptDeleteDevice = (device: DeviceItem) => {
                     <button
                         type="button"
                         @click="copyRecoveryKey"
-                        class="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 shadow-xs cursor-pointer self-start sm:self-center"
+                        class="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer self-start sm:self-center"
                     >
                         <Check v-if="copiedKey" class="size-4 text-green-600" />
                         <Copy v-else class="size-4 text-gray-500" />
@@ -202,10 +202,10 @@ const promptDeleteDevice = (device: DeviceItem) => {
             </div>
 
             <!-- Devices Table -->
-            <div class="rounded-2xl border border-gray-200 bg-white shadow-xs overflow-hidden">
+            <div class="rounded-xl border border-gray-200 bg-white overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-sm text-gray-600">
-                        <thead class="bg-gray-50/80 border-b border-gray-200 text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        <thead class="bg-gray-50/80 border-b border-gray-200 text-xs font-semibold text-gray-700">
                             <tr>
                                 <th class="px-6 py-4">Device & Workstation</th>
                                 <th v-if="isAdmin" class="px-6 py-4">Account Owner</th>
@@ -227,7 +227,7 @@ const promptDeleteDevice = (device: DeviceItem) => {
                                                 <span>{{ d.device_name }}</span>
                                                 <span
                                                     v-if="d.is_current"
-                                                    class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200"
+                                                    class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200"
                                                 >
                                                     Current Device
                                                 </span>
@@ -294,8 +294,9 @@ const promptDeleteDevice = (device: DeviceItem) => {
                                         <button
                                             type="button"
                                             @click="promptDeleteDevice(d)"
-                                            class="inline-flex items-center justify-center size-8 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
-                                            title="Delete device"
+                                            class="inline-flex size-8 items-center justify-center rounded-xl text-gray-400 hover:text-red-600 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 transition-colors cursor-pointer"
+                                            title="Remove trusted device"
+                                            aria-label="Remove trusted device"
                                         >
                                             <Trash2 class="size-4" />
                                         </button>
@@ -316,8 +317,8 @@ const promptDeleteDevice = (device: DeviceItem) => {
     </AppSidebarLayout>
 
     <!-- Action Confirmation Modal -->
-    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl animate-in fade-in duration-150">
             <div
                 :class="[
                     'w-11 h-11 rounded-full flex items-center justify-center mb-4 border',
@@ -329,7 +330,7 @@ const promptDeleteDevice = (device: DeviceItem) => {
                 <AlertTriangle v-if="confirmOptions.confirmVariant === 'destructive'" class="w-6 h-6" />
                 <CheckCircle2 v-else class="w-6 h-6" />
             </div>
-            <h3 class="text-xl font-bold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
+            <h3 class="text-xl font-semibold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
             <p class="text-gray-600 text-sm mb-4 leading-relaxed">
                 {{ confirmOptions.description }}
             </p>
@@ -343,7 +344,7 @@ const promptDeleteDevice = (device: DeviceItem) => {
 
             <div v-if="confirmOptions.confirmVariant === 'destructive'" class="mt-2 mb-5">
                 <label class="block text-xs font-semibold text-gray-700 mb-1.5">
-                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                    Type <span class="font-mono font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
                 </label>
                 <input
                     v-model="confirmActionInput"

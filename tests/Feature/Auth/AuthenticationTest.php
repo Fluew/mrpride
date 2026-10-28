@@ -121,3 +121,37 @@ test('users are rate limited', function () {
 
     $response->assertTooManyRequests();
 });
+
+test('authenticated admin visiting login is redirected to dashboard without url generation error', function () {
+    $user = User::factory()->create([
+        'role' => 'admin',
+        'password_changed_at' => now(),
+    ]);
+    $team = $user->currentTeam ?: $user->personalTeam();
+    $deviceData = createTrustedDeviceFor($user);
+
+    $response = $this->actingAs($user)
+        ->withCookies($deviceData['cookies'])
+        ->get(route('login'));
+
+    $response->assertRedirect("/{$team->slug}/dashboard");
+});
+
+test('authenticated staff with null current_team_id visiting login is redirected to module without url error', function () {
+    $user = User::factory()->create([
+        'role' => 'staff_inventory',
+        'current_team_id' => null,
+        'password_changed_at' => now(),
+    ]);
+    $team = Team::first() ?: Team::factory()->create(['slug' => 'mr-pride']);
+    $team->members()->syncWithoutDetaching([$user->id => ['role' => TeamRole::Member->value]]);
+    $user->forceFill(['current_team_id' => null])->saveQuietly();
+
+    $deviceData = createTrustedDeviceFor($user);
+
+    $response = $this->actingAs($user)
+        ->withCookies($deviceData['cookies'])
+        ->get(route('login'));
+
+    $response->assertRedirect("/{$team->slug}/inventory");
+});

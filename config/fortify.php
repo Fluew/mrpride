@@ -143,7 +143,8 @@ return [
     */
 
     'features' => [
-        Features::registration(),
+        // Public self-registration is off: customers browse and request quotations as guests;
+        // admin and staff accounts are created in User Management.
         Features::resetPasswords(),
     ],
 

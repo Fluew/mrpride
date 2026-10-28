@@ -1,10 +1,8 @@
 <?php
 
 use App\Models\AuditLog;
-use App\Models\TrustedDevice;
 use App\Models\User;
 use App\Services\MaintenanceService;
-use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 
 beforeEach(function () {
@@ -28,7 +26,7 @@ test('admin can access maintenance settings', function () {
         'password_changed_at' => now(),
     ]);
 
-    $response = $this->actingAs($admin)->get('/settings/maintenance');
+    $response = $this->actingAs($admin)->withCookies(createTrustedDeviceFor($admin)['cookies'])->get('/settings/maintenance');
     $response->assertSuccessful();
     $response->assertInertia(fn (Assert $page) => $page
         ->component('settings/Maintenance')
@@ -52,7 +50,7 @@ test('admin can enable maintenance mode, show maintenance page to guests, and ve
     ]);
 
     // Step 1: Admin enables maintenance mode
-    $enableResponse = $this->actingAs($admin)->post('/settings/maintenance/enable', [
+    $enableResponse = $this->actingAs($admin)->withCookies(createTrustedDeviceFor($admin)['cookies'])->post('/settings/maintenance/enable', [
         'reason' => 'Database updates & system upgrades in progress.',
         'duration_minutes' => 30,
         'expected_return_time' => '02:00 PM (approx. 30 mins)',
@@ -87,11 +85,11 @@ test('admin can enable maintenance mode, show maintenance page to guests, and ve
     ]);
 
     // Admin can still access maintenance settings to monitor and test
-    $adminAccess = $this->actingAs($admin)->get('/settings/maintenance');
+    $adminAccess = $this->actingAs($admin)->withCookies(createTrustedDeviceFor($admin)['cookies'])->get('/settings/maintenance');
     $adminAccess->assertSuccessful();
 
     // Step 4: Admin runs pre-flight system readiness verification
-    $verifyResponse = $this->actingAs($admin)->postJson('/settings/maintenance/verify');
+    $verifyResponse = $this->actingAs($admin)->withCredentials()->withCookies(createTrustedDeviceFor($admin)['cookies'])->postJson('/settings/maintenance/verify');
     $verifyResponse->assertSuccessful();
     $verifyResponse->assertJsonStructure([
         'all_passed',
@@ -103,7 +101,7 @@ test('admin can enable maintenance mode, show maintenance page to guests, and ve
     expect($verifyResponse->json('all_passed'))->toBeTrue();
 
     // Admin reopens system / disables maintenance mode
-    $disableResponse = $this->actingAs($admin)->post('/settings/maintenance/disable');
+    $disableResponse = $this->actingAs($admin)->withCookies(createTrustedDeviceFor($admin)['cookies'])->post('/settings/maintenance/disable');
     $disableResponse->assertSessionHas('success');
     expect(MaintenanceService::isDown())->toBeFalse();
 
@@ -123,13 +121,13 @@ test('admin can run verification using GET or POST when system is under maintena
     expect(MaintenanceService::isDown())->toBeTrue();
 
     // Verify GET request works under maintenance
-    $getResponse = $this->actingAs($admin)->getJson('/settings/maintenance/verify');
+    $getResponse = $this->actingAs($admin)->withCredentials()->withCookies(createTrustedDeviceFor($admin)['cookies'])->getJson('/settings/maintenance/verify');
     $getResponse->assertSuccessful();
     $getResponse->assertJsonPath('all_passed', true);
     expect($getResponse->json('tests'))->toHaveCount(6);
 
     // Verify POST request works under maintenance
-    $postResponse = $this->actingAs($admin)->postJson('/settings/maintenance/verify');
+    $postResponse = $this->actingAs($admin)->withCredentials()->withCookies(createTrustedDeviceFor($admin)['cookies'])->postJson('/settings/maintenance/verify');
     $postResponse->assertSuccessful();
     $postResponse->assertJsonPath('all_passed', true);
 });

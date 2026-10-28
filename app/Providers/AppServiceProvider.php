@@ -2,6 +2,12 @@
 
 namespace App\Providers;
 
+use App\Models\OrderFulfillment;
+use App\Models\Quotation;
+use App\Models\Sale;
+use App\Observers\OrderFulfillmentEmailObserver;
+use App\Observers\QuotationEmailObserver;
+use App\Observers\SaleEmailObserver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +30,11 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        // Automatic customer emails (quotation approved, sale completed, out for delivery).
+        Quotation::observe(QuotationEmailObserver::class);
+        Sale::observe(SaleEmailObserver::class);
+        OrderFulfillment::observe(OrderFulfillmentEmailObserver::class);
     }
 
     /**
@@ -37,14 +48,17 @@ class AppServiceProvider extends ServiceProvider
             app()->isProduction(),
         );
 
-        Password::defaults(fn (): ?Password => app()->isProduction()
-            ? Password::min(12)
+        // One permanent-password policy everywhere (password change, reset, settings): at least 12
+        // characters with upper- and lowercase letters, a number and a symbol. In production the
+        // password is also checked against known data breaches (needs internet access).
+        Password::defaults(function (): Password {
+            $rule = Password::min(12)
                 ->mixedCase()
                 ->letters()
                 ->numbers()
-                ->symbols()
-                ->uncompromised()
-            : null,
-        );
+                ->symbols();
+
+            return app()->isProduction() ? $rule->uncompromised() : $rule;
+        });
     }
 }

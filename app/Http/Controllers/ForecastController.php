@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use App\Models\SaleItem;
 use App\Models\StockMovement;
+use App\Support\Csv;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -82,7 +83,7 @@ class ForecastController extends Controller
         if ($selectedProduct) {
             $threshold = $selectedProduct->reorder_level ?: ($selectedProduct->min_stock ?: 10);
             $forecastNonZero = array_filter($data['forecast'], fn ($v) => $v !== null && $v > 0);
-            $avgForecastDemand = !empty($forecastNonZero) ? (int) round(array_sum($forecastNonZero) / count($forecastNonZero)) : 10;
+            $avgForecastDemand = ! empty($forecastNonZero) ? (int) round(array_sum($forecastNonZero) / count($forecastNonZero)) : 10;
             $dailyDemand = max(0.1, $avgForecastDemand / 30);
             $daysOfSupply = (int) round($selectedProduct->stock / $dailyDemand);
             $recommendedRestock = max($selectedProduct->reorder_quantity ?: 50, ($threshold * 2) - $selectedProduct->stock);
@@ -120,7 +121,7 @@ class ForecastController extends Controller
             $totalStock = $catProducts->sum('stock');
             $lowCount = $catProducts->filter(fn ($p) => $p->stock <= ($p->reorder_level ?: 10))->count();
             $forecastNonZero = array_filter($data['forecast'], fn ($v) => $v !== null && $v > 0);
-            $avgForecast = !empty($forecastNonZero) ? (int) round(array_sum($forecastNonZero) / count($forecastNonZero)) : 0;
+            $avgForecast = ! empty($forecastNonZero) ? (int) round(array_sum($forecastNonZero) / count($forecastNonZero)) : 0;
 
             $categoryWindow = [
                 'name' => $category,
@@ -145,36 +146,36 @@ class ForecastController extends Controller
             ->limit(10)
             ->get(['id', 'sku', 'name', 'category', 'stock', 'reorder_level', 'min_stock', 'reorder_quantity', 'price'])
             ->map(function ($p) {
-                $threshold    = $p->reorder_level ?: ($p->min_stock ?: 10);
-                $urgency      = $p->stock <= 0 ? 'Urgent' : ($p->stock <= $threshold / 2 ? 'Soon' : 'Monitor');
+                $threshold = $p->reorder_level ?: ($p->min_stock ?: 10);
+                $urgency = $p->stock <= 0 ? 'Urgent' : ($p->stock <= $threshold / 2 ? 'Soon' : 'Monitor');
                 $predictedNeed = max($p->reorder_quantity ?: 50, ($threshold * 2) - $p->stock);
 
                 return [
-                    'id'            => $p->id,
-                    'sku'           => $p->sku,
-                    'name'          => $p->name,
-                    'category'      => $p->category,
-                    'stock'         => $p->stock,
-                    'threshold'     => $threshold,
+                    'id' => $p->id,
+                    'sku' => $p->sku,
+                    'name' => $p->name,
+                    'category' => $p->category,
+                    'stock' => $p->stock,
+                    'threshold' => $threshold,
                     'predictedNeed' => $predictedNeed,
-                    'urgency'       => $urgency,
+                    'urgency' => $urgency,
                 ];
             });
 
         return Inertia::render('Forecast/Index', [
-            'fromDate'          => $fromDate->format('Y-m-d'),
-            'toDate'            => $toDate->format('Y-m-d'),
-            'smaWindow'         => $smaWindow,
-            'selectedCategory'  => $category,
+            'fromDate' => $fromDate->format('Y-m-d'),
+            'toDate' => $toDate->format('Y-m-d'),
+            'smaWindow' => $smaWindow,
+            'selectedCategory' => $category,
             'selectedProductId' => $productId,
-            'categories'        => $categories,
-            'productsList'      => $productsList,
-            'productWindow'     => $productWindow,
-            'categoryWindow'    => $categoryWindow,
-            'forecastData'      => $data,
+            'categories' => $categories,
+            'productsList' => $productsList,
+            'productWindow' => $productWindow,
+            'categoryWindow' => $categoryWindow,
+            'forecastData' => $data,
             'suggestedRestocks' => $suggestedRestocks,
-            'minDate'           => $minDate->format('Y-m-d'),
-            'maxDate'           => $today->format('Y-m-d'),
+            'minDate' => $minDate->format('Y-m-d'),
+            'maxDate' => $today->format('Y-m-d'),
         ]);
     }
 
@@ -186,7 +187,7 @@ class ForecastController extends Controller
         $team = $request->user()->currentTeam;
         abort_if(! $team, 403, 'No active team selected.');
 
-        $today   = Carbon::today();
+        $today = Carbon::today();
         $minDate = Carbon::create(2020, 1, 1);
 
         $fromDate = $request->filled('from_date')
@@ -209,26 +210,26 @@ class ForecastController extends Controller
             ? (int) $request->input('product_id')
             : null;
 
-        $data     = $this->calculateForecastData($team->id, $fromDate, $toDate, $smaWindow, $category, $productId);
+        $data = $this->calculateForecastData($team->id, $fromDate, $toDate, $smaWindow, $category, $productId);
         $fileName = "demand_forecast_{$fromDate->format('Y-m-d')}_to_{$toDate->format('Y-m-d')}_sma{$smaWindow}.csv";
 
         $headers = [
-            'Content-Type'        => 'text/csv',
+            'Content-Type' => 'text/csv',
             'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
-            'Pragma'              => 'no-cache',
-            'Cache-Control'       => 'must-revalidate, post-check=0, pre-check=0',
-            'Expires'             => '0',
+            'Pragma' => 'no-cache',
+            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+            'Expires' => '0',
         ];
 
         return response()->stream(function () use ($data, $smaWindow) {
             $file = fopen('php://output', 'w');
-            fputcsv($file, ['Month', 'Historical Demand (Units)', "Forecast SMA-{$smaWindow} (Units)"]);
+            Csv::put($file, ['Month', 'Historical Demand (Units)', "Forecast SMA-{$smaWindow} (Units)"]);
 
             foreach ($data['labels'] as $idx => $month) {
-                fputcsv($file, [
+                Csv::put($file, [
                     $month,
                     $data['historical'][$idx] ?? 'N/A',
-                    $data['forecast'][$idx]   ?? 'N/A',
+                    $data['forecast'][$idx] ?? 'N/A',
                 ]);
             }
 
@@ -249,15 +250,15 @@ class ForecastController extends Controller
     ): array {
         // Build list of year-month periods in the range
         $periods = [];
-        $cursor  = $fromDate->copy()->startOfMonth();
-        $end     = $toDate->copy()->startOfMonth();
+        $cursor = $fromDate->copy()->startOfMonth();
+        $end = $toDate->copy()->startOfMonth();
 
         while ($cursor->lte($end)) {
             $periods[] = $cursor->copy();
             $cursor->addMonth();
         }
 
-        $labels     = array_map(fn ($d) => $d->format('M Y'), $periods);
+        $labels = array_map(fn ($d) => $d->format('M Y'), $periods);
         $historical = array_fill(0, count($periods), 0);
 
         // Fetch monthly outgoing stock from stock movements (sale / out)
@@ -280,9 +281,9 @@ class ForecastController extends Controller
         // Also query sale items (aggregated per month) to cover invoices not recorded as movements
         $saleItemsQuery = SaleItem::whereHas('sale', function ($q) use ($teamId, $fromDate, $toDate) {
             $q->where('team_id', $teamId)
-              ->where('sale_date', '>=', $fromDate->copy()->startOfMonth())
-              ->where('sale_date', '<=', $toDate->copy()->endOfMonth())
-              ->where('status', '!=', 'Cancelled');
+                ->where('sale_date', '>=', $fromDate->copy()->startOfMonth())
+                ->where('sale_date', '<=', $toDate->copy()->endOfMonth())
+                ->where('status', '!=', 'Cancelled');
         })
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id');
 
@@ -298,9 +299,9 @@ class ForecastController extends Controller
             ->pluck('total_qty', 'ym');
 
         foreach ($periods as $idx => $period) {
-            $ym           = $period->format('Y-m');
-            $movementQty  = (int) ($movements[$ym] ?? 0);
-            $saleQty      = (int) ($saleItems[$ym] ?? 0);
+            $ym = $period->format('Y-m');
+            $movementQty = (int) ($movements[$ym] ?? 0);
+            $saleQty = (int) ($saleItems[$ym] ?? 0);
             $historical[$idx] = max($movementQty, $saleQty);
         }
 
@@ -331,18 +332,18 @@ class ForecastController extends Controller
         }
 
         // Simple Moving Average
-        $count    = count($periods);
+        $count = count($periods);
         $forecast = array_fill(0, $count, null);
 
         for ($i = $smaWindow; $i < $count; $i++) {
-            $slice      = array_slice($historical, $i - $smaWindow, $smaWindow);
+            $slice = array_slice($historical, $i - $smaWindow, $smaWindow);
             $forecast[$i] = (int) round(array_sum($slice) / $smaWindow * 1.08); // +8% trend factor
         }
 
         return [
-            'labels'     => $labels,
+            'labels' => $labels,
             'historical' => $historical,
-            'forecast'   => $forecast,
+            'forecast' => $forecast,
         ];
     }
 }

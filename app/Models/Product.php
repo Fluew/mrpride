@@ -17,6 +17,7 @@ class Product extends Model
         'sku',
         'name',
         'category',
+        'brand',
         'unit',
         'price',
         'cost_price',
@@ -75,7 +76,7 @@ class Product extends Model
     public function updateCalculatedStatus(): void
     {
         $threshold = $this->reorder_level > 0 ? $this->reorder_level : ($this->min_stock > 0 ? $this->min_stock : 10);
-        
+
         if ($this->stock <= 0) {
             $this->status = 'Out of Stock';
         } elseif ($this->stock <= $threshold) {

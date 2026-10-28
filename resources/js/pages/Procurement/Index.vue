@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
+import { useCanDelete } from '@/composables/useCanDelete';
 import { ref, computed } from 'vue';
 import SpecularButton from '@/components/ui/SpecularButton.vue';
 import { 
@@ -130,6 +131,7 @@ const props = defineProps<{
 }>();
 
 const page = usePage();
+const canDelete = useCanDelete();
 const teamSlug = computed(() => (page.props as any).currentTeam?.slug || (page.props as any).team?.slug || '');
 
 // Notification state
@@ -719,7 +721,7 @@ const confirmDelete = () => {
     <!-- Notification Toast -->
     <div 
         v-if="notificationMessage"
-        class="fixed top-5 right-5 z-[100] max-w-md px-4 py-3 rounded-xl shadow-lg border text-sm flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-200"
+        class="fixed top-5 right-5 z-[100] max-w-md px-4 py-3 rounded-xl shadow-lg border text-sm flex items-center gap-3 animate-in fade-in duration-200"
         :class="[
             notificationType === 'success' ? 'bg-emerald-50 text-emerald-900 border-emerald-200' :
             notificationType === 'error' ? 'bg-rose-50 text-rose-900 border-rose-200' :
@@ -733,53 +735,55 @@ const confirmDelete = () => {
         <button @click="notificationMessage = ''" class="ml-auto text-gray-400 hover:text-gray-700">&times;</button>
     </div>
 
-    <div class="workspace-page p-4 sm:p-6 max-w-[1600px] mx-auto">
+    <div class="workspace-page">
         <!-- Page Header -->
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-4">
             <div>
-                <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Procurement & Sourcing</h1>
-                <p class="text-gray-500 mt-1">Manage Commercial Invoices, Purchase Orders, and Internal Restock Requests.</p>
+                <h1 class="page-title">Procurement & Sourcing</h1>
+                <p class="page-subtitle">Commercial invoices, purchase orders and restock requests.</p>
             </div>
 
             <!-- Contextual Actions -->
-            <div class="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+            <div class="flex flex-wrap items-center justify-start lg:justify-end gap-2.5 w-full lg:w-auto">
                 <template v-if="activeTab === 'commercial_invoices'">
-                    <button
-                        type="button"
+                    <SpecularButton
+                        variant="secondary"
+                        size="md"
+                        :radius="12"
                         @click="openCiImportModal"
-                        class="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold rounded-xl bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 shadow-xs transition-colors cursor-pointer"
                     >
-                        <UploadCloud class="w-4 h-4 text-emerald-600" />
+                        <UploadCloud class="w-4 h-4 text-gray-500" />
                         <span>Import CSV</span>
-                    </button>
+                    </SpecularButton>
                     <SpecularButton
                         variant="brand"
                         size="md"
-                        :radius="10"
+                        :radius="12"
                         @click="openCreateCiModal"
                     >
-                        <Plus class="w-4 h-4 mr-1.5 inline" />
-                        New Commercial Invoice
+                        <Plus class="w-4 h-4" />
+                        <span>New Commercial Invoice</span>
                     </SpecularButton>
                 </template>
 
                 <template v-else-if="activeTab === 'purchase_orders'">
-                    <button
-                        type="button"
+                    <SpecularButton
+                        variant="secondary"
+                        size="md"
+                        :radius="12"
                         @click="openPoImportModal"
-                        class="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold rounded-xl bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 shadow-xs transition-colors cursor-pointer"
                     >
-                        <UploadCloud class="w-4 h-4 text-emerald-600" />
+                        <UploadCloud class="w-4 h-4 text-gray-500" />
                         <span>Import CSV</span>
-                    </button>
+                    </SpecularButton>
                     <SpecularButton
                         variant="brand"
                         size="md"
-                        :radius="10"
+                        :radius="12"
                         @click="openCreatePoModal"
                     >
-                        <Plus class="w-4 h-4 mr-1.5 inline" />
-                        New Purchase Order
+                        <Plus class="w-4 h-4" />
+                        <span>New Purchase Order</span>
                     </SpecularButton>
                 </template>
 
@@ -787,11 +791,11 @@ const confirmDelete = () => {
                     <SpecularButton
                         variant="brand"
                         size="md"
-                        :radius="10"
+                        :radius="12"
                         @click="openCreateModal"
                     >
-                        <Plus class="w-4 h-4 mr-1.5 inline" />
-                        New Purchase Request
+                        <Plus class="w-4 h-4" />
+                        <span>New Purchase Request</span>
                     </SpecularButton>
                 </template>
             </div>
@@ -803,17 +807,17 @@ const confirmDelete = () => {
                 type="button"
                 @click="switchTab('commercial_invoices')"
                 :class="[
-                    'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer whitespace-nowrap',
+                    'flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer whitespace-nowrap',
                     activeTab === 'commercial_invoices'
-                        ? 'bg-[#F8B803] text-gray-900 shadow-sm'
-                        : 'bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-transparent'
+                        ? 'bg-gray-100 text-gray-900'
+                        : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
                 ]"
             >
                 <Receipt class="w-4 h-4" />
                 <span>Commercial Invoices</span>
                 <span 
                     v-if="metrics.totalCommercialInvoices !== undefined" 
-                    class="ml-1 px-2 py-0.5 text-xs rounded-full bg-black/10 text-gray-900 font-bold"
+                    class="ml-1 px-2 py-0.5 text-xs rounded-full bg-black/10 text-gray-900 font-semibold"
                 >
                     {{ metrics.totalCommercialInvoices }}
                 </span>
@@ -823,17 +827,17 @@ const confirmDelete = () => {
                 type="button"
                 @click="switchTab('purchase_orders')"
                 :class="[
-                    'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer whitespace-nowrap',
+                    'flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer whitespace-nowrap',
                     activeTab === 'purchase_orders'
-                        ? 'bg-[#F8B803] text-gray-900 shadow-sm'
-                        : 'bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-transparent'
+                        ? 'bg-gray-100 text-gray-900'
+                        : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
                 ]"
             >
                 <ShoppingCart class="w-4 h-4" />
                 <span>Purchase Orders</span>
                 <span 
                     v-if="metrics.totalPurchaseOrders !== undefined" 
-                    class="ml-1 px-2 py-0.5 text-xs rounded-full bg-black/10 text-gray-900 font-bold"
+                    class="ml-1 px-2 py-0.5 text-xs rounded-full bg-black/10 text-gray-900 font-semibold"
                 >
                     {{ metrics.totalPurchaseOrders }}
                 </span>
@@ -843,15 +847,15 @@ const confirmDelete = () => {
                 type="button"
                 @click="switchTab('requests')"
                 :class="[
-                    'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer whitespace-nowrap',
+                    'flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer whitespace-nowrap',
                     activeTab === 'requests'
-                        ? 'bg-[#F8B803] text-gray-900 shadow-sm'
-                        : 'bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-transparent'
+                        ? 'bg-gray-100 text-gray-900'
+                        : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
                 ]"
             >
                 <Package class="w-4 h-4" />
                 <span>Purchase Requests</span>
-                <span class="ml-1 px-2 py-0.5 text-xs rounded-full bg-black/10 text-gray-900 font-bold">
+                <span class="ml-1 px-2 py-0.5 text-xs rounded-full bg-black/10 text-gray-900 font-semibold">
                     {{ metrics.totalRequests }}
                 </span>
             </button>
@@ -859,85 +863,85 @@ const confirmDelete = () => {
 
         <!-- Metrics Cards Section -->
         <div v-if="activeTab === 'commercial_invoices'" class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-            <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                <div class="flex items-center justify-between text-gray-500 text-xs font-semibold uppercase tracking-wider mb-2">
+            <div class="bg-white border border-gray-200 rounded-xl p-5">
+                <div class="flex items-center justify-between text-gray-500 text-xs font-semibold mb-2">
                     <span>Total Invoices</span>
                     <Receipt class="w-4 h-4 text-emerald-500" />
                 </div>
-                <div class="text-2xl font-black text-gray-900">{{ metrics.totalCommercialInvoices || 0 }}</div>
+                <div class="text-2xl font-semibold text-gray-900">{{ metrics.totalCommercialInvoices || 0 }}</div>
                 <div class="text-xs text-gray-500 mt-1">Logged vendor invoices</div>
             </div>
 
-            <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                <div class="flex items-center justify-between text-gray-500 text-xs font-semibold uppercase tracking-wider mb-2">
+            <div class="bg-white border border-gray-200 rounded-xl p-5">
+                <div class="flex items-center justify-between text-gray-500 text-xs font-semibold mb-2">
                     <span>Total Cost Value</span>
                     <Package class="w-4 h-4 text-[#F8B803]" />
                 </div>
-                <div class="text-2xl font-black text-[#B45309]">{{ formatCurrency(metrics.totalCommercialInvoiceAmount || 0) }}</div>
+                <div class="text-2xl font-semibold text-[#B45309]">{{ formatCurrency(metrics.totalCommercialInvoiceAmount || 0) }}</div>
                 <div class="text-xs text-gray-500 mt-1">Total invoiced goods value</div>
             </div>
         </div>
 
         <div v-else-if="activeTab === 'purchase_orders'" class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-            <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                <div class="flex items-center justify-between text-gray-500 text-xs font-semibold uppercase tracking-wider mb-2">
+            <div class="bg-white border border-gray-200 rounded-xl p-5">
+                <div class="flex items-center justify-between text-gray-500 text-xs font-semibold mb-2">
                     <span>Total Purchase Orders</span>
                     <ShoppingCart class="w-4 h-4 text-blue-500" />
                 </div>
-                <div class="text-2xl font-black text-gray-900">{{ metrics.totalPurchaseOrders || 0 }}</div>
+                <div class="text-2xl font-semibold text-gray-900">{{ metrics.totalPurchaseOrders || 0 }}</div>
                 <div class="text-xs text-gray-500 mt-1">Issued vendor POs</div>
             </div>
 
-            <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                <div class="flex items-center justify-between text-gray-500 text-xs font-semibold uppercase tracking-wider mb-2">
+            <div class="bg-white border border-gray-200 rounded-xl p-5">
+                <div class="flex items-center justify-between text-gray-500 text-xs font-semibold mb-2">
                     <span>Total PO Amount</span>
                     <Receipt class="w-4 h-4 text-[#F8B803]" />
                 </div>
-                <div class="text-2xl font-black text-[#B45309]">{{ formatCurrency(metrics.totalPurchaseOrderAmount || 0) }}</div>
+                <div class="text-2xl font-semibold text-[#B45309]">{{ formatCurrency(metrics.totalPurchaseOrderAmount || 0) }}</div>
                 <div class="text-xs text-gray-500 mt-1">Total PO commitment</div>
             </div>
         </div>
 
         <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                <div class="flex items-center justify-between text-gray-500 text-xs font-semibold uppercase tracking-wider mb-2">
+            <div class="bg-white border border-gray-200 rounded-xl p-5">
+                <div class="flex items-center justify-between text-gray-500 text-xs font-semibold mb-2">
                     <span>Total Requests</span>
                     <Package class="w-4 h-4 text-gray-400" />
                 </div>
-                <div class="text-2xl font-black text-gray-900">{{ metrics.totalRequests }}</div>
+                <div class="text-2xl font-semibold text-gray-900">{{ metrics.totalRequests }}</div>
                 <div class="text-xs text-gray-500 mt-1">All lifecycle stages</div>
             </div>
 
-            <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                <div class="flex items-center justify-between text-gray-500 text-xs font-semibold uppercase tracking-wider mb-2">
+            <div class="bg-white border border-gray-200 rounded-xl p-5">
+                <div class="flex items-center justify-between text-gray-500 text-xs font-semibold mb-2">
                     <span>Requested</span>
                     <Clock class="w-4 h-4 text-blue-500" />
                 </div>
-                <div class="text-2xl font-black text-blue-600">{{ metrics.requestedCount }}</div>
+                <div class="text-2xl font-semibold text-blue-600">{{ metrics.requestedCount }}</div>
                 <div class="text-xs text-gray-500 mt-1">Awaiting vendor PO</div>
             </div>
 
-            <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                <div class="flex items-center justify-between text-gray-500 text-xs font-semibold uppercase tracking-wider mb-2">
+            <div class="bg-white border border-gray-200 rounded-xl p-5">
+                <div class="flex items-center justify-between text-gray-500 text-xs font-semibold mb-2">
                     <span>Ordered</span>
                     <Truck class="w-4 h-4 text-[#F8B803]" />
                 </div>
-                <div class="text-2xl font-black text-[#F8B803]">{{ metrics.orderedCount }}</div>
+                <div class="text-2xl font-semibold text-[#F8B803]">{{ metrics.orderedCount }}</div>
                 <div class="text-xs text-gray-500 mt-1">In transit / processing</div>
             </div>
 
-            <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                <div class="flex items-center justify-between text-gray-500 text-xs font-semibold uppercase tracking-wider mb-2">
+            <div class="bg-white border border-gray-200 rounded-xl p-5">
+                <div class="flex items-center justify-between text-gray-500 text-xs font-semibold mb-2">
                     <span>Delivered</span>
                     <CheckCircle2 class="w-4 h-4 text-emerald-500" />
                 </div>
-                <div class="text-2xl font-black text-emerald-600">{{ metrics.deliveredCount }}</div>
+                <div class="text-2xl font-semibold text-emerald-600">{{ metrics.deliveredCount }}</div>
                 <div class="text-xs text-gray-500 mt-1">Completed deliveries</div>
             </div>
         </div>
 
         <!-- Search & Filters Bar (Beside search bar) -->
-        <div class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 mb-6 bg-white p-3 rounded-2xl border border-gray-200 shadow-xs">
+        <div class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 mb-6 bg-white p-3 rounded-xl border border-gray-200">
             <!-- Search Bar -->
             <div class="relative flex-1 max-w-md">
                 <Search class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -952,7 +956,7 @@ const confirmDelete = () => {
                             ? 'Search by PO #, SKU, description or supplier...'
                             : 'Search by request #, product or supplier...'
                     "
-                    class="w-full pl-10 pr-4 py-2 bg-gray-50/80 hover:bg-white focus:bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-[#F8B803] shadow-xs transition-colors"
+                    class="w-full pl-10 pr-4 py-2 bg-gray-50/80 hover:bg-white focus:bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-[#F8B803] transition-colors"
                 />
             </div>
 
@@ -963,7 +967,7 @@ const confirmDelete = () => {
                     <select
                         v-model="selectedStatus"
                         @change="applyFilter"
-                        class="w-full bg-gray-50/80 hover:bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-xs font-semibold text-gray-700 focus:outline-none focus:border-[#F8B803] focus:bg-white shadow-xs cursor-pointer transition-colors"
+                        class="w-full bg-gray-50/80 hover:bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-xs font-semibold text-gray-700 focus:outline-none focus:border-[#F8B803] focus:bg-white cursor-pointer transition-colors"
                     >
                         <option value="All">All Statuses</option>
                         <template v-if="activeTab === 'commercial_invoices'">
@@ -992,7 +996,7 @@ const confirmDelete = () => {
                     <select
                         v-model="selectedSupplier"
                         @change="applyFilter"
-                        class="w-full bg-gray-50/80 hover:bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-xs font-semibold text-gray-700 focus:outline-none focus:border-[#F8B803] focus:bg-white shadow-xs cursor-pointer transition-colors"
+                        class="w-full bg-gray-50/80 hover:bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-xs font-semibold text-gray-700 focus:outline-none focus:border-[#F8B803] focus:bg-white cursor-pointer transition-colors"
                     >
                         <option value="All">All Suppliers</option>
                         <option v-for="s in suppliers" :key="s.id" :value="String(s.id)">{{ s.name }}</option>
@@ -1004,7 +1008,7 @@ const confirmDelete = () => {
                     <select
                         v-model="selectedUm"
                         @change="applyFilter"
-                        class="w-full bg-gray-50/80 hover:bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-xs font-semibold text-gray-700 focus:outline-none focus:border-[#F8B803] focus:bg-white shadow-xs cursor-pointer transition-colors uppercase"
+                        class="w-full bg-gray-50/80 hover:bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-xs font-semibold text-gray-700 focus:outline-none focus:border-[#F8B803] focus:bg-white cursor-pointer transition-colors"
                     >
                         <option value="All">All U/M</option>
                         <option value="PCS">PCS</option>
@@ -1021,7 +1025,7 @@ const confirmDelete = () => {
                     v-if="hasActiveFilters"
                     type="button"
                     @click="resetFilters"
-                    class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-600 hover:text-red-600 bg-gray-100 hover:bg-red-50 border border-gray-200 hover:border-red-200 rounded-xl transition-all cursor-pointer shadow-xs"
+                    class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-600 hover:text-red-600 bg-gray-100 hover:bg-red-50 border border-gray-200 hover:border-red-200 rounded-xl transition-colors cursor-pointer"
                     title="Reset all search and filter conditions"
                 >
                     <XCircle class="w-3.5 h-3.5" />
@@ -1033,18 +1037,18 @@ const confirmDelete = () => {
         <!-- ======================================================== -->
         <!-- TAB 1: COMMERCIAL INVOICES TABLE -->
         <!-- ======================================================== -->
-        <div v-if="activeTab === 'commercial_invoices'" class="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm flex flex-col">
+        <div v-if="activeTab === 'commercial_invoices'" class="rounded-xl border border-gray-200 bg-white overflow-hidden flex flex-col">
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-sm text-gray-600">
-                    <thead class="bg-gray-50 text-xs uppercase text-gray-500 border-b border-gray-200">
+                    <thead class="bg-gray-50 text-xs text-gray-500 border-b border-gray-200">
                         <tr>
-                            <th class="px-6 py-4 font-bold text-gray-900 tracking-wider">DATE</th>
-                            <th class="px-6 py-4 font-bold text-gray-900 tracking-wider">COMMERCIAL INVOICE</th>
-                            <th class="px-6 py-4 font-bold text-gray-900 text-center tracking-wider">QUANTITY</th>
-                            <th class="px-6 py-4 font-bold text-gray-900 tracking-wider">Description</th>
-                            <th class="px-6 py-4 font-bold text-gray-900 text-right tracking-wider">UNIT COST</th>
-                            <th class="px-6 py-4 font-bold text-gray-900 text-right tracking-wider">TOTAL AMOUNT</th>
-                            <th class="px-6 py-4 font-bold text-gray-900 text-right tracking-wider">ACTIONS</th>
+                            <th class="px-6 py-4 font-semibold text-gray-900 tracking-wider">DATE</th>
+                            <th class="px-6 py-4 font-semibold text-gray-900 tracking-wider">COMMERCIAL INVOICE</th>
+                            <th class="px-6 py-4 font-semibold text-gray-900 text-center tracking-wider">QUANTITY</th>
+                            <th class="px-6 py-4 font-semibold text-gray-900 tracking-wider">Description</th>
+                            <th class="px-6 py-4 font-semibold text-gray-900 text-right tracking-wider">UNIT COST</th>
+                            <th class="px-6 py-4 font-semibold text-gray-900 text-right tracking-wider">TOTAL AMOUNT</th>
+                            <th class="px-6 py-4 font-semibold text-gray-900 text-right tracking-wider">ACTIONS</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100">
@@ -1059,13 +1063,14 @@ const confirmDelete = () => {
                         </tr>
                         <tr v-for="ci in commercialInvoices?.data" :key="ci.id" class="hover:bg-gray-50/80 transition-colors">
                             <td class="px-6 py-4 text-gray-700 font-medium whitespace-nowrap">{{ formatDate(ci.invoice_date) }}</td>
-                            <td class="px-6 py-4 font-mono font-bold text-[#b45309] whitespace-nowrap">{{ ci.invoice_number }}</td>
-                            <td class="px-6 py-4 text-center font-bold text-gray-900">{{ ci.quantity }}</td>
+                            <td class="px-6 py-4 font-mono font-semibold text-[#b45309] whitespace-nowrap">{{ ci.invoice_number }}</td>
+                            <td class="px-6 py-4 text-center font-semibold text-gray-900">{{ ci.quantity }}</td>
                             <td class="px-6 py-4 text-gray-900 font-medium max-w-md truncate">{{ ci.description }}</td>
                             <td class="px-6 py-4 text-right font-medium text-gray-800 whitespace-nowrap">{{ formatCurrency(ci.unit_cost) }}</td>
-                            <td class="px-6 py-4 text-right font-bold text-gray-900 whitespace-nowrap">{{ formatCurrency(ci.total_cost) }}</td>
+                            <td class="px-6 py-4 text-right font-semibold text-gray-900 whitespace-nowrap">{{ formatCurrency(ci.total_cost) }}</td>
                             <td class="px-6 py-4 text-right whitespace-nowrap">
                                 <button
+                                    v-if="canDelete"
                                     type="button"
                                     @click="openDeleteCiModal(ci)"
                                     class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors cursor-pointer"
@@ -1094,7 +1099,7 @@ const confirmDelete = () => {
                         v-html="link.label"
                         :class="[
                             'px-3 py-1 text-xs rounded-lg border transition-colors',
-                            link.active ? 'bg-[#F8B803] text-gray-900 border-[#F8B803] font-bold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50',
+                            link.active ? 'bg-[#F8B803] text-gray-900 border-[#F8B803] font-semibold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50',
                             !link.url ? 'opacity-50 cursor-not-allowed' : ''
                         ]"
                     />
@@ -1105,20 +1110,20 @@ const confirmDelete = () => {
         <!-- ======================================================== -->
         <!-- TAB 2: PURCHASE ORDERS TABLE -->
         <!-- ======================================================== -->
-        <div v-else-if="activeTab === 'purchase_orders'" class="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm flex flex-col">
+        <div v-else-if="activeTab === 'purchase_orders'" class="rounded-xl border border-gray-200 bg-white overflow-hidden flex flex-col">
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-sm text-gray-600">
-                    <thead class="bg-gray-50 text-xs uppercase text-gray-500 border-b border-gray-200">
+                    <thead class="bg-gray-50 text-xs text-gray-500 border-b border-gray-200">
                         <tr>
-                            <th class="px-6 py-4 font-bold text-gray-900 tracking-wider">Date</th>
-                            <th class="px-6 py-4 font-bold text-gray-900 tracking-wider">Purchase Order No.</th>
-                            <th class="px-6 py-4 font-bold text-gray-900 text-center tracking-wider">Quantity</th>
-                            <th class="px-6 py-4 font-bold text-gray-900 tracking-wider">ITEM/SKU Number</th>
-                            <th class="px-6 py-4 font-bold text-gray-900 tracking-wider">Description</th>
-                            <th class="px-6 py-4 font-bold text-gray-900 text-center tracking-wider">U/M</th>
-                            <th class="px-6 py-4 font-bold text-gray-900 text-right tracking-wider">Unit Cost</th>
-                            <th class="px-6 py-4 font-bold text-gray-900 text-right tracking-wider">Total Amount</th>
-                            <th class="px-6 py-4 font-bold text-gray-900 text-right tracking-wider">Actions</th>
+                            <th class="px-6 py-4 font-semibold text-gray-900 tracking-wider">Date</th>
+                            <th class="px-6 py-4 font-semibold text-gray-900 tracking-wider">Purchase Order No.</th>
+                            <th class="px-6 py-4 font-semibold text-gray-900 text-center tracking-wider">Quantity</th>
+                            <th class="px-6 py-4 font-semibold text-gray-900 tracking-wider">ITEM/SKU Number</th>
+                            <th class="px-6 py-4 font-semibold text-gray-900 tracking-wider">Description</th>
+                            <th class="px-6 py-4 font-semibold text-gray-900 text-center tracking-wider">U/M</th>
+                            <th class="px-6 py-4 font-semibold text-gray-900 text-right tracking-wider">Unit Cost</th>
+                            <th class="px-6 py-4 font-semibold text-gray-900 text-right tracking-wider">Total Amount</th>
+                            <th class="px-6 py-4 font-semibold text-gray-900 text-right tracking-wider">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100">
@@ -1133,15 +1138,16 @@ const confirmDelete = () => {
                         </tr>
                         <tr v-for="po in purchaseOrders?.data" :key="po.id" class="hover:bg-gray-50/80 transition-colors">
                             <td class="px-6 py-4 text-gray-700 font-medium whitespace-nowrap">{{ formatDate(po.po_date) }}</td>
-                            <td class="px-6 py-4 font-mono font-bold text-blue-700 whitespace-nowrap">{{ po.po_number }}</td>
-                            <td class="px-6 py-4 text-center font-bold text-gray-900">{{ po.quantity }}</td>
+                            <td class="px-6 py-4 font-mono font-semibold text-blue-700 whitespace-nowrap">{{ po.po_number }}</td>
+                            <td class="px-6 py-4 text-center font-semibold text-gray-900">{{ po.quantity }}</td>
                             <td class="px-6 py-4 font-mono text-xs font-semibold text-gray-800 whitespace-nowrap">{{ po.item_sku || '—' }}</td>
                             <td class="px-6 py-4 text-gray-900 font-medium max-w-sm truncate">{{ po.description }}</td>
-                            <td class="px-6 py-4 text-center text-xs font-bold text-gray-700 uppercase">{{ po.unit_of_measure || 'PCS' }}</td>
+                            <td class="px-6 py-4 text-center text-xs font-semibold text-gray-700">{{ po.unit_of_measure || 'PCS' }}</td>
                             <td class="px-6 py-4 text-right font-medium text-gray-800 whitespace-nowrap">{{ formatCurrency(po.unit_cost) }}</td>
-                            <td class="px-6 py-4 text-right font-bold text-gray-900 whitespace-nowrap">{{ formatCurrency(po.total_cost) }}</td>
+                            <td class="px-6 py-4 text-right font-semibold text-gray-900 whitespace-nowrap">{{ formatCurrency(po.total_cost) }}</td>
                             <td class="px-6 py-4 text-right whitespace-nowrap">
                                 <button
+                                    v-if="canDelete"
                                     type="button"
                                     @click="openDeletePoModal(po)"
                                     class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors cursor-pointer"
@@ -1170,7 +1176,7 @@ const confirmDelete = () => {
                         v-html="link.label"
                         :class="[
                             'px-3 py-1 text-xs rounded-lg border transition-colors',
-                            link.active ? 'bg-[#F8B803] text-gray-900 border-[#F8B803] font-bold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50',
+                            link.active ? 'bg-[#F8B803] text-gray-900 border-[#F8B803] font-semibold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50',
                             !link.url ? 'opacity-50 cursor-not-allowed' : ''
                         ]"
                     />
@@ -1181,10 +1187,10 @@ const confirmDelete = () => {
         <!-- ======================================================== -->
         <!-- TAB 3: PURCHASE REQUESTS TABLE -->
         <!-- ======================================================== -->
-        <div v-else class="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm flex flex-col">
+        <div v-else class="rounded-xl border border-gray-200 bg-white overflow-hidden flex flex-col">
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-sm text-gray-600">
-                    <thead class="bg-gray-50 text-xs uppercase text-gray-500 border-b border-gray-200">
+                    <thead class="bg-gray-50 text-xs text-gray-500 border-b border-gray-200">
                         <tr>
                             <th class="px-6 py-4 font-medium">Request ID</th>
                             <th class="px-6 py-4 font-medium">Item Name</th>
@@ -1203,10 +1209,10 @@ const confirmDelete = () => {
                             </td>
                         </tr>
                         <tr v-for="req in requests.data" :key="req.id" class="hover:bg-gray-50 transition-colors">
-                            <td class="px-6 py-4 font-mono font-bold text-[#F8B803]">{{ req.request_number }}</td>
+                            <td class="px-6 py-4 font-mono font-semibold text-[#F8B803]">{{ req.request_number }}</td>
                             <td class="px-6 py-4 font-semibold text-gray-900">{{ req.product?.name || '—' }}</td>
                             <td class="px-6 py-4 text-gray-600">{{ req.supplier?.name || '—' }}</td>
-                            <td class="px-6 py-4 text-center font-bold text-gray-900">{{ req.quantity }}</td>
+                            <td class="px-6 py-4 text-center font-semibold text-gray-900">{{ req.quantity }}</td>
                             <td class="px-6 py-4 font-medium text-gray-700">{{ formatCurrency(Number(req.estimated_cost)) }}</td>
                             <td class="px-6 py-4 text-gray-500 text-xs">{{ formatDate(req.requested_at) }}</td>
                             <td class="px-6 py-4 text-center">
@@ -1225,7 +1231,7 @@ const confirmDelete = () => {
                                     <select
                                         :value="req.status"
                                         @change="updateStatus(req, ($event.target as HTMLSelectElement).value)"
-                                        class="bg-white border border-gray-200 rounded-lg px-2.5 py-1 text-xs font-medium text-gray-700 focus:outline-none focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] shadow-xs cursor-pointer"
+                                        class="bg-white border border-gray-200 rounded-lg px-2.5 py-1 text-xs font-medium text-gray-700 focus:outline-none focus:border-[#F8B803] focus:ring-1 focus:ring-[#F8B803] cursor-pointer"
                                     >
                                         <option value="Requested">Requested</option>
                                         <option value="Ordered">Ordered</option>
@@ -1233,7 +1239,7 @@ const confirmDelete = () => {
                                         <option value="Cancelled">Cancelled</option>
                                     </select>
                                     <button
-                                        v-if="req.status === 'Requested'"
+                                        v-if="canDelete && req.status === 'Requested'"
                                         type="button"
                                         @click="openDeleteModal(req)"
                                         class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors cursor-pointer"
@@ -1263,7 +1269,7 @@ const confirmDelete = () => {
                         v-html="link.label"
                         :class="[
                             'px-3 py-1 text-xs rounded-lg border transition-colors',
-                            link.active ? 'bg-[#F8B803] text-white border-[#F8B803] font-bold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50',
+                            link.active ? 'bg-[#F8B803] text-white border-[#F8B803] font-semibold' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50',
                             !link.url ? 'opacity-50 cursor-not-allowed' : ''
                         ]"
                     />
@@ -1275,11 +1281,11 @@ const confirmDelete = () => {
     <!-- ======================================================== -->
     <!-- MODAL: CREATE COMMERCIAL INVOICE -->
     <!-- ======================================================== -->
-    <div v-if="showCreateCiModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-lg shadow-2xl">
+    <div v-if="showCreateCiModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-lg shadow-xl">
             <div class="flex justify-between items-center mb-5 border-b border-gray-100 pb-3">
                 <div>
-                    <h3 class="text-xl font-bold text-gray-900">New Commercial Invoice</h3>
+                    <h3 class="text-xl font-semibold text-gray-900">New Commercial Invoice</h3>
                     <p class="text-xs text-gray-500">Record a commercial invoice for procurement</p>
                 </div>
                 <button @click="showCreateCiModal = false" class="text-gray-400 hover:text-gray-600 text-xl cursor-pointer">&times;</button>
@@ -1360,7 +1366,7 @@ const confirmDelete = () => {
                     </select>
 
                     <!-- Opens textbox when "Others" is selected -->
-                    <div v-if="isCiCustomDescription" class="mt-2.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                    <div v-if="isCiCustomDescription" class="mt-2.5 animate-in fade-in duration-150">
                         <label class="block text-xs font-medium text-gray-600 mb-1">Custom Product Description *</label>
                         <textarea
                             v-model="ciForm.description"
@@ -1388,7 +1394,7 @@ const confirmDelete = () => {
                 <!-- Estimated Total Display -->
                 <div class="bg-gray-50 border border-gray-200 rounded-xl p-3 flex justify-between items-center text-sm font-semibold">
                     <span class="text-gray-600">Calculated Total:</span>
-                    <span class="text-base text-gray-900 font-bold font-mono">
+                    <span class="text-base text-gray-900 font-semibold font-mono">
                         {{ formatCurrency((ciForm.quantity || 0) * (ciForm.unit_cost || 0)) }}
                     </span>
                 </div>
@@ -1420,12 +1426,12 @@ const confirmDelete = () => {
     <!-- ======================================================== -->
     <!-- MODAL: IMPORT COMMERCIAL INVOICES CSV -->
     <!-- ======================================================== -->
-    <div v-if="showCiImportModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+    <div v-if="showCiImportModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-2xl shadow-xl max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-4 border-b border-gray-100 pb-3">
                 <div>
-                    <h3 class="text-xl font-bold text-gray-900">Import Commercial Invoices CSV</h3>
-                    <p class="text-xs text-gray-500">Headers: <code class="bg-gray-100 px-1 py-0.5 rounded font-bold text-gray-800">DATE, COMMERCIAL INVOICE, QUANTITY, Description, UNIT COST</code></p>
+                    <h3 class="text-xl font-semibold text-gray-900">Import Commercial Invoices CSV</h3>
+                    <p class="text-xs text-gray-500">Headers: <code class="bg-gray-100 px-1 py-0.5 rounded font-semibold text-gray-800">DATE, COMMERCIAL INVOICE, QUANTITY, Description, UNIT COST</code></p>
                 </div>
                 <button @click="showCiImportModal = false" class="text-gray-400 hover:text-gray-600 text-xl cursor-pointer">&times;</button>
             </div>
@@ -1433,13 +1439,13 @@ const confirmDelete = () => {
             <!-- Upload Area & Sample Template -->
             <div class="flex flex-col sm:flex-row gap-4 items-center justify-between p-4 bg-amber-50/60 border border-amber-100 rounded-xl mb-4">
                 <div>
-                    <h4 class="text-sm font-bold text-gray-900">Need the template?</h4>
-                    <p class="text-xs text-gray-600">Sample CI format: <code class="font-mono text-amber-800 font-bold">CI-035-0722</code></p>
+                    <h4 class="text-sm font-semibold text-gray-900">Need the template?</h4>
+                    <p class="text-xs text-gray-600">Sample CI format: <code class="font-mono text-amber-800 font-semibold">CI-035-0722</code></p>
                 </div>
                 <button
                     type="button"
                     @click="downloadSampleCiCsv"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-amber-200 text-amber-900 hover:bg-amber-50 shadow-xs cursor-pointer whitespace-nowrap"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-amber-200 text-amber-900 hover:bg-amber-50 cursor-pointer whitespace-nowrap"
                 >
                     <Download class="w-3.5 h-3.5" />
                     Download Sample CSV
@@ -1474,22 +1480,22 @@ const confirmDelete = () => {
                 <div class="flex gap-4 p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs">
                     <div>
                         <span class="text-gray-500">Total Rows:</span>
-                        <span class="ml-1 font-bold text-gray-900">{{ ciCsvValidationResult.summary.total_rows }}</span>
+                        <span class="ml-1 font-semibold text-gray-900">{{ ciCsvValidationResult.summary.total_rows }}</span>
                     </div>
                     <div>
                         <span class="text-gray-500">Valid:</span>
-                        <span class="ml-1 font-bold text-emerald-600">{{ ciCsvValidationResult.summary.valid_count }}</span>
+                        <span class="ml-1 font-semibold text-emerald-600">{{ ciCsvValidationResult.summary.valid_count }}</span>
                     </div>
                     <div>
                         <span class="text-gray-500">Invalid:</span>
-                        <span class="ml-1 font-bold text-red-600">{{ ciCsvValidationResult.summary.invalid_count }}</span>
+                        <span class="ml-1 font-semibold text-red-600">{{ ciCsvValidationResult.summary.invalid_count }}</span>
                     </div>
                 </div>
 
                 <!-- Preview Table -->
                 <div v-if="ciCsvValidationResult.valid_rows?.length" class="max-h-60 overflow-y-auto border border-gray-200 rounded-xl">
                     <table class="w-full text-left text-xs text-gray-600">
-                        <thead class="bg-gray-50 font-bold text-gray-700 border-b border-gray-200 sticky top-0">
+                        <thead class="bg-gray-50 font-semibold text-gray-700 border-b border-gray-200 sticky top-0">
                             <tr>
                                 <th class="p-2">DATE</th>
                                 <th class="p-2">COMMERCIAL INVOICE</th>
@@ -1502,11 +1508,11 @@ const confirmDelete = () => {
                         <tbody class="divide-y divide-gray-100">
                             <tr v-for="r in ciCsvValidationResult.valid_rows.slice(0, 10)" :key="r.row_number">
                                 <td class="p-2 whitespace-nowrap">{{ r.display_date || r.date }}</td>
-                                <td class="p-2 font-mono font-bold text-amber-700 whitespace-nowrap">{{ r.invoice_number }}</td>
-                                <td class="p-2 text-center font-bold">{{ r.quantity }}</td>
+                                <td class="p-2 font-mono font-semibold text-amber-700 whitespace-nowrap">{{ r.invoice_number }}</td>
+                                <td class="p-2 text-center font-semibold">{{ r.quantity }}</td>
                                 <td class="p-2 max-w-xs truncate">{{ r.description }}</td>
                                 <td class="p-2 text-right whitespace-nowrap">{{ formatCurrency(r.unit_cost) }}</td>
-                                <td class="p-2 text-right font-bold whitespace-nowrap">{{ formatCurrency(r.total_cost) }}</td>
+                                <td class="p-2 text-right font-semibold whitespace-nowrap">{{ formatCurrency(r.total_cost) }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -1541,11 +1547,11 @@ const confirmDelete = () => {
     <!-- ======================================================== -->
     <!-- MODAL: CREATE PURCHASE ORDER -->
     <!-- ======================================================== -->
-    <div v-if="showCreatePoModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-lg shadow-2xl">
+    <div v-if="showCreatePoModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-lg shadow-xl">
             <div class="flex justify-between items-center mb-5 border-b border-gray-100 pb-3">
                 <div>
-                    <h3 class="text-xl font-bold text-gray-900">New Purchase Order</h3>
+                    <h3 class="text-xl font-semibold text-gray-900">New Purchase Order</h3>
                     <p class="text-xs text-gray-500">Issue an official purchase order to vendor</p>
                 </div>
                 <button @click="showCreatePoModal = false" class="text-gray-400 hover:text-gray-600 text-xl cursor-pointer">&times;</button>
@@ -1613,7 +1619,7 @@ const confirmDelete = () => {
                             v-model="poForm.unit_of_measure"
                             type="text"
                             placeholder="e.g. PCS, BOX, MTR"
-                            class="w-full px-3.5 py-2 border border-gray-200 rounded-xl text-sm focus:border-[#F8B803] focus:outline-none uppercase"
+                            class="w-full px-3.5 py-2 border border-gray-200 rounded-xl text-sm focus:border-[#F8B803] focus:outline-none"
                         />
                     </div>
                 </div>
@@ -1634,7 +1640,7 @@ const confirmDelete = () => {
                     </select>
 
                     <!-- Opens textbox when "Others" is selected -->
-                    <div v-if="isPoCustomDescription" class="mt-2.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                    <div v-if="isPoCustomDescription" class="mt-2.5 animate-in fade-in duration-150">
                         <label class="block text-xs font-medium text-gray-600 mb-1">Custom Product Description *</label>
                         <textarea
                             v-model="poForm.description"
@@ -1678,7 +1684,7 @@ const confirmDelete = () => {
                 <!-- Estimated Total Display -->
                 <div class="bg-gray-50 border border-gray-200 rounded-xl p-3 flex justify-between items-center text-sm font-semibold">
                     <span class="text-gray-600">PO Total Amount:</span>
-                    <span class="text-base text-gray-900 font-bold font-mono">
+                    <span class="text-base text-gray-900 font-semibold font-mono">
                         {{ formatCurrency((poForm.quantity || 0) * (poForm.unit_cost || 0)) }}
                     </span>
                 </div>
@@ -1710,12 +1716,12 @@ const confirmDelete = () => {
     <!-- ======================================================== -->
     <!-- MODAL: IMPORT PURCHASE ORDERS CSV -->
     <!-- ======================================================== -->
-    <div v-if="showPoImportModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+    <div v-if="showPoImportModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-2xl shadow-xl max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-4 border-b border-gray-100 pb-3">
                 <div>
-                    <h3 class="text-xl font-bold text-gray-900">Import Purchase Orders CSV</h3>
-                    <p class="text-xs text-gray-500">Headers: <code class="bg-gray-100 px-1 py-0.5 rounded font-bold text-gray-800">Date, Purchase Order No., Quantity, ITEM/SKU Number, Description, U/M, Unit Cost</code></p>
+                    <h3 class="text-xl font-semibold text-gray-900">Import Purchase Orders CSV</h3>
+                    <p class="text-xs text-gray-500">Headers: <code class="bg-gray-100 px-1 py-0.5 rounded font-semibold text-gray-800">Date, Purchase Order No., Quantity, ITEM/SKU Number, Description, U/M, Unit Cost</code></p>
                 </div>
                 <button @click="showPoImportModal = false" class="text-gray-400 hover:text-gray-600 text-xl cursor-pointer">&times;</button>
             </div>
@@ -1723,13 +1729,13 @@ const confirmDelete = () => {
             <!-- Upload Area & Sample Template -->
             <div class="flex flex-col sm:flex-row gap-4 items-center justify-between p-4 bg-blue-50/60 border border-blue-100 rounded-xl mb-4">
                 <div>
-                    <h4 class="text-sm font-bold text-gray-900">Need the template?</h4>
-                    <p class="text-xs text-gray-600">Sample PO No: <code class="font-mono text-blue-800 font-bold">4000005472</code></p>
+                    <h4 class="text-sm font-semibold text-gray-900">Need the template?</h4>
+                    <p class="text-xs text-gray-600">Sample PO No: <code class="font-mono text-blue-800 font-semibold">4000005472</code></p>
                 </div>
                 <button
                     type="button"
                     @click="downloadSamplePoCsv"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-blue-200 text-blue-900 hover:bg-blue-50 shadow-xs cursor-pointer whitespace-nowrap"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-blue-200 text-blue-900 hover:bg-blue-50 cursor-pointer whitespace-nowrap"
                 >
                     <Download class="w-3.5 h-3.5" />
                     Download Sample CSV
@@ -1764,22 +1770,22 @@ const confirmDelete = () => {
                 <div class="flex gap-4 p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs">
                     <div>
                         <span class="text-gray-500">Total Rows:</span>
-                        <span class="ml-1 font-bold text-gray-900">{{ poCsvValidationResult.summary.total_rows }}</span>
+                        <span class="ml-1 font-semibold text-gray-900">{{ poCsvValidationResult.summary.total_rows }}</span>
                     </div>
                     <div>
                         <span class="text-gray-500">Valid:</span>
-                        <span class="ml-1 font-bold text-emerald-600">{{ poCsvValidationResult.summary.valid_count }}</span>
+                        <span class="ml-1 font-semibold text-emerald-600">{{ poCsvValidationResult.summary.valid_count }}</span>
                     </div>
                     <div>
                         <span class="text-gray-500">Invalid:</span>
-                        <span class="ml-1 font-bold text-red-600">{{ poCsvValidationResult.summary.invalid_count }}</span>
+                        <span class="ml-1 font-semibold text-red-600">{{ poCsvValidationResult.summary.invalid_count }}</span>
                     </div>
                 </div>
 
                 <!-- Preview Table -->
                 <div v-if="poCsvValidationResult.valid_rows?.length" class="max-h-60 overflow-y-auto border border-gray-200 rounded-xl">
                     <table class="w-full text-left text-xs text-gray-600">
-                        <thead class="bg-gray-50 font-bold text-gray-700 border-b border-gray-200 sticky top-0">
+                        <thead class="bg-gray-50 font-semibold text-gray-700 border-b border-gray-200 sticky top-0">
                             <tr>
                                 <th class="p-2">Date</th>
                                 <th class="p-2">Purchase Order No.</th>
@@ -1794,13 +1800,13 @@ const confirmDelete = () => {
                         <tbody class="divide-y divide-gray-100">
                             <tr v-for="r in poCsvValidationResult.valid_rows.slice(0, 10)" :key="r.row_number">
                                 <td class="p-2 whitespace-nowrap">{{ r.display_date || r.date }}</td>
-                                <td class="p-2 font-mono font-bold text-blue-700 whitespace-nowrap">{{ r.po_number }}</td>
-                                <td class="p-2 text-center font-bold">{{ r.quantity }}</td>
+                                <td class="p-2 font-mono font-semibold text-blue-700 whitespace-nowrap">{{ r.po_number }}</td>
+                                <td class="p-2 text-center font-semibold">{{ r.quantity }}</td>
                                 <td class="p-2 font-mono text-xs">{{ r.item_sku || '—' }}</td>
                                 <td class="p-2 max-w-xs truncate">{{ r.description }}</td>
-                                <td class="p-2 text-center font-bold">{{ r.unit_of_measure }}</td>
+                                <td class="p-2 text-center font-semibold">{{ r.unit_of_measure }}</td>
                                 <td class="p-2 text-right whitespace-nowrap">{{ formatCurrency(r.unit_cost) }}</td>
-                                <td class="p-2 text-right font-bold whitespace-nowrap">{{ formatCurrency(r.total_cost) }}</td>
+                                <td class="p-2 text-right font-semibold whitespace-nowrap">{{ formatCurrency(r.total_cost) }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -1835,15 +1841,15 @@ const confirmDelete = () => {
     <!-- ======================================================== -->
     <!-- MODAL: DELETE COMMERCIAL INVOICE -->
     <!-- ======================================================== -->
-    <div v-if="showDeleteCiModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
-            <h3 class="text-xl font-bold text-gray-900 mb-2">Delete Commercial Invoice</h3>
+    <div v-if="showDeleteCiModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl">
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">Delete Commercial Invoice</h3>
             <p class="text-gray-600 text-sm mb-4">
                 Are you sure you want to delete commercial invoice <span class="font-semibold text-gray-900">{{ selectedCi?.invoice_number }}</span>?
             </p>
             <div class="mt-4 mb-6">
                 <label class="block text-xs font-semibold text-gray-700 mb-1.5">
-                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                    Type <span class="font-mono font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
                 </label>
                 <input
                     v-model="deleteCiConfirmInput"
@@ -1877,15 +1883,15 @@ const confirmDelete = () => {
     <!-- ======================================================== -->
     <!-- MODAL: DELETE PURCHASE ORDER -->
     <!-- ======================================================== -->
-    <div v-if="showDeletePoModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
-            <h3 class="text-xl font-bold text-gray-900 mb-2">Delete Purchase Order</h3>
+    <div v-if="showDeletePoModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl">
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">Delete Purchase Order</h3>
             <p class="text-gray-600 text-sm mb-4">
                 Are you sure you want to delete purchase order <span class="font-semibold text-gray-900">{{ selectedPo?.po_number }}</span>?
             </p>
             <div class="mt-4 mb-6">
                 <label class="block text-xs font-semibold text-gray-700 mb-1.5">
-                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                    Type <span class="font-mono font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
                 </label>
                 <input
                     v-model="deletePoConfirmInput"
@@ -1919,10 +1925,10 @@ const confirmDelete = () => {
     <!-- ======================================================== -->
     <!-- MODAL: CREATE PURCHASE REQUEST (ORIGINAL) -->
     <!-- ======================================================== -->
-    <div v-if="showCreateModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
+    <div v-if="showCreateModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl">
             <div class="flex justify-between items-center mb-5">
-                <h3 class="text-xl font-bold text-gray-900">New Purchase Request</h3>
+                <h3 class="text-xl font-semibold text-gray-900">New Purchase Request</h3>
                 <button @click="showCreateModal = false" class="text-gray-400 hover:text-gray-600 text-xl cursor-pointer">&times;</button>
             </div>
 
@@ -2019,13 +2025,13 @@ const confirmDelete = () => {
     <!-- ======================================================== -->
     <!-- MODAL: DELETE PURCHASE REQUEST -->
     <!-- ======================================================== -->
-    <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
-            <h3 class="text-xl font-bold text-gray-900 mb-2">Delete Purchase Request</h3>
+    <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl">
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">Delete Purchase Request</h3>
             <p class="text-gray-600 text-sm mb-4">Are you sure you want to cancel and delete request <span class="font-semibold text-gray-900">{{ selectedRequest?.request_number }}</span>?</p>
             <div class="mt-4 mb-6">
                 <label class="block text-xs font-semibold text-gray-700 mb-1.5">
-                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                    Type <span class="font-mono font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
                 </label>
                 <input
                     v-model="deleteConfirmInput"
@@ -2059,12 +2065,12 @@ const confirmDelete = () => {
     <!-- ======================================================== -->
     <!-- MODAL: ACTION CONFIRMATION -->
     <!-- ======================================================== -->
-    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl animate-in fade-in duration-150">
             <div class="w-11 h-11 rounded-full bg-amber-50 text-[#F8B803] flex items-center justify-center mb-4 border border-amber-100">
                 <CheckCircle2 class="w-6 h-6" />
             </div>
-            <h3 class="text-xl font-bold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
+            <h3 class="text-xl font-semibold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
             <p class="text-gray-600 text-sm mb-4 leading-relaxed">
                 {{ confirmOptions.description }}
             </p>

@@ -4,10 +4,12 @@ namespace App\Models;
 
 use App\Enums\QuotationStatus;
 use App\Traits\TracksDeletions;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 class Quotation extends Model
 {
@@ -32,6 +34,11 @@ class Quotation extends Model
         'status',
         'notes',
         'terms_and_conditions',
+        'attachment_path',
+        'material_file_path',
+        'material_file_name',
+        'source_file_sha256',
+        'request_details',
         'prepared_by_id',
         'converted_to_sale_id',
         'deleted_by_id',
@@ -48,7 +55,27 @@ class Quotation extends Model
             'tax_amount' => 'decimal:2',
             'grand_total' => 'decimal:2',
             'status' => QuotationStatus::class,
+            'request_details' => 'array',
         ];
+    }
+
+    /** File fingerprints are only used on the server, to spot repeated imports. */
+    protected $hidden = ['source_file_sha256'];
+
+    protected $appends = [
+        'attachment_url',
+        'material_file_url',
+    ];
+
+    public function getAttachmentUrlAttribute(): ?string
+    {
+        return $this->attachment_path ? route('quotations.attachment', ['quotation' => $this->id]) : null;
+    }
+
+    /** Staff-only link to the client's original material-list file (PDF/Excel/CSV/image). */
+    public function getMaterialFileUrlAttribute(): ?string
+    {
+        return $this->material_file_path ? route('quotations.attachment', ['quotation' => $this->id, 'file' => 'materials']) : null;
     }
 
     public function team(): BelongsTo
@@ -64,6 +91,12 @@ class Quotation extends Model
     public function items(): HasMany
     {
         return $this->hasMany(QuotationItem::class);
+    }
+
+    /** Extra files the client sent with the request (product lists). */
+    public function files(): HasMany
+    {
+        return $this->hasMany(QuotationFile::class);
     }
 
     public function preparedBy(): BelongsTo
@@ -82,9 +115,9 @@ class Quotation extends Model
      */
     public static function generateNumber(int $teamId, ?string $productSku = null, mixed $date = null): string
     {
-        $carbonDate = $date ? \Illuminate\Support\Carbon::parse($date) : now();
+        $carbonDate = $date ? Carbon::parse($date) : now();
         $datePart = $carbonDate->format('mdy'); // 2-digit month, 2-digit day, 2-digit year (e.g. 010423 or 102526)
-        $skuPart = !empty($productSku)
+        $skuPart = ! empty($productSku)
             ? preg_replace('/[^A-Za-z0-9]/', '', strtoupper($productSku))
             : 'PROD';
 
@@ -109,7 +142,7 @@ class Quotation extends Model
             return false;
         }
 
-        $validUntil = $this->valid_until instanceof \Carbon\CarbonInterface
+        $validUntil = $this->valid_until instanceof CarbonInterface
             ? $this->valid_until->toDateString()
             : substr((string) $this->valid_until, 0, 10);
 

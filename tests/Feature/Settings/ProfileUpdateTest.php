@@ -1,6 +1,20 @@
 <?php
 
+use App\Http\Middleware\EnsureAdminOrStaff;
+use App\Http\Middleware\EnsureDeviceVerified;
+use App\Http\Middleware\EnsurePasswordNotExpired;
 use App\Models\User;
+
+// These tests cover the starter-kit settings/teams logic with plain factory users. The access
+// rules on these routes (admin/staff only, trusted device, password expiry) are covered in
+// tests/Feature/InternalAccessTest.php.
+beforeEach(function () {
+    $this->withoutMiddleware([
+        EnsureAdminOrStaff::class,
+        EnsureDeviceVerified::class,
+        EnsurePasswordNotExpired::class,
+    ]);
+});
 
 test('profile page is displayed', function () {
     $user = User::factory()->create();

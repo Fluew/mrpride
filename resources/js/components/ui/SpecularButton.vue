@@ -59,7 +59,7 @@ const variantConfig = computed(() => {
         tintOpacity: 0.95,
         textColor: '#374151',
         hoverBg: '#f3f4f6',
-        borderClass: 'border border-gray-200 dark:border-gray-700 shadow-xs',
+        borderClass: 'border border-gray-200 dark:border-gray-700',
       };
     case 'destructive':
     case 'danger':
@@ -169,7 +169,7 @@ const handleClick = (e: MouseEvent) => {
     :disabled="disabled"
     @click="handleClick"
     :class="cn(
-      'specular-btn relative inline-flex items-center justify-center select-none font-medium transition-all duration-200 ease-in-out active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4b5320] dark:focus-visible:ring-[#f8b803]',
+      'specular-btn relative inline-flex items-center justify-center select-none font-medium transition-colors duration-150 disabled:pointer-events-none disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#4b5320] dark:focus-visible:ring-[#f8b803]',
       sizeClass,
       variantConfig.borderClass,
       props.class
@@ -196,6 +196,5 @@ const handleClick = (e: MouseEvent) => {
 <style scoped>
 .specular-btn:hover:not(:disabled) {
   background-color: var(--sb-hover-bg) !important;
-  filter: brightness(1.1);
 }
 </style>

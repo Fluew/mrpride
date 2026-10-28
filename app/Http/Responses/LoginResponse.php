@@ -2,10 +2,14 @@
 
 namespace App\Http\Responses;
 
+use App\Http\Middleware\EnsureRole;
 use App\Http\Responses\Concerns\RedirectsToCurrentTeam;
+use App\Models\Team;
 use App\Models\TrustedDevice;
+use App\Models\User;
 use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Laravel\Fortify\Contracts\LoginResponse as LoginResponseContract;
 use Laravel\Fortify\Fortify;
 use Symfony\Component\HttpFoundation\Response;
@@ -128,7 +132,7 @@ class LoginResponse implements LoginResponseContract
             return redirect()->route('password.change');
         }
 
-        $team = $user->currentTeam ?: $user->teams()->first() ?: \App\Models\Team::first();
+        $team = $user->currentTeam ?: $user->teams()->first() ?: Team::first();
         $teamSlug = $team?->slug ?? 'mr-pride';
 
         if ($user->isAdmin()) {
@@ -136,10 +140,47 @@ class LoginResponse implements LoginResponseContract
         }
 
         if ($user->isStaff()) {
-            return redirect()->intended("/{$teamSlug}/" . $user->assignedModuleSlug());
+            // Only honour the page they originally asked for if they may open it; otherwise a
+            // fresh login would land on a 403. Fall back to their first assigned module.
+            $landing = "/{$teamSlug}/".$user->assignedModuleSlug();
+            $intended = $request->session()->pull('url.intended');
+
+            return redirect()->to($intended && $this->staffMayOpen($request, $user, $intended) ? $intended : $landing);
         }
 
         return redirect()->intended($this->redirectPathForCurrentTeam($request, Fortify::redirects('login')));
+    }
+
+    /**
+     * Whether a staff member may open this URL: same site, a team they belong to, and every
+     * `role:` check on the matching route passes (the same rules EnsureRole applies).
+     */
+    protected function staffMayOpen($request, User $user, string $url): bool
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+        if ($host && $host !== $request->getHost()) {
+            return false;
+        }
+
+        try {
+            $route = app('router')->getRoutes()->match(Request::create($url, 'GET'));
+        } catch (\Throwable) {
+            return false;
+        }
+
+        $teamSlug = $route->parameter('current_team');
+        if (is_string($teamSlug) && ! $user->teams()->where('slug', $teamSlug)->exists()) {
+            return false;
+        }
+
+        foreach ($route->gatherMiddleware() as $middleware) {
+            if (is_string($middleware) && str_starts_with($middleware, 'role:')
+                && ! EnsureRole::allows($user, explode(',', substr($middleware, 5)))) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -150,17 +191,28 @@ class LoginResponse implements LoginResponseContract
         $agent = $request->userAgent() ?? 'Unknown Device';
 
         $os = 'Unknown OS';
-        if (str_contains($agent, 'Windows')) $os = 'Windows';
-        elseif (str_contains($agent, 'Macintosh')) $os = 'macOS';
-        elseif (str_contains($agent, 'Linux')) $os = 'Linux';
-        elseif (str_contains($agent, 'Android')) $os = 'Android';
-        elseif (str_contains($agent, 'iPhone') || str_contains($agent, 'iPad')) $os = 'iOS';
+        if (str_contains($agent, 'Windows')) {
+            $os = 'Windows';
+        } elseif (str_contains($agent, 'Macintosh')) {
+            $os = 'macOS';
+        } elseif (str_contains($agent, 'Linux')) {
+            $os = 'Linux';
+        } elseif (str_contains($agent, 'Android')) {
+            $os = 'Android';
+        } elseif (str_contains($agent, 'iPhone') || str_contains($agent, 'iPad')) {
+            $os = 'iOS';
+        }
 
         $browser = 'Browser';
-        if (str_contains($agent, 'Edg/')) $browser = 'Edge';
-        elseif (str_contains($agent, 'Chrome/')) $browser = 'Chrome';
-        elseif (str_contains($agent, 'Firefox/')) $browser = 'Firefox';
-        elseif (str_contains($agent, 'Safari/') && ! str_contains($agent, 'Chrome/')) $browser = 'Safari';
+        if (str_contains($agent, 'Edg/')) {
+            $browser = 'Edge';
+        } elseif (str_contains($agent, 'Chrome/')) {
+            $browser = 'Chrome';
+        } elseif (str_contains($agent, 'Firefox/')) {
+            $browser = 'Firefox';
+        } elseif (str_contains($agent, 'Safari/') && ! str_contains($agent, 'Chrome/')) {
+            $browser = 'Safari';
+        }
 
         return "{$os} • {$browser}";
     }

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { ref, computed, watch } from 'vue';
+import ModuleMultiSelect from '@/components/ModuleMultiSelect.vue';
 import SpecularButton from '@/components/ui/SpecularButton.vue';
+import StatusBadge from '@/components/ui/StatusBadge.vue';
 import {
     Users,
     Activity,
@@ -37,6 +39,7 @@ interface UserAccount {
     email: string;
     role: string;
     raw_role: string;
+    modules?: string[];
     status: string;
     is_active: boolean;
     is_pending_activation?: boolean;
@@ -144,6 +147,7 @@ const props = defineProps<{
         date_to?: string;
     };
     roles?: Array<{ value: string; label: string }>;
+    moduleOptions?: Array<{ value: string; label: string }>;
     temporaryPasswordNotice?: string | null;
     enrollmentNotice?: {
         device_name?: string;
@@ -249,14 +253,29 @@ const addForm = useForm({
     first_name: '',
     last_name: '',
     email: '',
-    role: 'staff',
+    account_type: 'staff' as 'admin' | 'staff',
+    modules: [] as string[],
 });
 
 const editForm = useForm({
     id: null as number | null,
     name: '',
-    role: 'staff',
+    account_type: 'staff' as 'admin' | 'staff',
+    modules: [] as string[],
 });
+
+const moduleOptionList = computed(() => props.moduleOptions ?? []);
+
+// Human-readable summary of the chosen account type / modules for confirmation dialogs
+const describeAssignment = (accountType: 'admin' | 'staff', modules: string[]) => {
+    if (accountType === 'admin') {
+        return 'Administrator (All Modules)';
+    }
+    const labels = moduleOptionList.value
+        .filter((o) => modules.includes(o.value))
+        .map((o) => o.label);
+    return labels.length ? `Staff - ${labels.join(', ')}` : 'Staff';
+};
 
 const enrollForm = useForm({
     assignment_type: 'single' as 'single' | 'shared',
@@ -305,7 +324,8 @@ const openAddModal = () => {
     addForm.first_name = '';
     addForm.last_name = '';
     addForm.email = '';
-    addForm.role = 'staff';
+    addForm.account_type = 'staff';
+    addForm.modules = [];
     showAddModal.value = true;
 };
 
@@ -314,7 +334,8 @@ const openEditModal = (user: UserAccount) => {
     editForm.clearErrors();
     editForm.id = user.id;
     editForm.name = user.name;
-    editForm.role = user.raw_role;
+    editForm.account_type = user.raw_role === 'admin' ? 'admin' : 'staff';
+    editForm.modules = [...(user.modules ?? [])];
     showEditModal.value = true;
 };
 
@@ -416,28 +437,15 @@ const promptCreateUser = () => {
         addForm.setError('email', 'Email address is required.');
         hasError = true;
     }
+    if (addForm.account_type === 'staff' && addForm.modules.length === 0) {
+        addForm.setError('modules', 'Select at least one module for a staff account.');
+        hasError = true;
+    }
     if (hasError) return;
 
     const fn = addForm.first_name.trim();
-    const cleanFn = fn.charAt(0).toUpperCase() + fn.slice(1).toLowerCase().replace(/[^a-z0-9]/g, '');
-    const initialPassword = `${cleanFn || '(Firstname)'}1234`;
-    const formatRole = (r: string) => {
-        const map: Record<string, string> = {
-            admin: 'Administrator (All Modules)',
-            staff_inventory: 'Staff - Inventory',
-            staff_quotations: 'Staff - Quotations',
-            staff_procurement: 'Staff - Procurement',
-            staff_deliveries: 'Staff - Deliveries',
-            staff_sales: 'Staff - Sales',
-            staff_forecast: 'Staff - Demand Forecasting',
-            staff_suppliers: 'Staff - Suppliers',
-            staff_reports: 'Staff - Reports & Analytics',
-            staff: 'Staff - Inventory',
-            user: 'Regular Customer',
-        };
-        return map[r] || r;
-    };
-    const roleLabel = formatRole(addForm.role);
+    const initialPassword = 'First name + 1234 (e.g. Juan1234), must be changed at first login';
+    const roleLabel = describeAssignment(addForm.account_type, addForm.modules);
 
     openConfirmModal({
         title: 'Confirm New User Account',
@@ -470,23 +478,12 @@ const promptEditUser = () => {
         editForm.setError('name', 'Full name is required.');
         return;
     }
+    if (editForm.account_type === 'staff' && editForm.modules.length === 0) {
+        editForm.setError('modules', 'Select at least one module for a staff account.');
+        return;
+    }
 
-    const formatRole = (r: string) => {
-        const map: Record<string, string> = {
-            admin: 'Administrator (All Modules)',
-            staff_inventory: 'Staff - Inventory',
-            staff_quotations: 'Staff - Quotations',
-            staff_procurement: 'Staff - Procurement',
-            staff_sales: 'Staff - Sales',
-            staff_forecast: 'Staff - Demand Forecasting',
-            staff_suppliers: 'Staff - Suppliers',
-            staff_reports: 'Staff - Reports & Analytics',
-            staff: 'Staff - Inventory',
-            user: 'Regular Customer',
-        };
-        return map[r] || r;
-    };
-    const roleLabel = formatRole(editForm.role);
+    const roleLabel = describeAssignment(editForm.account_type, editForm.modules);
 
     openConfirmModal({
         title: 'Confirm Account Changes',
@@ -666,14 +663,14 @@ const approveDevice = (device: TrustedDeviceItem) => {
 
 const promptDeleteDevice = (device: TrustedDeviceItem) => {
     openConfirmModal({
-        title: 'Remove Device Record',
-        description: `Permanently delete the trusted device entry for "${device.device_name}"?`,
+        title: 'Remove Trusted Device',
+        description: `Permanently remove the trusted device "${device.device_name}" from the system registry? Active sessions on this hardware will be immediately terminated.`,
         details: [
             { label: 'Device Name', value: device.device_name },
             { label: 'Account', value: device.user?.name || (device.is_shared ? 'Shared Workstation' : 'Unassigned') },
             { label: 'Hardware UUID', value: device.device_uuid },
         ],
-        confirmText: 'Delete Record',
+        confirmText: 'Remove Device',
         confirmVariant: 'destructive',
         action: () => deleteDevice(device),
     });
@@ -710,29 +707,22 @@ const regenerateRecoveryKey = () => {
 
     <div class="workspace-page">
         <!-- Header -->
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-4">
             <div>
-                <div class="flex items-center gap-2">
-                    <h1 class="text-3xl font-bold text-gray-900 tracking-tight">User Management</h1>
-                    <span class="bg-amber-100 text-amber-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-amber-200 uppercase tracking-wide">
-                        Administrator
-                    </span>
-                </div>
-                <p class="text-gray-500 mt-1">
-                    Centralized account governance, active sessions, trusted devices, audit trails, and security logs.
-                </p>
+                <h1 class="page-title">User Management</h1>
+                <p class="page-subtitle">Accounts, sessions, trusted devices and audit logs.</p>
             </div>
 
             <!-- Top Actions -->
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center justify-start lg:justify-end gap-2.5 w-full lg:w-auto">
                 <SpecularButton
                     v-if="activeTab === 'accounts'"
                     variant="brand"
                     size="md"
-                    :radius="10"
+                    :radius="12"
                     @click="openAddModal"
                 >
-                    <Plus class="w-4 h-4 mr-1.5 inline" />
+                    <Plus class="w-4 h-4" />
                     Add Account
                 </SpecularButton>
             </div>
@@ -741,13 +731,13 @@ const regenerateRecoveryKey = () => {
         <!-- Banner / Notices -->
         <div
             v-if="temporaryPasswordNotice"
-            class="mb-4 rounded-2xl border border-amber-300 bg-amber-50/90 p-4 shadow-sm flex items-start gap-3"
+            class="mb-4 rounded-xl border border-amber-300 bg-amber-50/90 p-4 flex items-start gap-3"
         >
             <div class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#4b5320] text-[#F8B803]">
                 <Shield class="size-4" />
             </div>
             <div>
-                <h4 class="text-xs font-bold text-gray-900 uppercase tracking-wider">Temporary Credential Generated</h4>
+                <h4 class="text-xs font-semibold text-gray-900">Temporary Credential Generated</h4>
                 <p class="text-sm font-semibold text-gray-800 mt-0.5">{{ temporaryPasswordNotice }}</p>
                 <p class="text-xs text-gray-500 mt-1">Please securely convey this credential to the user. They must change it upon their initial login.</p>
             </div>
@@ -756,25 +746,14 @@ const regenerateRecoveryKey = () => {
         <!-- Combined Single-Use Device Enrollment Notice Banner (Top Level) -->
         <div
             v-if="enrollmentNotice && !dismissedEnrollmentNotice"
-            class="mb-5 rounded-2xl border border-emerald-300 bg-emerald-50/95 p-4 sm:p-5 shadow-xs transition-all animate-in fade-in duration-200"
+            class="mb-5 rounded-xl border border-emerald-300 bg-emerald-50/95 p-4 sm:p-5 transition-colors animate-in fade-in duration-200"
         >
             <div class="flex items-start justify-between gap-3">
                 <div class="flex items-start gap-3.5 flex-1 min-w-0">
-                    <div class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-xs">
-                        <Laptop class="size-4.5" />
-                    </div>
                     <div class="flex-1 min-w-0">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <h4 class="text-xs font-bold text-emerald-950 uppercase tracking-wider">
-                                Active Workstation Enrollment Invitation
-                            </h4>
-                            <span class="inline-flex items-center gap-1 text-[11px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full">
-                                <Clock class="size-3" />
-                                5 Minutes Only
-                            </span>
-                        </div>
-                        <p class="text-sm text-emerald-900 mt-1 font-medium leading-relaxed">
-                            Send this invitation to <strong class="text-emerald-950 font-bold">{{ enrollmentNotice.user_name }}</strong>
+                        <h4 class="text-sm font-semibold text-emerald-950">Workstation enrollment invitation</h4>
+                        <p class="text-sm text-emerald-900 mt-1 leading-relaxed">
+                            Send this invitation to <strong class="text-emerald-950 font-semibold">{{ enrollmentNotice.user_name }}</strong>
                             (<span class="text-emerald-800">{{ enrollmentNotice.user_email }}</span>).
                             Must be opened on their authorized device before <strong class="text-emerald-950">{{ enrollmentNotice.expires_at }}</strong>.
                         </p>
@@ -782,9 +761,9 @@ const regenerateRecoveryKey = () => {
                         <!-- Controls Row: Code + Link -->
                         <div class="mt-3.5 flex flex-wrap items-center gap-3">
                             <!-- Code section -->
-                            <div v-if="enrollmentNotice.code" class="flex items-center gap-1.5 bg-white border border-emerald-300 rounded-xl p-1 shadow-2xs">
-                                <span class="text-[11px] font-semibold text-emerald-800 uppercase px-2">Code</span>
-                                <code class="px-2.5 py-1 bg-emerald-50 text-emerald-950 rounded-lg text-sm font-mono font-bold tracking-wider select-all border border-emerald-200">
+                            <div v-if="enrollmentNotice.code" class="flex items-center gap-1.5 bg-white border border-emerald-300 rounded-xl p-1">
+                                <span class="text-[11px] font-semibold text-emerald-800 px-2">Code</span>
+                                <code class="px-2.5 py-1 bg-emerald-50 text-emerald-950 rounded-lg text-sm font-mono font-semibold tracking-wider select-all border border-emerald-200">
                                     {{ enrollmentNotice.code }}
                                 </code>
                                 <button
@@ -800,7 +779,7 @@ const regenerateRecoveryKey = () => {
                             </div>
 
                             <!-- Link section -->
-                            <div v-if="enrollmentNotice.link" class="flex items-center gap-1.5 bg-white border border-emerald-300 rounded-xl p-1 shadow-2xs flex-1 min-w-[280px] max-w-xl">
+                            <div v-if="enrollmentNotice.link" class="flex items-center gap-1.5 bg-white border border-emerald-300 rounded-xl p-1 flex-1 min-w-[280px] max-w-xl">
                                 <input
                                     type="text"
                                     readonly
@@ -810,7 +789,7 @@ const regenerateRecoveryKey = () => {
                                 <button
                                     type="button"
                                     @click="copyToClipboard(enrollmentNotice.link, 'link')"
-                                    class="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-2xs transition-colors shrink-0 cursor-pointer"
+                                    class="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition-colors shrink-0 cursor-pointer"
                                 >
                                     <Check v-if="copiedLink" class="size-3.5 text-white" />
                                     <Copy v-else class="size-3.5 text-white" />
@@ -819,10 +798,7 @@ const regenerateRecoveryKey = () => {
                             </div>
                         </div>
 
-                        <!-- Footer details -->
-                        <p class="text-[11px] text-emerald-700 mt-2 font-medium">
-                            Workstation: {{ enrollmentNotice.device_name || 'Terminal' }} • Account: {{ enrollmentNotice.user_name }} • Expires: {{ enrollmentNotice.expires_at }} (Single-use, locked to registered email)
-                        </p>
+                        <p class="text-xs text-emerald-800 mt-2">Single use, for {{ enrollmentNotice.device_name || 'this workstation' }} only.</p>
                     </div>
                 </div>
 
@@ -845,9 +821,9 @@ const regenerateRecoveryKey = () => {
                     @click="switchTab('accounts')"
                     :class="[
                         activeTab === 'accounts'
-                            ? 'border-[#F8B803] text-[#92400e] bg-amber-50/50 font-bold'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium',
-                        'whitespace-nowrap py-3 px-4 border-b-2 text-sm flex items-center gap-2 rounded-t-xl transition-all'
+                            ? 'border-gray-900 text-gray-900 font-medium'
+                            : 'border-transparent text-gray-500 hover:text-gray-900 font-medium',
+                        'whitespace-nowrap py-2.5 px-3 border-b-2 text-sm flex items-center gap-2 transition-colors'
                     ]"
                 >
                     <Users class="w-4 h-4" />
@@ -858,9 +834,9 @@ const regenerateRecoveryKey = () => {
                     @click="switchTab('sessions')"
                     :class="[
                         activeTab === 'sessions'
-                            ? 'border-[#F8B803] text-[#92400e] bg-amber-50/50 font-bold'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium',
-                        'whitespace-nowrap py-3 px-4 border-b-2 text-sm flex items-center gap-2 rounded-t-xl transition-all'
+                            ? 'border-gray-900 text-gray-900 font-medium'
+                            : 'border-transparent text-gray-500 hover:text-gray-900 font-medium',
+                        'whitespace-nowrap py-2.5 px-3 border-b-2 text-sm flex items-center gap-2 transition-colors'
                     ]"
                 >
                     <Activity class="w-4 h-4" />
@@ -871,9 +847,9 @@ const regenerateRecoveryKey = () => {
                     @click="switchTab('devices')"
                     :class="[
                         activeTab === 'devices'
-                            ? 'border-[#F8B803] text-[#92400e] bg-amber-50/50 font-bold'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium',
-                        'whitespace-nowrap py-3 px-4 border-b-2 text-sm flex items-center gap-2 rounded-t-xl transition-all'
+                            ? 'border-gray-900 text-gray-900 font-medium'
+                            : 'border-transparent text-gray-500 hover:text-gray-900 font-medium',
+                        'whitespace-nowrap py-2.5 px-3 border-b-2 text-sm flex items-center gap-2 transition-colors'
                     ]"
                 >
                     <Laptop class="w-4 h-4" />
@@ -884,9 +860,9 @@ const regenerateRecoveryKey = () => {
                     @click="switchTab('audit')"
                     :class="[
                         activeTab === 'audit'
-                            ? 'border-[#F8B803] text-[#92400e] bg-amber-50/50 font-bold'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium',
-                        'whitespace-nowrap py-3 px-4 border-b-2 text-sm flex items-center gap-2 rounded-t-xl transition-all'
+                            ? 'border-gray-900 text-gray-900 font-medium'
+                            : 'border-transparent text-gray-500 hover:text-gray-900 font-medium',
+                        'whitespace-nowrap py-2.5 px-3 border-b-2 text-sm flex items-center gap-2 transition-colors'
                     ]"
                 >
                     <FileText class="w-4 h-4" />
@@ -897,9 +873,9 @@ const regenerateRecoveryKey = () => {
                     @click="switchTab('security')"
                     :class="[
                         activeTab === 'security'
-                            ? 'border-[#F8B803] text-[#92400e] bg-amber-50/50 font-bold'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium',
-                        'whitespace-nowrap py-3 px-4 border-b-2 text-sm flex items-center gap-2 rounded-t-xl transition-all'
+                            ? 'border-gray-900 text-gray-900 font-medium'
+                            : 'border-transparent text-gray-500 hover:text-gray-900 font-medium',
+                        'whitespace-nowrap py-2.5 px-3 border-b-2 text-sm flex items-center gap-2 transition-colors'
                     ]"
                 >
                     <ShieldAlert class="w-4 h-4" />
@@ -921,13 +897,13 @@ const regenerateRecoveryKey = () => {
                         @input="applyFilter"
                         type="text"
                         placeholder="Search users by name or email..."
-                        class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-[#F8B803] shadow-sm"
+                        class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-[#F8B803]"
                     />
                 </div>
                 <select
                     v-model="selectedRole"
                     @change="applyFilter"
-                    class="bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#F8B803] shadow-sm min-w-[150px]"
+                    class="bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#F8B803] min-w-[150px]"
                 >
                     <option value="All Roles">All Roles</option>
                     <option value="superadmin">Owner / Superadmin</option>
@@ -938,7 +914,7 @@ const regenerateRecoveryKey = () => {
                 <select
                     v-model="selectedStatus"
                     @change="applyFilter"
-                    class="bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#F8B803] shadow-sm min-w-[140px]"
+                    class="bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#F8B803] min-w-[140px]"
                 >
                     <option value="All Statuses">All Statuses</option>
                     <option value="active">Active</option>
@@ -947,11 +923,11 @@ const regenerateRecoveryKey = () => {
             </div>
 
             <!-- Table -->
-            <div class="rounded-2xl bg-white border border-gray-200 p-6 shadow-sm">
+            <div class="rounded-xl bg-white border border-gray-200 p-6">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                         <thead>
-                            <tr class="border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wider font-semibold">
+                            <tr class="border-b border-gray-200 text-gray-500 text-xs font-semibold">
                                 <th class="pb-3 font-semibold">Account / User</th>
                                 <th class="pb-3 font-semibold">Email</th>
                                 <th class="pb-3 font-semibold">Role</th>
@@ -1000,20 +976,7 @@ const regenerateRecoveryKey = () => {
                                     </span>
                                 </td>
                                 <td class="py-4">
-                                    <span
-                                        :class="[
-                                            'px-2.5 py-1 rounded-full text-xs font-semibold border inline-flex items-center gap-1',
-                                            user.is_pending_activation
-                                                ? 'bg-amber-50 text-amber-800 border-amber-200'
-                                                : (user.is_active ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200')
-                                        ]"
-                                    >
-                                        <span
-                                            :class="user.is_pending_activation ? 'bg-amber-500' : (user.is_active ? 'bg-green-500' : 'bg-red-500')"
-                                            class="size-1.5 rounded-full"
-                                        ></span>
-                                        {{ user.status }}
-                                    </span>
+                                    <StatusBadge :status="user.status" size="sm" />
                                 </td>
                                 <td class="py-4 text-gray-500 text-xs">
                                     <div class="flex items-center gap-1">
@@ -1101,7 +1064,7 @@ const regenerateRecoveryKey = () => {
                         @input="applyFilter"
                         type="text"
                         placeholder="Filter sessions by user or IP address..."
-                        class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-[#F8B803] shadow-sm"
+                        class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-[#F8B803]"
                     />
                 </div>
                 <div class="text-xs text-gray-500">
@@ -1109,11 +1072,11 @@ const regenerateRecoveryKey = () => {
                 </div>
             </div>
 
-            <div class="rounded-2xl bg-white border border-gray-200 p-6 shadow-sm">
+            <div class="rounded-xl bg-white border border-gray-200 p-6">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                         <thead>
-                            <tr class="border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wider font-semibold">
+                            <tr class="border-b border-gray-200 text-gray-500 text-xs font-semibold">
                                 <th class="pb-3 font-semibold">Account / User</th>
                                 <th class="pb-3 font-semibold">Role</th>
                                 <th class="pb-3 font-semibold">Device / Browser</th>
@@ -1133,7 +1096,7 @@ const regenerateRecoveryKey = () => {
                                 <td class="py-4">
                                     <div class="font-semibold text-gray-900 flex items-center gap-2">
                                         <span>{{ s.user_name }}</span>
-                                        <span v-if="s.is_current" class="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                                        <span v-if="s.is_current" class="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded-full border border-emerald-200">
                                             Current Session
                                         </span>
                                     </div>
@@ -1184,28 +1147,27 @@ const regenerateRecoveryKey = () => {
         <!-- ========================================== -->
         <div v-else-if="activeTab === 'devices'">
             <!-- Policy Banner: 1 Account, 1 Device -->
-            <div class="mb-5 rounded-2xl border border-blue-200 bg-blue-50/80 p-4 shadow-xs flex items-center justify-between gap-4">
+            <div class="mb-5 rounded-xl border border-blue-200 bg-blue-50/80 p-4 flex items-center justify-between gap-4">
                 <div class="flex items-center gap-3">
-                    <div class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-xs">
+                    <div class="flex size-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
                         <ShieldCheck class="size-5" />
                     </div>
                     <div>
-                        <h4 class="text-xs font-bold text-blue-950 uppercase tracking-wider">1 Account, 1 Device Policy Enforced</h4>
+                        <h4 class="text-xs font-semibold text-blue-950">1 Account, 1 Device Policy Enforced</h4>
                         <p class="text-xs text-blue-800 mt-0.5">
                             Each administrator and staff account is strictly limited to <strong>1 authorized device</strong>. Enrolling or approving a new device automatically replaces and revokes any prior device.
                         </p>
                     </div>
                 </div>
-                <span class="bg-blue-100 text-blue-800 text-[11px] font-bold px-2.5 py-1 rounded-full border border-blue-300 uppercase tracking-wide shrink-0">
+                <span class="bg-blue-100 text-blue-800 text-[11px] font-semibold px-2.5 py-1 rounded-full border border-blue-300 shrink-0">
                     Active Policy
                 </span>
             </div>
 
             <!-- Top Card: Emergency Recovery Key -->
-            <div class="mb-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div class="mb-5 rounded-xl border border-gray-200 bg-white p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h3 class="text-sm font-bold text-gray-900 flex items-center gap-2">
-                        <KeyRound class="size-4 text-[#F8B803]" />
+                    <h3 class="text-sm font-semibold text-gray-900 flex items-center gap-2">
                         Emergency Admin Device Recovery Key
                     </h3>
                     <p class="text-xs text-gray-500 mt-0.5">
@@ -1213,7 +1175,7 @@ const regenerateRecoveryKey = () => {
                     </p>
                 </div>
                 <div class="flex items-center gap-2">
-                    <code class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono font-bold text-gray-800">
+                    <code class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono font-semibold text-gray-800">
                         {{ adminRecoveryKey || 'RECOVER-XXXX-XXXX-XXXX' }}
                     </code>
                     <button
@@ -1245,7 +1207,7 @@ const regenerateRecoveryKey = () => {
                         @input="applyFilter"
                         type="text"
                         placeholder="Search devices by name, user, or IP..."
-                        class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-[#F8B803] shadow-sm"
+                        class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-[#F8B803]"
                     />
                 </div>
                 <SpecularButton
@@ -1260,11 +1222,11 @@ const regenerateRecoveryKey = () => {
             </div>
 
             <!-- Devices Table -->
-            <div class="rounded-2xl bg-white border border-gray-200 p-6 shadow-sm">
+            <div class="rounded-xl bg-white border border-gray-200 p-6">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                         <thead>
-                            <tr class="border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wider font-semibold">
+                            <tr class="border-b border-gray-200 text-gray-500 text-xs font-semibold">
                                 <th class="pb-3 font-semibold">Device Label</th>
                                 <th class="pb-3 font-semibold">Authorized Account(s)</th>
                                 <th class="pb-3 font-semibold">IP Address</th>
@@ -1285,7 +1247,7 @@ const regenerateRecoveryKey = () => {
                                     <div class="flex items-center gap-2">
                                         <Laptop class="size-4 text-gray-500" />
                                         <span>{{ d.device_name }}</span>
-                                        <span v-if="d.is_current" class="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                                        <span v-if="d.is_current" class="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded-full border border-emerald-200">
                                             Current Device
                                         </span>
                                     </div>
@@ -1326,7 +1288,7 @@ const regenerateRecoveryKey = () => {
                                         {{ d.status }}
                                     </span>
                                     <div v-if="d.enrollment_code && !d.is_enrollment_expired" class="mt-1 flex items-center gap-1.5">
-                                        <code class="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[11px] font-mono font-bold text-gray-800">
+                                        <code class="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-[11px] font-mono font-semibold text-gray-800">
                                             {{ d.enrollment_code }}
                                         </code>
                                         <button
@@ -1377,11 +1339,13 @@ const regenerateRecoveryKey = () => {
                                             Revoke
                                         </button>
 
-                                        <!-- Delete record -->
+                                        <!-- Remove trusted device -->
                                         <button
+                                            type="button"
                                             @click="promptDeleteDevice(d)"
-                                            class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                                            title="Delete Device Record"
+                                            class="inline-flex size-8 items-center justify-center rounded-xl text-gray-400 hover:text-red-600 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/30 transition-colors cursor-pointer"
+                                            title="Remove trusted device"
+                                            aria-label="Remove trusted device"
                                         >
                                             <Trash2 class="size-4" />
                                         </button>
@@ -1407,31 +1371,31 @@ const regenerateRecoveryKey = () => {
                         @input="applyFilter"
                         type="text"
                         placeholder="Search audit trail by description, admin, or target user..."
-                        class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-[#F8B803] shadow-sm"
+                        class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-[#F8B803]"
                     />
                 </div>
                 <input
                     v-model="dateFrom"
                     @change="applyFilter"
                     type="date"
-                    class="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700 shadow-sm"
+                    class="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700"
                     title="From Date"
                 />
                 <input
                     v-model="dateTo"
                     @change="applyFilter"
                     type="date"
-                    class="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700 shadow-sm"
+                    class="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700"
                     title="To Date"
                 />
             </div>
 
             <!-- Table -->
-            <div class="rounded-2xl bg-white border border-gray-200 p-6 shadow-sm">
+            <div class="rounded-xl bg-white border border-gray-200 p-6">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                         <thead>
-                            <tr class="border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wider font-semibold">
+                            <tr class="border-b border-gray-200 text-gray-500 text-xs font-semibold">
                                 <th class="pb-3 font-semibold">Timestamp</th>
                                 <th class="pb-3 font-semibold">Acting Account</th>
                                 <th class="pb-3 font-semibold">Action / Event</th>
@@ -1522,13 +1486,13 @@ const regenerateRecoveryKey = () => {
                         @input="applyFilter"
                         type="text"
                         placeholder="Search security events, IP address, or account..."
-                        class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-[#F8B803] shadow-sm"
+                        class="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-[#F8B803]"
                     />
                 </div>
                 <select
                     v-model="selectedSeverity"
                     @change="applyFilter"
-                    class="bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#F8B803] shadow-sm min-w-[140px]"
+                    class="bg-white border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#F8B803] min-w-[140px]"
                 >
                     <option value="All Severities">All Severities</option>
                     <option value="info">Info</option>
@@ -1539,24 +1503,24 @@ const regenerateRecoveryKey = () => {
                     v-model="dateFrom"
                     @change="applyFilter"
                     type="date"
-                    class="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700 shadow-sm"
+                    class="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700"
                     title="From Date"
                 />
                 <input
                     v-model="dateTo"
                     @change="applyFilter"
                     type="date"
-                    class="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700 shadow-sm"
+                    class="bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700"
                     title="To Date"
                 />
             </div>
 
             <!-- Table -->
-            <div class="rounded-2xl bg-white border border-gray-200 p-6 shadow-sm">
+            <div class="rounded-xl bg-white border border-gray-200 p-6">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                         <thead>
-                            <tr class="border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wider font-semibold">
+                            <tr class="border-b border-gray-200 text-gray-500 text-xs font-semibold">
                                 <th class="pb-3 font-semibold">Timestamp</th>
                                 <th class="pb-3 font-semibold">Severity</th>
                                 <th class="pb-3 font-semibold">Event</th>
@@ -1579,7 +1543,7 @@ const regenerateRecoveryKey = () => {
                                 <td class="py-4">
                                     <span
                                         :class="[
-                                            'px-2 py-0.5 rounded-full text-[11px] font-bold border uppercase',
+                                            'px-2 py-0.5 rounded-full text-[11px] font-semibold border',
                                             log.severity === 'danger' ? 'bg-red-50 text-red-700 border-red-200' :
                                             log.severity === 'warning' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                             'bg-blue-50 text-blue-700 border-blue-200'
@@ -1646,10 +1610,10 @@ const regenerateRecoveryKey = () => {
     <!-- ========================================== -->
 
     <!-- Add Account Modal -->
-    <div v-if="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
+    <div v-if="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl">
             <div class="flex justify-between items-center mb-5">
-                <h3 class="text-xl font-bold text-gray-900">Create User Account</h3>
+                <h3 class="text-xl font-semibold text-gray-900">Create User Account</h3>
                 <button @click="showAddModal = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
 
@@ -1715,45 +1679,46 @@ const regenerateRecoveryKey = () => {
                     <span v-if="addForm.errors.email" class="text-xs text-red-500 mt-1 block">{{ addForm.errors.email }}</span>
                 </div>
 
-                <!-- Initial Password Notice: (Firstname)1234 -->
+                <!-- Initial Password Notice: random, shown once -->
                 <div class="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 text-xs text-amber-900 flex items-start gap-2.5">
                     <KeyRound class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                     <div>
                         <p class="font-semibold text-amber-950">Initial Password on First Login</p>
                         <p class="text-amber-800 mt-0.5 text-[11px] leading-relaxed">
-                            The initial login password is automatically generated as
-                            <strong class="font-bold text-amber-950 font-mono underline decoration-amber-400">
-                                {{ addForm.first_name ? addForm.first_name.charAt(0).toUpperCase() + addForm.first_name.slice(1).toLowerCase().replace(/[^a-z0-9]/g, '') : '(Firstname)' }}1234
-                            </strong>.
-                            The user will be required to change their password immediately upon their first login.
+                            The temporary password is the user's first name followed by
+                            <strong class="font-semibold text-amber-950">1234</strong> (e.g. Juan1234).
+                            A 5-minute enrollment code and link are emailed to them to register their device;
+                            they must change the password at first login.
                         </p>
                     </div>
                 </div>
 
                 <div class="relative">
                     <select
-                        id="add-role"
-                        v-model="addForm.role"
+                        id="add-account-type"
+                        v-model="addForm.account_type"
                         class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
                     >
+                        <option value="staff">Staff (select modules)</option>
                         <option value="admin">Administrator (All Modules)</option>
-                        <option value="staff_inventory">Staff - Inventory</option>
-                        <option value="staff_quotations">Staff - Quotations</option>
-                        <option value="staff_procurement">Staff - Procurement</option>
-                        <option value="staff_deliveries">Staff - Deliveries</option>
-                        <option value="staff_sales">Staff - Sales</option>
-                        <option value="staff_forecast">Staff - Demand Forecasting</option>
-                        <option value="staff_suppliers">Staff - Suppliers</option>
-                        <option value="staff_reports">Staff - Reports & Analytics</option>
                     </select>
                     <label
-                        for="add-role"
+                        for="add-account-type"
                         class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]"
                     >
-                        Assigned Role
+                        Account Type
                     </label>
-                    <span v-if="addForm.errors.role" class="text-xs text-red-500 mt-1 block">{{ addForm.errors.role }}</span>
+                    <span v-if="addForm.errors.account_type" class="text-xs text-red-500 mt-1 block">{{ addForm.errors.account_type }}</span>
                 </div>
+
+                <ModuleMultiSelect
+                    v-if="addForm.account_type === 'staff'"
+                    id="add-modules"
+                    v-model="addForm.modules"
+                    :options="moduleOptionList"
+                    label="Assigned Modules"
+                    :error="addForm.errors.modules || addForm.errors['modules.0']"
+                />
 
                 <div class="flex justify-end gap-3 mt-6 pt-2 border-t border-gray-100">
                     <SpecularButton type="button" variant="secondary" size="md" :radius="10" @click="showAddModal = false">
@@ -1768,10 +1733,10 @@ const regenerateRecoveryKey = () => {
     </div>
 
     <!-- Edit User Modal -->
-    <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
+    <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl">
             <div class="flex justify-between items-center mb-5">
-                <h3 class="text-xl font-bold text-gray-900">Edit Member Role & Account</h3>
+                <h3 class="text-xl font-semibold text-gray-900">Edit Member Role & Account</h3>
                 <button @click="showEditModal = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
 
@@ -1797,29 +1762,31 @@ const regenerateRecoveryKey = () => {
                 </div>
                 <div class="relative">
                     <select
-                        id="edit-role"
-                        v-model="editForm.role"
+                        id="edit-account-type"
+                        v-model="editForm.account_type"
                         class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm"
                     >
+                        <option value="staff">Staff (select modules)</option>
                         <option value="admin">Administrator (All Modules)</option>
-                        <option value="staff_inventory">Staff - Inventory</option>
-                        <option value="staff_quotations">Staff - Quotations</option>
-                        <option value="staff_procurement">Staff - Procurement</option>
-                        <option value="staff_deliveries">Staff - Deliveries</option>
-                        <option value="staff_sales">Staff - Sales</option>
-                        <option value="staff_forecast">Staff - Demand Forecasting</option>
-                        <option value="staff_suppliers">Staff - Suppliers</option>
-                        <option value="staff_reports">Staff - Reports & Analytics</option>
                     </select>
                     <label
-                        for="edit-role"
+                        for="edit-account-type"
                         class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-[#4b5320]"
                     >
-                        Role
+                        Account Type
                     </label>
                 </div>
+
+                <ModuleMultiSelect
+                    v-if="editForm.account_type === 'staff'"
+                    id="edit-modules"
+                    v-model="editForm.modules"
+                    :options="moduleOptionList"
+                    label="Assigned Modules"
+                    :error="editForm.errors.modules || editForm.errors['modules.0']"
+                />
                 <p class="text-[11px] text-gray-500 mt-1">
-                    Changing a member's role invalidates their active sessions to enforce permissions immediately.
+                    Changing a member's role or modules invalidates their active sessions to enforce permissions immediately.
                 </p>
                 <span v-if="editForm.errors.role" class="text-xs text-red-500 mt-1 block">{{ editForm.errors.role }}</span>
 
@@ -1836,9 +1803,9 @@ const regenerateRecoveryKey = () => {
     </div>
 
     <!-- Toggle Status Confirmation Modal -->
-    <div v-if="showStatusModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
-            <h3 class="text-xl font-bold text-gray-900 mb-2">
+    <div v-if="showStatusModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl">
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">
                 {{ selectedUser?.is_active ? 'Deactivate Account' : 'Activate Account' }}
             </h3>
             <p class="text-gray-600 text-sm mb-6">
@@ -1865,16 +1832,16 @@ const regenerateRecoveryKey = () => {
     </div>
 
     <!-- Delete Account Confirmation Modal -->
-    <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
-            <h3 class="text-xl font-bold text-gray-900 mb-2">Delete Account</h3>
+    <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl">
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">Delete Account</h3>
             <p class="text-gray-600 text-sm mb-4">
                 Are you sure you want to delete <span class="font-semibold text-gray-900">{{ selectedUser?.name }}</span>?
                 All active sessions and registered trusted devices will be revoked immediately.
             </p>
             <div class="mt-4 mb-6">
                 <label class="block text-xs font-semibold text-gray-700 mb-1.5">
-                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                    Type <span class="font-mono font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
                 </label>
                 <input
                     v-model="deleteConfirmInput"
@@ -1901,48 +1868,19 @@ const regenerateRecoveryKey = () => {
     </div>
 
     <!-- Enroll Device Modal -->
-    <div v-if="showEnrollModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-lg shadow-2xl">
+    <div v-if="showEnrollModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-lg shadow-xl">
             <div class="flex justify-between items-center mb-5">
-                <h3 class="text-xl font-bold text-gray-900">Initiate Workstation Enrollment</h3>
+                <h3 class="text-xl font-semibold text-gray-900">Initiate Workstation Enrollment</h3>
                 <button @click="showEnrollModal = false" class="text-gray-400 hover:text-gray-600 text-xl cursor-pointer">&times;</button>
             </div>
 
             <form @submit.prevent="promptEnrollDevice" class="space-y-4.5">
-                <!-- Assignment Policy Selection -->
-                <div class="space-y-1.5">
-                    <label class="text-xs font-semibold text-gray-700">Workstation Assignment Policy</label>
-                    <div class="grid grid-cols-2 gap-2.5">
-                        <button
-                            type="button"
-                            @click="enrollForm.assignment_type = 'single'"
-                            :class="[
-                                'p-3 rounded-xl border text-left transition-all cursor-pointer',
-                                enrollForm.assignment_type === 'single'
-                                    ? 'border-[#4b5320] bg-[#4b5320]/5 text-[#4b5320] ring-1 ring-[#4b5320]'
-                                    : 'border-gray-200 hover:bg-gray-50 text-gray-700'
-                            ]"
-                        >
-                            <div class="font-bold text-xs">Single Account</div>
-                            <div class="text-[11px] text-gray-500 mt-0.5">Bound strictly to 1 user</div>
-                        </button>
-
-                        <button
-                            type="button"
-                            @click="enrollForm.assignment_type = 'shared'"
-                            :class="[
-                                'p-3 rounded-xl border text-left transition-all cursor-pointer',
-                                enrollForm.assignment_type === 'shared'
-                                    ? 'border-[#4b5320] bg-[#4b5320]/5 text-[#4b5320] ring-1 ring-[#4b5320]'
-                                    : 'border-gray-200 hover:bg-gray-50 text-gray-700'
-                            ]"
-                        >
-                            <div class="font-bold text-xs">Shared Workstation</div>
-                            <div class="text-[11px] text-gray-500 mt-0.5">Authorize multiple accounts</div>
-                        </button>
-                    </div>
+                <!-- One device, one account (shared workstations are not allowed) -->
+                <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 text-[11px] text-gray-600">
+                    <span class="font-semibold text-gray-900">One device, one account.</span>
+                    The invitation is bound to the selected user only and replaces their previous device.
                 </div>
-
                 <!-- Single Account Selector -->
                 <div v-if="enrollForm.assignment_type === 'single'" class="relative">
                     <select
@@ -2005,35 +1943,11 @@ const regenerateRecoveryKey = () => {
                     </label>
                 </div>
 
-                <!-- Code Expiration / Lifespan Option -->
-                <div v-if="!enrollForm.direct_approve" class="space-y-1.5">
-                    <label class="text-xs font-semibold text-gray-700">One-Time Link Lifespan</label>
-                    <select
-                        v-model="enrollForm.expires_in_minutes"
-                        class="block w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-900 focus:border-[#4b5320] focus:outline-none"
-                    >
-                        <option :value="5">5 Minutes (Default / Recommended)</option>
-                        <option :value="10">10 Minutes</option>
-                        <option :value="30">30 Minutes</option>
-                        <option :value="60">1 Hour</option>
-                        <option :value="1440">24 Hours</option>
-                    </select>
-                    <p class="text-[11px] text-gray-500">
-                        The employee must open this link on their device within 5 minutes to verify identity and enroll their browser.
-                    </p>
-                </div>
-
-                <!-- Direct Approval Option -->
-                <label class="flex items-start gap-2.5 text-xs text-gray-700 cursor-pointer pt-1">
-                    <input v-model="enrollForm.direct_approve" type="checkbox" class="mt-0.5 rounded border-gray-300 text-[#4b5320] focus:ring-[#4b5320]" />
-                    <div>
-                        <span class="font-semibold text-gray-900">Directly mark as approved</span>
-                        <p class="text-[11px] text-gray-500">
-                            Pre-authorizes device entry directly in the system.
-                        </p>
-                    </div>
-                </label>
-
+                <!-- Fixed 5-minute, single-use invitation (enforced on the server) -->
+                <p class="text-[11px] text-gray-500">
+                    The code and link are emailed to the user and expire in <strong>5 minutes</strong>. They work once.
+                    The user needs the link, the code, their email and their temporary password to register this device.
+                </p>
                 <div class="flex justify-end gap-3 mt-6 pt-2 border-t border-gray-100">
                     <SpecularButton type="button" variant="secondary" size="md" :radius="10" @click="showEnrollModal = false">
                         Cancel
@@ -2047,10 +1961,10 @@ const regenerateRecoveryKey = () => {
     </div>
 
     <!-- Rename Device Modal -->
-    <div v-if="showRenameDeviceModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
+    <div v-if="showRenameDeviceModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl">
             <div class="flex justify-between items-center mb-5">
-                <h3 class="text-xl font-bold text-gray-900">Rename Workstation</h3>
+                <h3 class="text-xl font-semibold text-gray-900">Rename Workstation</h3>
                 <button @click="showRenameDeviceModal = false" class="text-gray-400 hover:text-gray-600 text-xl cursor-pointer">&times;</button>
             </div>
 
@@ -2084,9 +1998,9 @@ const regenerateRecoveryKey = () => {
     </div>
 
     <!-- Revoke Session Modal -->
-    <div v-if="showRevokeSessionModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
-            <h3 class="text-xl font-bold text-gray-900 mb-2">Revoke Active Session</h3>
+    <div v-if="showRevokeSessionModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl">
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">Revoke Active Session</h3>
             <p class="text-gray-600 text-sm mb-6">
                 Are you sure you want to revoke the session for
                 <span class="font-semibold text-gray-900">{{ selectedSession?.user_name }}</span>
@@ -2104,9 +2018,9 @@ const regenerateRecoveryKey = () => {
     </div>
 
     <!-- Revoke All User Sessions Modal -->
-    <div v-if="showRevokeUserSessionsModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
-            <h3 class="text-xl font-bold text-gray-900 mb-2">Terminate All Sessions</h3>
+    <div v-if="showRevokeUserSessionsModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl">
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">Terminate All Sessions</h3>
             <p class="text-gray-600 text-sm mb-6">
                 Are you sure you want to terminate all active sessions for
                 <span class="font-semibold text-gray-900">{{ selectedUser?.name }}</span>?
@@ -2124,9 +2038,9 @@ const regenerateRecoveryKey = () => {
     </div>
 
     <!-- Revoke Device Modal -->
-    <div v-if="showRevokeDeviceModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl">
-            <h3 class="text-xl font-bold text-gray-900 mb-2">Revoke Trusted Device</h3>
+    <div v-if="showRevokeDeviceModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl">
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">Revoke Trusted Device</h3>
             <p class="text-gray-600 text-sm mb-4">
                 Are you sure you want to revoke access for
                 <span class="font-semibold text-gray-900">{{ selectedDevice?.device_name }}</span>
@@ -2135,7 +2049,7 @@ const regenerateRecoveryKey = () => {
             </p>
             <div class="mt-4 mb-6">
                 <label class="block text-xs font-semibold text-gray-700 mb-1.5">
-                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                    Type <span class="font-mono font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
                 </label>
                 <input
                     v-model="revokeDeviceConfirmInput"
@@ -2162,10 +2076,10 @@ const regenerateRecoveryKey = () => {
     </div>
 
     <!-- View Metadata Modal -->
-    <div v-if="showMetadataModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-lg shadow-2xl">
+    <div v-if="showMetadataModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-lg shadow-xl">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-gray-900">Event Context Data</h3>
+                <h3 class="text-lg font-semibold text-gray-900">Event Context Data</h3>
                 <button @click="showMetadataModal = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
             <pre class="bg-gray-50 border border-gray-200 p-4 rounded-xl text-xs font-mono text-gray-800 overflow-x-auto max-h-96">{{ JSON.stringify(selectedMetadata, null, 2) }}</pre>
@@ -2178,8 +2092,8 @@ const regenerateRecoveryKey = () => {
     </div>
 
     <!-- Universal Action Confirmation Modal -->
-    <div v-if="showConfirmModal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl animate-in fade-in duration-150">
             <div
                 :class="[
                     'w-11 h-11 rounded-full flex items-center justify-center mb-4 border',
@@ -2191,7 +2105,7 @@ const regenerateRecoveryKey = () => {
                 <AlertTriangle v-if="confirmOptions.confirmVariant === 'destructive'" class="w-6 h-6" />
                 <CheckCircle2 v-else class="w-6 h-6" />
             </div>
-            <h3 class="text-xl font-bold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
+            <h3 class="text-xl font-semibold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
             <p class="text-gray-600 text-sm mb-4 leading-relaxed">
                 {{ confirmOptions.description }}
             </p>
@@ -2205,7 +2119,7 @@ const regenerateRecoveryKey = () => {
 
             <div v-if="confirmOptions.confirmVariant === 'destructive'" class="mt-2 mb-5">
                 <label class="block text-xs font-semibold text-gray-700 mb-1.5">
-                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                    Type <span class="font-mono font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
                 </label>
                 <input
                     v-model="confirmActionInput"
@@ -2242,15 +2156,15 @@ const regenerateRecoveryKey = () => {
     </div>
 
     <!-- Enrollment Result Modal (Displays Code + Copyable 5-Minute Link) -->
-    <div v-if="showEnrollmentResultModal && activeEnrollmentResult" class="fixed inset-0 z-[75] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showEnrollmentResultModal && activeEnrollmentResult" class="fixed inset-0 z-[75] flex items-center justify-center bg-black/60 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-lg shadow-xl animate-in fade-in duration-150">
             <div class="flex items-start justify-between mb-4">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700">
                         <Laptop class="w-5 h-5" />
                     </div>
                     <div>
-                        <h3 class="text-lg font-bold text-gray-900">Workstation Enrollment Created</h3>
+                        <h3 class="text-lg font-semibold text-gray-900">Workstation Enrollment Created</h3>
                         <p class="text-xs text-gray-500">Invitation dispatched to registered employee</p>
                     </div>
                 </div>
@@ -2268,7 +2182,7 @@ const regenerateRecoveryKey = () => {
                 <div class="text-xs text-amber-900 leading-relaxed">
                     <div class="font-semibold text-amber-950 flex items-center gap-1.5">
                         <span>Strict 5-Minute Lifespan</span>
-                        <span class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-200 text-amber-900 uppercase">Single-Use</span>
+                        <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-amber-200 text-amber-900">Single-Use</span>
                     </div>
                     <p class="mt-0.5">
                         This enrollment link and code can only be opened for <strong>5 minutes</strong>. It is locked strictly to <strong>{{ activeEnrollmentResult.user_email }}</strong> and cannot be opened by anyone else even if forwarded.
@@ -2283,13 +2197,13 @@ const regenerateRecoveryKey = () => {
                         One-Time Enrollment Code
                     </label>
                     <div class="flex items-center gap-2">
-                        <div class="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 font-mono text-lg font-bold tracking-wider text-gray-900 text-center select-all">
+                        <div class="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 font-mono text-lg font-semibold tracking-wider text-gray-900 text-center select-all">
                             {{ activeEnrollmentResult.code }}
                         </div>
                         <button
                             type="button"
                             @click="copyToClipboard(activeEnrollmentResult.code || '', 'code')"
-                            class="px-4 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
+                            class="px-4 py-2.5 rounded-xl border border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer"
                         >
                             <Check v-if="copiedCode" class="w-4 h-4 text-emerald-600" />
                             <Copy v-else class="w-4 h-4 text-gray-500" />
@@ -2313,7 +2227,7 @@ const regenerateRecoveryKey = () => {
                         <button
                             type="button"
                             @click="copyToClipboard(activeEnrollmentResult.link, 'link')"
-                            class="px-4 py-2 rounded-xl bg-[#4b5320] hover:bg-[#3d441a] text-white text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
+                            class="px-4 py-2 rounded-xl bg-[#4b5320] hover:bg-[#3d441a] text-white text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer"
                         >
                             <Check v-if="copiedLink" class="w-4 h-4 text-white" />
                             <Copy v-else class="w-4 h-4 text-white" />

@@ -6,12 +6,12 @@ use App\Models\TeamInvitation;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 
-test('guests attempting to access dashboard receive 404 page not found', function () {
+test('guests attempting to access dashboard are sent to the login page', function () {
     $user = User::factory()->create();
     $team = $user->currentTeam;
 
     $response = $this->get(route('dashboard'));
-    $response->assertNotFound();
+    $response->assertRedirect(route('login'));
 });
 
 test('authenticated users can visit the dashboard', function () {

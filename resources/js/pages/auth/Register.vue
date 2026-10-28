@@ -96,7 +96,7 @@ defineProps<{
 
             <Button
                 type="submit"
-                class="mt-2 w-full bg-white text-[#4b5320] font-bold hover:bg-gray-100 hover:shadow-lg transition-all"
+                class="mt-2 w-full bg-white text-[#4b5320] font-semibold hover:bg-gray-100 transition-colors"
                 :disabled="processing"
             >
                 <Spinner v-if="processing" />

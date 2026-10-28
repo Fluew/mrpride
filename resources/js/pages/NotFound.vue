@@ -24,7 +24,7 @@ import PublicLayout from '@/layouts/PublicLayout.vue';
 
             <div class="mx-auto w-full max-w-xl text-center">
                 <!-- Status Badge -->
-                <div class="inline-flex items-center gap-2 rounded-full border border-gray-200/80 bg-white/80 px-3.5 py-1.5 text-xs font-bold tracking-wider uppercase text-[#4b5320] shadow-xs backdrop-blur-md dark:border-neutral-800 dark:bg-neutral-900/80 dark:text-[#F8B803]">
+                <div class="inline-flex items-center gap-2 rounded-full border border-gray-200/80 bg-white/80 px-3.5 py-1.5 text-xs font-semibold text-[#4b5320] dark:border-neutral-800 dark:bg-neutral-900/80 dark:text-[#F8B803]">
                     <Compass class="size-3.5" aria-hidden="true" />
                     <span>Error 404</span>
                 </div>
@@ -32,7 +32,7 @@ import PublicLayout from '@/layouts/PublicLayout.vue';
                 <!-- Main Heading -->
                 <h1
                     id="not-found-heading"
-                    class="mt-6 text-3xl font-extrabold tracking-tight text-gray-900 sm:text-4xl md:text-5xl dark:text-white"
+                    class="mt-6 text-3xl font-semibold tracking-tight text-gray-900 sm:text-4xl md:text-5xl dark:text-white"
                 >
                     Sorry, something went wrong!
                 </h1>
@@ -48,7 +48,7 @@ import PublicLayout from '@/layouts/PublicLayout.vue';
                 <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
                     <Link
                         href="/"
-                        class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#4b5320] px-6 py-3.5 text-sm font-semibold text-white shadow-md transition-all duration-150 hover:bg-[#3d441a] hover:shadow-lg focus:outline-hidden focus:ring-2 focus:ring-[#4b5320] focus:ring-offset-2 sm:w-auto dark:focus:ring-offset-neutral-900"
+                        class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#4b5320] px-6 py-3.5 text-sm font-semibold text-white shadow-md transition-colors duration-150 hover:bg-[#3d441a] focus:outline-hidden focus:ring-2 focus:ring-[#4b5320] focus:ring-offset-2 sm:w-auto dark:focus:ring-offset-neutral-900"
                     >
                         <Home class="size-4" aria-hidden="true" />
                         <span>Return to home</span>
@@ -56,7 +56,7 @@ import PublicLayout from '@/layouts/PublicLayout.vue';
 
                     <Link
                         href="/products"
-                        class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-6 py-3.5 text-sm font-semibold text-gray-700 shadow-2xs transition-all duration-150 hover:bg-gray-50 hover:text-gray-900 sm:w-auto dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800 dark:hover:text-white"
+                        class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-6 py-3.5 text-sm font-semibold text-gray-700 transition-colors duration-150 hover:bg-gray-50 hover:text-gray-900 sm:w-auto dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800 dark:hover:text-white"
                     >
                         <ArrowLeft class="size-4" aria-hidden="true" />
                         <span>Browse Products</span>

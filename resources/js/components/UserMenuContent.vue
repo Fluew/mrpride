@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Link, router } from '@inertiajs/vue3';
+import { Link, router, usePage } from '@inertiajs/vue3';
 import { LogOut, Settings, Wrench } from '@lucide/vue';
 import { computed } from 'vue';
 import {
@@ -17,9 +17,11 @@ type Props = {
     user: User;
 };
 
-const props = defineProps<Props>();
+defineProps<Props>();
 
-const isAdmin = computed(() => ['admin', 'superadmin', 'owner'].includes(props.user?.role));
+const page = usePage();
+// Set by the server from User::isAdmin(); the maintenance routes are admin-only on the server too.
+const isAdmin = computed(() => Boolean((page.props as any).auth?.is_admin));
 
 const handleLogout = () => {
     router.flushAll();

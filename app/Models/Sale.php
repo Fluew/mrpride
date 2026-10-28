@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Sale extends Model
 {
@@ -30,8 +31,12 @@ class Sale extends Model
         'payment_method',
         'payment_reference',
         'amount_paid',
+        'outstanding_balance',
         'payment_date',
+        'payment_status',
         'proof_of_payment',
+        'verified_by_id',
+        'verified_at',
         'notes',
         'processed_by_id',
         'deleted_by_id',
@@ -46,7 +51,9 @@ class Sale extends Model
             'tax_amount' => 'decimal:2',
             'grand_total' => 'decimal:2',
             'amount_paid' => 'decimal:2',
+            'outstanding_balance' => 'decimal:2',
             'payment_date' => 'datetime',
+            'verified_at' => 'datetime',
         ];
     }
 
@@ -56,7 +63,8 @@ class Sale extends Model
 
     public function getProofUrlAttribute(): ?string
     {
-        return $this->proof_of_payment ? asset('storage/' . $this->proof_of_payment) : null;
+        // Authenticated, team-checked route (current_team comes from the URL defaults set per request).
+        return $this->proof_of_payment ? route('sales.proof', ['sale' => $this->id]) : null;
     }
 
     public function team(): BelongsTo
@@ -72,6 +80,16 @@ class Sale extends Model
     public function items(): HasMany
     {
         return $this->hasMany(SaleItem::class);
+    }
+
+    public function fulfillment(): HasOne
+    {
+        return $this->hasOne(OrderFulfillment::class);
+    }
+
+    public function verifiedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'verified_by_id');
     }
 
     public function processedBy(): BelongsTo

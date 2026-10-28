@@ -145,6 +145,8 @@ test('pos records sale with gcash details and optional proof of payment file', f
         'is_active' => true,
     ]);
 
+    Storage::fake('local');
+    Storage::fake('public');
     $proofFile = UploadedFile::fake()->image('gcash_receipt.png', 600, 800);
 
     $response = $this->actingAs($user)
@@ -168,9 +170,84 @@ test('pos records sale with gcash details and optional proof of payment file', f
     expect($sale->payment_method)->toBe('GCash');
     expect($sale->payment_reference)->toBe('GCASH-REF-1002348912');
     expect($sale->proof_of_payment)->not->toBeNull();
-    Storage::disk('public')->assertExists($sale->proof_of_payment);
-    expect($sale->proof_url)->toContain('storage/' . $sale->proof_of_payment);
 
-    // Clean up uploaded test artifact
-    Storage::disk('public')->delete($sale->proof_of_payment);
+    // Stored privately, not on the public disk.
+    Storage::disk('local')->assertExists($sale->proof_of_payment);
+    Storage::disk('public')->assertMissing($sale->proof_of_payment);
+    expect($sale->proof_url)->toContain("/{$team->slug}/sales/{$sale->id}/proof");
+
+    // The owner's team can view it through the authenticated route.
+    $this->actingAs($user)
+        ->withCookies($deviceData['cookies'])
+        ->get("/{$team->slug}/sales/{$sale->id}/proof")
+        ->assertOk();
+
+    // Guests can't.
+    auth()->logout();
+    $this->get("/{$team->slug}/sales/{$sale->id}/proof")->assertRedirect(route('login'));
+});
+
+test('pos rejects a payment smaller than the total and leaves stock untouched', function () {
+    $team = Team::factory()->create(['slug' => 'test-pos-team-5']);
+    $user = User::factory()->create([
+        'role' => 'admin',
+        'current_team_id' => $team->id,
+        'password_changed_at' => now(),
+    ]);
+    $team->members()->attach($user, ['role' => TeamRole::Owner->value]);
+    $deviceData = createTrustedDeviceFor($user);
+
+    $product = Product::create([
+        'team_id' => $team->id,
+        'sku' => 'SKU-POS-005',
+        'name' => 'Circuit Breaker 60A',
+        'price' => 50000.00,
+        'stock' => 3,
+        'is_active' => true,
+    ]);
+
+    $this->actingAs($user)
+        ->withCookies($deviceData['cookies'])
+        ->post("/{$team->slug}/sales", [
+            'customer' => 'Underpaying Customer',
+            'payment_method' => 'GCash',
+            'payment_reference' => 'GCASH-LOW-1',
+            'amount_paid' => 1.00,
+            'payment_date' => now()->toDateString(),
+            'items' => [['product_id' => $product->id, 'qty' => 1]],
+        ])
+        ->assertSessionHasErrors('amount_paid');
+
+    expect(Sale::where('team_id', $team->id)->count())->toBe(0);
+    expect($product->fresh()->stock)->toBe(3);
+});
+
+test('sales staff cannot void a sale; only admins can delete', function () {
+    $team = Team::factory()->create(['slug' => 'test-pos-team-6']);
+    $staff = User::factory()->create([
+        'role' => 'staff_sales',
+        'current_team_id' => $team->id,
+        'password_changed_at' => now(),
+    ]);
+    $team->members()->attach($staff, ['role' => TeamRole::Member->value]);
+    $deviceData = createTrustedDeviceFor($staff);
+
+    $sale = Sale::create([
+        'team_id' => $team->id,
+        'invoice_number' => 'INV-TEST-1',
+        'client_name' => 'Someone',
+        'sale_date' => now(),
+        'subtotal' => 100,
+        'discount' => 0,
+        'tax_amount' => 0,
+        'grand_total' => 100,
+        'status' => 'Completed',
+    ]);
+
+    $this->actingAs($staff)
+        ->withCookies($deviceData['cookies'])
+        ->delete("/{$team->slug}/sales/{$sale->id}")
+        ->assertForbidden();
+
+    expect(Sale::find($sale->id))->not->toBeNull();
 });

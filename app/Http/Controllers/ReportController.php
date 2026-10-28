@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\QuotationStatus;
 use App\Models\Product;
 use App\Models\PurchaseRequest;
 use App\Models\Quotation;
@@ -9,6 +10,7 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\StockMovement;
 use App\Models\Supplier;
+use App\Support\Csv;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -324,7 +326,7 @@ class ReportController extends Controller
                 'quotation_date' => $q->quotation_date?->format('Y-m-d') ?? 'N/A',
                 'valid_until' => $q->valid_until?->format('Y-m-d') ?? 'N/A',
                 'grand_total' => (float) $q->grand_total,
-                'status' => $q->status instanceof \App\Enums\QuotationStatus ? $q->status->value : (string) $q->status,
+                'status' => $q->status instanceof QuotationStatus ? $q->status->value : (string) $q->status,
                 'is_converted' => ! empty($q->converted_to_sale_id),
             ]);
 
@@ -528,7 +530,7 @@ class ReportController extends Controller
             });
         }
 
-        $fileName = 'inventory_status_' . date('Y-m-d') . '.csv';
+        $fileName = 'inventory_status_'.date('Y-m-d').'.csv';
 
         return $this->streamCsv($fileName, ['SKU', 'Product Name', 'Category', 'Unit', 'Price (PHP)', 'Cost Price (PHP)', 'Current Stock', 'Total Valuation (PHP)', 'Supplier', 'Status'], function ($file) use ($products) {
             foreach ($products as $p) {
@@ -537,7 +539,7 @@ class ReportController extends Controller
                 $thresh = $p->reorder_level ?: ($p->min_stock ?: 10);
                 $st = $p->stock <= 0 ? 'Out of Stock' : ($p->stock <= $thresh ? 'Low Stock' : 'In Stock');
 
-                fputcsv($file, [
+                Csv::put($file, [
                     $p->sku,
                     $p->name,
                     $p->category ?: 'General',
@@ -574,7 +576,7 @@ class ReportController extends Controller
 
         $products = $query->get()->sortBy(fn ($p) => $p->stock <= 0 ? 0 : $p->stock);
 
-        $fileName = 'low_stock_audit_' . date('Y-m-d') . '.csv';
+        $fileName = 'low_stock_audit_'.date('Y-m-d').'.csv';
 
         return $this->streamCsv($fileName, ['SKU', 'Product Name', 'Category', 'Current Stock', 'Reorder Level', 'Stock Shortage', 'Suggested Reorder', 'Primary Supplier', 'Urgency Status'], function ($file) use ($products) {
             foreach ($products as $p) {
@@ -583,7 +585,7 @@ class ReportController extends Controller
                 $suggested = max($p->reorder_quantity ?: 50, ($lvl * 2) - $p->stock);
                 $urgency = $p->stock <= 0 ? 'CRITICAL - Out of Stock' : ($p->stock <= $lvl / 2 ? 'URGENT' : 'LOW STOCK');
 
-                fputcsv($file, [
+                Csv::put($file, [
                     $p->sku,
                     $p->name,
                     $p->category ?: 'General',
@@ -609,12 +611,12 @@ class ReportController extends Controller
         $exportType = $request->input('type', 'sales'); // 'sales', 'quotations', or 'both'
 
         if ($exportType === 'quotations') {
-            $fileName = 'quotations_report_' . date('Y-m-d') . '.csv';
+            $fileName = 'quotations_report_'.date('Y-m-d').'.csv';
             $quotes = Quotation::where('team_id', $team->id)->latest('quotation_date')->get();
 
             return $this->streamCsv($fileName, ['Quotation Number', 'Client Name', 'Date', 'Valid Until', 'Subtotal (PHP)', 'Tax (PHP)', 'Grand Total (PHP)', 'Status', 'Converted to Sale'], function ($file) use ($quotes) {
                 foreach ($quotes as $q) {
-                    fputcsv($file, [
+                    Csv::put($file, [
                         $q->quotation_number,
                         $q->client_name,
                         $q->quotation_date?->format('Y-m-d') ?? 'N/A',
@@ -622,19 +624,19 @@ class ReportController extends Controller
                         number_format($q->subtotal, 2),
                         number_format($q->tax_amount, 2),
                         number_format($q->grand_total, 2),
-                        $q->status instanceof \App\Enums\QuotationStatus ? $q->status->value : (string) $q->status,
+                        $q->status instanceof QuotationStatus ? $q->status->value : (string) $q->status,
                         $q->converted_to_sale_id ? 'Yes' : 'No',
                     ]);
                 }
             });
         }
 
-        $fileName = 'sales_report_' . date('Y-m-d') . '.csv';
+        $fileName = 'sales_report_'.date('Y-m-d').'.csv';
         $sales = Sale::where('team_id', $team->id)->latest('sale_date')->get();
 
         return $this->streamCsv($fileName, ['Invoice Number', 'Client Name', 'Sale Date', 'Subtotal (PHP)', 'Tax (PHP)', 'Grand Total (PHP)', 'Payment Method', 'Status'], function ($file) use ($sales) {
             foreach ($sales as $s) {
-                fputcsv($file, [
+                Csv::put($file, [
                     $s->invoice_number,
                     $s->client_name,
                     $s->sale_date?->format('Y-m-d H:i') ?? 'N/A',
@@ -657,7 +659,7 @@ class ReportController extends Controller
         abort_if(! $team, 403);
 
         $year = (int) $request->input('year', date('Y'));
-        $fileName = "forecast_analysis_{$year}_" . date('Y-m-d') . '.csv';
+        $fileName = "forecast_analysis_{$year}_".date('Y-m-d').'.csv';
 
         $labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         $movements = StockMovement::where('team_id', $team->id)
@@ -676,7 +678,7 @@ class ReportController extends Controller
             foreach ($labels as $idx => $mLabel) {
                 $val = $history[$idx];
                 $forecastVal = $idx >= 3 ? round(($history[$idx - 1] + $history[$idx - 2] + $history[$idx - 3]) / 3 * 1.08) : 'N/A';
-                fputcsv($file, [$mLabel, $val, $forecastVal]);
+                Csv::put($file, [$mLabel, $val, $forecastVal]);
             }
         });
     }
@@ -689,7 +691,7 @@ class ReportController extends Controller
         $team = $request->user()->currentTeam;
         abort_if(! $team, 403);
 
-        $fileName = 'procurement_report_' . date('Y-m-d') . '.csv';
+        $fileName = 'procurement_report_'.date('Y-m-d').'.csv';
         $requests = PurchaseRequest::where('team_id', $team->id)
             ->with(['product:id,name,sku', 'supplier:id,name', 'requestedBy:id,name'])
             ->latest('id')
@@ -697,7 +699,7 @@ class ReportController extends Controller
 
         return $this->streamCsv($fileName, ['Request Number', 'Product SKU', 'Product Name', 'Supplier', 'Quantity', 'Estimated Cost (PHP)', 'Requested By', 'Status', 'Date'], function ($file) use ($requests) {
             foreach ($requests as $r) {
-                fputcsv($file, [
+                Csv::put($file, [
                     $r->request_number,
                     $r->product?->sku ?? 'N/A',
                     $r->product?->name ?? 'N/A',
@@ -720,7 +722,7 @@ class ReportController extends Controller
         $team = $request->user()->currentTeam;
         abort_if(! $team, 403);
 
-        $fileName = 'supplier_ahp_report_' . date('Y-m-d') . '.csv';
+        $fileName = 'supplier_ahp_report_'.date('Y-m-d').'.csv';
         $suppliers = Supplier::where('team_id', $team->id)
             ->orderByDesc('ahp_score')
             ->get();
@@ -728,7 +730,7 @@ class ReportController extends Controller
         return $this->streamCsv($fileName, ['Rank', 'Supplier Name', 'Contact Person', 'Email', 'Phone', 'AHP Composite Score', 'Price Rating', 'Quality Rating', 'Delivery Rating', 'Service Rating', 'Status'], function ($file) use ($suppliers) {
             foreach ($suppliers as $idx => $s) {
                 $m = $s->metrics ?? [];
-                fputcsv($file, [
+                Csv::put($file, [
                     $idx + 1,
                     $s->name,
                     $s->contact_person ?? 'N/A',
@@ -753,12 +755,12 @@ class ReportController extends Controller
         $team = $request->user()->currentTeam;
         abort_if(! $team, 403);
 
-        $fileName = 'all_master_data_' . date('Y-m-d') . '.csv';
+        $fileName = 'all_master_data_'.date('Y-m-d').'.csv';
         $products = Product::where('team_id', $team->id)->with('supplier:id,name')->get();
 
         return $this->streamCsv($fileName, ['Type', 'SKU/Code', 'Name', 'Category/Role', 'Stock/Contact', 'Unit/Email', 'Price', 'Status'], function ($file) use ($products, $team) {
             foreach ($products as $p) {
-                fputcsv($file, [
+                Csv::put($file, [
                     'Product',
                     $p->sku,
                     $p->name,
@@ -771,9 +773,9 @@ class ReportController extends Controller
             }
 
             foreach ($team->suppliers as $s) {
-                fputcsv($file, [
+                Csv::put($file, [
                     'Supplier',
-                    'SUP-' . $s->id,
+                    'SUP-'.$s->id,
                     $s->name,
                     $s->contact_person ?? 'N/A',
                     $s->phone ?? 'N/A',
@@ -802,7 +804,7 @@ class ReportController extends Controller
             $file = fopen('php://output', 'w');
             // Add UTF-8 BOM for Microsoft Excel auto-encoding
             fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
-            fputcsv($file, $headersList);
+            Csv::put($file, $headersList);
             $callback($file);
             fclose($file);
         }, 200, $headers);

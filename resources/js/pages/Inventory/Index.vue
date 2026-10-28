@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Head, router, usePage } from '@inertiajs/vue3';
+import { useCanDelete } from '@/composables/useCanDelete';
 import { ref, computed, watch } from 'vue';
 import SpecularButton from '@/components/ui/SpecularButton.vue';
-import { 
+import GlideSelect from '@/components/vue-bits/GlideSelect.vue';
+import {
     Upload, 
     Download, 
     Plus, 
@@ -62,6 +64,7 @@ interface Product {
     sku: string;
     name: string;
     category: string;
+    brand?: string | null;
     unit: string;
     price: number | string;
     cost_price: number | string;
@@ -113,6 +116,7 @@ const props = defineProps<{
 }>();
 
 const page = usePage();
+const canDelete = useCanDelete();
 const teamSlug = computed(() => (page.props as any).currentTeam?.slug || (page.props as any).team?.slug || '');
 
 // Filters state
@@ -316,6 +320,7 @@ const formProduct = ref({
     name: '',
     sku: '',
     category: 'Breakers',
+    brand: '',
     unit: 'pcs',
     price: 0,
     cost_price: 0,
@@ -365,6 +370,8 @@ const importMode = ref<'append' | 'replace'>('append');
 const isValidatingCsv = ref(false);
 const isImportingCsv = ref(false);
 const csvValidationResult = ref<{
+    method?: string;
+    warning?: string | null;
     total_rows: number;
     valid_count: number;
     invalid_count: number;
@@ -385,6 +392,7 @@ const openAddModal = () => {
         name: '',
         sku: `SKU-${Date.now().toString().slice(-5)}`,
         category: props.categories[0] || 'Breakers',
+        brand: '',
         unit: 'pcs',
         price: 100,
         cost_price: 70,
@@ -406,6 +414,7 @@ const openEditModal = (product: Product) => {
         name: product.name,
         sku: product.sku,
         category: product.category,
+        brand: product.brand || '',
         unit: product.unit || 'pcs',
         price: Number(product.price) || 0,
         cost_price: Number(product.cost_price) || 0,
@@ -778,9 +787,23 @@ const handleDrop = (event: DragEvent) => {
     }
 };
 
+// Same list the server accepts (FileReader::EXTENSIONS, plus .txt as CSV).
+const IMPORT_EXTENSIONS = ['pdf', 'xlsx', 'xls', 'csv', 'txt', 'jpg', 'jpeg', 'png'];
+const IMPORT_ACCEPT = IMPORT_EXTENSIONS.map((ext) => `.${ext}`).join(',');
+const IMPORT_MAX_BYTES = 10 * 1024 * 1024;
+// Files read by OCR need every row checked, so show more of them.
+const previewRows = computed(() => csvValidationResult.value?.valid_rows.slice(0, csvValidationResult.value?.warning ? 100 : 25) ?? []);
+const isOcrFile = computed(() => /\.(jpe?g|png|pdf)$/i.test(importedFile.value?.name || ''));
+
 const processUploadedCsv = async (file: File) => {
-    if (!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv' && file.type !== 'application/vnd.ms-excel') {
-        csvError.value = 'Please select a valid comma-separated (.csv) file.';
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const problem = !IMPORT_EXTENSIONS.includes(ext)
+        ? 'This file type is not supported. Please upload a PDF, Excel (.xlsx/.xls), CSV, JPG or PNG file.'
+        : file.size > IMPORT_MAX_BYTES
+          ? 'The file is larger than 10 MB. Please upload a smaller file.'
+          : null;
+    if (problem) {
+        csvError.value = problem;
         importedFile.value = null;
         csvValidationResult.value = null;
         return;
@@ -811,11 +834,11 @@ const processUploadedCsv = async (file: File) => {
         if (response.ok && data.success) {
             csvValidationResult.value = data;
         } else {
-            csvError.value = data.message || 'Failed to validate CSV structure.';
+            csvError.value = data.message || 'We could not read this file.';
             csvValidationResult.value = null;
         }
     } catch (err: any) {
-        csvError.value = err.message || 'Failed to validate CSV structure.';
+        csvError.value = err.message || 'We could not read this file.';
         csvValidationResult.value = null;
     } finally {
         isValidatingCsv.value = false;
@@ -829,10 +852,10 @@ const promptCsvImport = () => {
     }
 
     openConfirmModal({
-        title: 'Confirm Bulk CSV Import',
+        title: 'Confirm Bulk Import',
         description: `Are you sure you want to import ${csvValidationResult.value.valid_count} products into your catalog?`,
         details: [
-            { label: 'CSV File', value: importedFile.value.name },
+            { label: 'File', value: importedFile.value.name },
             { label: 'Import Strategy', value: importMode.value === 'replace' ? 'Replace & Overwrite Existing' : 'Append New Records' },
             { label: 'Valid Records', value: `${csvValidationResult.value.valid_count} products` },
             { label: 'Invalid / Skipped', value: `${csvValidationResult.value.invalid_count} row(s)` },
@@ -860,9 +883,9 @@ const confirmCsvImport = () => {
             showImportModal.value = false;
             isImportingCsv.value = false;
         },
-        onError: () => {
+        onError: (errors: Record<string, string>) => {
             isImportingCsv.value = false;
-            showNotification('Failed to process CSV import.', 'error');
+            showNotification(errors.file || 'Failed to process the import.', 'error');
         }
     });
 };
@@ -885,9 +908,35 @@ const downloadSampleTemplate = () => {
     showNotification('Sample CSV template downloaded!', 'info');
 };
 
-const exportLiveCsv = () => {
-    window.location.href = `/${teamSlug.value}/inventory/export-csv`;
-    showNotification('Generating and downloading active inventory CSV...', 'success');
+// Export: the chosen format, with the filters currently applied to the list.
+const exportFormats = [
+    { value: 'xlsx', label: 'Excel', tag: '.xlsx' },
+    { value: 'csv', label: 'CSV', tag: '.csv' },
+    { value: 'pdf', label: 'PDF', tag: 'Print' },
+    { value: 'png', label: 'PNG', tag: 'Image' },
+    { value: 'jpg', label: 'JPG', tag: 'Image' },
+];
+const EXPORT_MAX_DOCUMENT_ROWS = 2000; // InventoryExporter::MAX_DOCUMENT_ROWS
+const exportFormat = ref('xlsx');
+
+const exportInventory = () => {
+    const format = exportFormat.value;
+    const total = props.products?.total ?? 0;
+    if (['pdf', 'png', 'jpg'].includes(format) && total > EXPORT_MAX_DOCUMENT_ROWS) {
+        showNotification(`${total} products is more than a ${format.toUpperCase()} export can hold (${EXPORT_MAX_DOCUMENT_ROWS}). Filter the list, or export to Excel or CSV.`, 'error');
+        return;
+    }
+
+    const params = new URLSearchParams({ format });
+    if (props.filters?.search) params.set('search', props.filters.search);
+    if (props.filters?.category && props.filters.category !== 'All Categories') params.set('category', props.filters.category);
+    if (props.filters?.status && props.filters.status !== 'All') params.set('status', props.filters.status);
+
+    window.location.href = `/${teamSlug.value}/inventory/export?${params.toString()}`;
+
+    const label = exportFormats.find((f) => f.value === format)?.label ?? format;
+    const many = ['png', 'jpg'].includes(format) && total > 50 ? ` (${Math.ceil(total / 50)} images in a .zip)` : '';
+    showNotification(`Preparing ${total} product${total === 1 ? '' : 's'} as ${label}${many}...`, 'success');
 };
 </script>
 
@@ -904,11 +953,11 @@ const exportLiveCsv = () => {
                     leave-to-class="opacity-0">
             <div v-if="notification" 
                  :class="[
-                     notification.type === 'success' ? 'bg-emerald-600 text-white shadow-emerald-200' : '',
-                     notification.type === 'error' ? 'bg-rose-600 text-white shadow-rose-200' : '',
-                     notification.type === 'info' ? 'bg-gray-900 text-white shadow-gray-300' : '',
+                     notification.type === 'success' ? 'bg-emerald-600 text-white' : '',
+                     notification.type === 'error' ? 'bg-rose-600 text-white' : '',
+                     notification.type === 'info' ? 'bg-gray-900 text-white' : '',
                  ]"
-                 class="fixed top-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border border-white/10 backdrop-blur-md">
+                 class="fixed top-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border border-white/10">
                 <CheckCircle2 v-if="notification.type === 'success'" class="w-5 h-5 text-white" />
                 <AlertCircle v-else-if="notification.type === 'error'" class="w-5 h-5 text-white" />
                 <Package v-else class="w-5 h-5 text-[#F8B803]" />
@@ -920,83 +969,100 @@ const exportLiveCsv = () => {
         </transition>
 
         <!-- Header & Action Controls -->
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-1">
+        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-4">
             <div>
-                <div class="flex items-center gap-2">
-                    <h1 class="text-3xl font-bold text-gray-900 tracking-tight">Inventory Management</h1>
-                    <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#F8B803]/20 text-[#4b5320] border border-[#F8B803]/30">
-                        {{ summary.total }} Items
-                    </span>
-                </div>
-                <p class="text-gray-500 mt-1">Track electrical supplies, record stock-in/out movements, and monitor replenishment levels.</p>
+                <h1 class="page-title">Inventory Management</h1>
+                <p class="page-subtitle">Stock levels, stock movements and reorder status.</p>
             </div>
             
-            <div class="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
-                <!-- Stock-In Button -->
-                <SpecularButton
-                    variant="success"
-                    size="md"
-                    :radius="10"
-                    @click="openStockInModal()"
-                    title="Record incoming stock"
-                >
-                    <ArrowDownLeft class="w-4 h-4 text-white" />
-                    <span>Stock In</span>
-                </SpecularButton>
+            <div class="flex flex-wrap items-center justify-start lg:justify-end gap-2.5 w-full lg:w-auto">
+                <!-- Stock Movements Segmented Group -->
+                <div class="inline-flex items-center h-10 rounded-xl border border-gray-200 bg-white p-1">
+                    <button
+                        type="button"
+                        @click="openStockInModal()"
+                        class="inline-flex items-center h-full gap-1.5 px-3 text-xs font-medium rounded-lg text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                        title="Record incoming stock"
+                    >
+                        <ArrowDownLeft class="w-3.5 h-3.5 text-gray-500" />
+                        <span>Stock In</span>
+                    </button>
 
-                <!-- Stock-Out Button -->
-                <SpecularButton
-                    variant="brand-gold"
-                    size="md"
-                    :radius="10"
-                    @click="openStockOutModal()"
-                    title="Record outgoing stock"
-                >
-                    <ArrowUpRight class="w-4 h-4 text-gray-900" />
-                    <span>Stock Out</span>
-                </SpecularButton>
+                    <div class="h-4 w-px bg-gray-200 mx-0.5"></div>
 
-                <!-- Stock Adjust Button -->
-                <SpecularButton
-                    variant="secondary"
-                    size="md"
-                    :radius="10"
-                    @click="openAdjustModal()"
-                    title="Perform physical count adjustment"
-                >
-                    <Sliders class="w-4 h-4 text-gray-600" />
-                    <span>Adjust</span>
-                </SpecularButton>
+                    <button
+                        type="button"
+                        @click="openStockOutModal()"
+                        class="inline-flex items-center h-full gap-1.5 px-3 text-xs font-medium rounded-lg text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                        title="Record outgoing stock"
+                    >
+                        <ArrowUpRight class="w-3.5 h-3.5 text-gray-500" />
+                        <span>Stock Out</span>
+                    </button>
 
-                <!-- Export CSV -->
-                <SpecularButton
-                    variant="secondary"
-                    size="md"
-                    :radius="10"
-                    @click="exportLiveCsv"
-                    title="Export current inventory list to CSV"
-                >
-                    <Download class="w-4 h-4 text-gray-600" />
-                    <span>Export CSV</span>
-                </SpecularButton>
+                    <div class="h-4 w-px bg-gray-200 mx-0.5"></div>
 
-                <!-- Import CSV Button -->
-                <SpecularButton
-                    variant="brand-gold"
-                    size="md"
-                    :radius="10"
-                    @click="openImportModal"
-                >
-                    <Upload class="w-4 h-4 text-gray-900" />
-                    <span>Import CSV</span>
-                </SpecularButton>
+                    <button
+                        type="button"
+                        @click="openAdjustModal()"
+                        class="inline-flex items-center h-full gap-1.5 px-3 text-xs font-medium rounded-lg text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                        title="Perform physical count adjustment"
+                    >
+                        <Sliders class="w-3.5 h-3.5 text-gray-500" />
+                        <span>Adjust</span>
+                    </button>
+                </div>
 
-                <!-- Add Product Button -->
+                <!-- Export / Import Group -->
+                <div class="inline-flex items-center h-10 rounded-xl border border-gray-200 bg-white p-1">
+                    <GlideSelect
+                        :options="exportFormats"
+                        :value="exportFormat"
+                        ariaLabel="Export format"
+                        showTags
+                        accentColor="#4b5320"
+                        surfaceColor="#ffffff"
+                        highlightColor="#f3f4f6"
+                        textColor="#374151"
+                        size="md"
+                        :radius="12"
+                        :menuWidth="168"
+                        placement="bottom"
+                        align="left"
+                        className="z-30 text-xs"
+                        @change="(value: string) => (exportFormat = value)"
+                    />
+
+                    <button
+                        type="button"
+                        @click="exportInventory"
+                        class="inline-flex items-center h-full gap-1.5 px-3 text-xs font-medium rounded-lg text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                        title="Download the inventory list (with the current filters) in the chosen format"
+                    >
+                        <Download class="w-3.5 h-3.5 text-gray-500" />
+                        <span>Export</span>
+                    </button>
+
+                    <div class="h-4 w-px bg-gray-200 mx-0.5"></div>
+
+                    <button
+                        type="button"
+                        @click="openImportModal"
+                        class="inline-flex items-center h-full gap-1.5 px-3 text-xs font-medium rounded-lg text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                        title="Import products from a PDF, Excel, CSV, JPG or PNG file"
+                    >
+                        <Upload class="w-3.5 h-3.5 text-gray-500" />
+                        <span>Import</span>
+                    </button>
+                </div>
+
+                <!-- Add Product Button (Aligned on the right) -->
                 <SpecularButton
                     variant="brand"
                     size="md"
-                    :radius="10"
+                    :radius="12"
                     @click="openAddModal"
+                    class="h-10 text-xs font-semibold shrink-0"
                 >
                     <Plus class="w-4 h-4 text-white" />
                     <span>Add Product</span>
@@ -1004,62 +1070,24 @@ const exportLiveCsv = () => {
             </div>
         </div>
 
-        <!-- Inventory Summary Cards -->
-        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3.5">
-            <div @click="filterByStatus('All')" 
-                 :class="selectedStatus === 'All' ? 'ring-2 ring-gray-900 bg-gray-50/50' : 'bg-white hover:bg-gray-50/50'"
-                 class="p-4 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-xs">
-                <div class="flex items-center justify-between text-xs text-gray-500 font-medium mb-1">
-                    <span>Total Products</span>
-                    <Package class="w-4 h-4 text-gray-400" />
-                </div>
-                <div class="text-2xl font-semibold text-gray-900">{{ summary.total }}</div>
-                <div class="text-[11px] text-gray-400 mt-0.5">Active catalog items</div>
-            </div>
-
-            <div @click="filterByStatus('Out of Stock')" 
-                 :class="selectedStatus === 'Out of Stock' ? 'ring-2 ring-gray-900 bg-gray-50/50' : 'bg-white hover:bg-gray-50/50'"
-                 class="p-4 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-xs">
-                <div class="flex items-center justify-between text-xs text-gray-500 font-medium mb-1">
-                    <span>Out of Stock</span>
-                    <span class="w-2 h-2 rounded-full bg-rose-500"></span>
-                </div>
-                <div class="text-2xl font-semibold text-gray-900">{{ summary.out_of_stock }}</div>
-                <div class="text-[11px] text-gray-400 mt-0.5">0 items remaining</div>
-            </div>
-
-            <div @click="filterByStatus('Low Stock')" 
-                 :class="selectedStatus === 'Low Stock' ? 'ring-2 ring-gray-900 bg-gray-50/50' : 'bg-white hover:bg-gray-50/50'"
-                 class="p-4 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-xs">
-                <div class="flex items-center justify-between text-xs text-gray-500 font-medium mb-1">
-                    <span>Low Stock</span>
-                    <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-                </div>
-                <div class="text-2xl font-semibold text-gray-900">{{ summary.low_stock }}</div>
-                <div class="text-[11px] text-gray-400 mt-0.5">At or below reorder level</div>
-            </div>
-
-            <div @click="filterByStatus('In Stock')" 
-                 :class="selectedStatus === 'In Stock' ? 'ring-2 ring-gray-900 bg-gray-50/50' : 'bg-white hover:bg-gray-50/50'"
-                 class="p-4 rounded-xl border border-gray-200 transition-all cursor-pointer shadow-xs">
-                <div class="flex items-center justify-between text-xs text-gray-500 font-medium mb-1">
-                    <span>In Stock</span>
-                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                </div>
-                <div class="text-2xl font-semibold text-gray-900">{{ summary.in_stock }}</div>
-                <div class="text-[11px] text-gray-400 mt-0.5">Sufficient stock</div>
-            </div>
-
-            <div @click="filterByStatus('Needs Reorder')" 
-                 :class="selectedStatus === 'Needs Reorder' ? 'ring-2 ring-gray-900 bg-gray-50/50' : 'bg-white hover:bg-gray-50/50'"
-                 class="p-4 rounded-xl border border-gray-200 col-span-2 sm:col-span-1 transition-all cursor-pointer shadow-xs">
-                <div class="flex items-center justify-between text-xs text-gray-500 font-medium mb-1">
-                    <span>Needs Reorder</span>
-                    <AlertTriangle class="w-4 h-4 text-amber-500" />
-                </div>
-                <div class="text-2xl font-semibold text-gray-900">{{ summary.requiring_reorder }}</div>
-                <div class="text-[11px] text-gray-400 mt-0.5">Replenishment list</div>
-            </div>
+        <!-- Inventory Summary (click a count to filter the list) -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <button
+                v-for="card in [
+                    { status: 'All', label: 'Total products', value: summary.total, alert: '' },
+                    { status: 'Out of Stock', label: 'Out of stock', value: summary.out_of_stock, alert: 'text-rose-600' },
+                    { status: 'Low Stock', label: 'Low stock', value: summary.low_stock, alert: 'text-amber-600' },
+                    { status: 'In Stock', label: 'In stock', value: summary.in_stock, alert: '' },
+                ]"
+                :key="card.status"
+                type="button"
+                @click="filterByStatus(card.status)"
+                :class="selectedStatus === card.status ? 'border-gray-900' : 'border-gray-200 hover:bg-gray-50'"
+                class="text-left px-4 py-3 rounded-xl border bg-white transition-colors"
+            >
+                <div class="text-xs text-gray-500">{{ card.label }}</div>
+                <div :class="card.value > 0 && card.alert ? card.alert : 'text-gray-900'" class="mt-1 text-2xl font-semibold">{{ card.value }}</div>
+            </button>
         </div>
 
         <!-- Search & Filter Controls -->
@@ -1070,13 +1098,13 @@ const exportLiveCsv = () => {
                        @input="applyFilters"
                        type="text" 
                        placeholder="Search products by name, SKU, specs..." 
-                       class="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 focus:outline-none shadow-xs transition-all" />
+                       class="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 focus:outline-none transition-colors" />
             </div>
 
             <div class="w-48">
                 <select v-model="selectedCategory" 
                         @change="filterByCategory(selectedCategory)"
-                        class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 focus:outline-none shadow-xs transition-all">
+                        class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 focus:outline-none transition-colors">
                     <option value="All Categories">All Categories</option>
                     <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
                 </select>
@@ -1085,7 +1113,7 @@ const exportLiveCsv = () => {
             <div class="w-44">
                 <select v-model="selectedStatus" 
                         @change="filterByStatus(selectedStatus)"
-                        class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 focus:outline-none shadow-xs transition-all">
+                        class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 focus:outline-none transition-colors">
                     <option value="All">All Statuses</option>
                     <option value="Needs Reorder">Needs Reorder ({{ summary.requiring_reorder }})</option>
                     <option value="Out of Stock">Out of Stock</option>
@@ -1097,7 +1125,7 @@ const exportLiveCsv = () => {
             <div class="w-48">
                 <select v-model="activeView" 
                         @change="changeView(activeView)"
-                        class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-900 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 focus:outline-none shadow-xs transition-all">
+                        class="w-full py-2 px-3 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-900 focus:border-gray-900 focus:ring-1 focus:ring-gray-900 focus:outline-none transition-colors">
                     <option value="table">Product Catalog</option>
                     <option value="history">Movement History ({{ filteredMovements.length }})</option>
                 </select>
@@ -1107,11 +1135,11 @@ const exportLiveCsv = () => {
         <!-- ========================================================================= -->
         <!-- VIEW 1: PRODUCT TABLE CARD -->
         <!-- ========================================================================= -->
-        <div v-if="activeView === 'table'" class="flex-1 rounded-2xl bg-white border border-gray-200 p-6 shadow-xs flex flex-col justify-between">
+        <div v-if="activeView === 'table'" class="flex-1 rounded-xl bg-white border border-gray-200 p-6 flex flex-col justify-between">
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead>
-                        <tr class="border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wider">
+                        <tr class="border-b border-gray-200 text-gray-500 text-xs">
                             <th class="pb-3 font-semibold">SKU</th>
                             <th class="pb-3 font-semibold">Product Name</th>
                             <th class="pb-3 font-semibold">Category</th>
@@ -1160,12 +1188,12 @@ const exportLiveCsv = () => {
                                         <Eye class="w-4 h-4" />
                                     </button>
                                     <button @click="openStockInModal(product)" 
-                                            class="p-1.5 text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded-md transition-colors"
+                                            class="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
                                             title="Quick Stock-In">
                                         <ArrowDownLeft class="w-4 h-4" />
                                     </button>
                                     <button @click="openStockOutModal(product)" 
-                                            class="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-md transition-colors"
+                                            class="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
                                             title="Quick Stock-Out">
                                         <ArrowUpRight class="w-4 h-4" />
                                     </button>
@@ -1174,7 +1202,7 @@ const exportLiveCsv = () => {
                                             title="Edit Product">
                                         <Pencil class="w-4 h-4" />
                                     </button>
-                                    <button @click="openDeleteModal(product)" 
+                                    <button v-if="canDelete" @click="openDeleteModal(product)" 
                                             class="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
                                             title="Archive/Delete Product">
                                         <Trash2 class="w-4 h-4" />
@@ -1205,8 +1233,8 @@ const exportLiveCsv = () => {
                         <button v-if="link.url"
                                 @click="router.visit(link.url)"
                                 :class="[
-                                    link.active ? 'bg-[#4b5320] text-white font-bold' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50',
-                                    'px-3 py-1.5 rounded-lg text-xs transition-colors shadow-2xs'
+                                    link.active ? 'bg-[#4b5320] text-white font-semibold' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50',
+                                    'px-3 py-1.5 rounded-lg text-xs transition-colors'
                                 ]"
                                 v-html="link.label">
                         </button>
@@ -1222,10 +1250,10 @@ const exportLiveCsv = () => {
         <!-- ========================================================================= -->
         <!-- VIEW 2: RECENT MOVEMENTS AUDIT TRAIL -->
         <!-- ========================================================================= -->
-        <div v-else class="flex-1 rounded-2xl bg-white border border-gray-200 p-6 shadow-xs flex flex-col">
+        <div v-else class="flex-1 rounded-xl bg-white border border-gray-200 p-6 flex flex-col">
             <div class="flex items-center justify-between pb-4 mb-4 border-b border-gray-100">
                 <div>
-                    <h3 class="text-lg font-bold text-gray-900">Inventory Movement Audit Trail</h3>
+                    <h3 class="text-lg font-semibold text-gray-900">Inventory Movement Audit Trail</h3>
                     <p class="text-xs text-gray-500">Chronological history of all stock inflows, deductions, sales, and corrections.</p>
                 </div>
                 <button @click="router.reload()" class="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg text-xs flex items-center gap-1">
@@ -1237,7 +1265,7 @@ const exportLiveCsv = () => {
             <div class="overflow-x-auto flex-1">
                 <table class="w-full text-left border-collapse text-xs">
                     <thead>
-                        <tr class="border-b border-gray-200 text-gray-500 uppercase tracking-wider">
+                        <tr class="border-b border-gray-200 text-gray-500">
                             <th class="pb-3 font-semibold">Date & Time</th>
                             <th class="pb-3 font-semibold">SKU / Product</th>
                             <th class="pb-3 font-semibold">Type</th>
@@ -1252,32 +1280,32 @@ const exportLiveCsv = () => {
                         <tr v-for="m in filteredMovements" :key="m.id" class="hover:bg-gray-50/60">
                             <td class="py-3 text-gray-500 whitespace-nowrap">{{ formatDate(m.movement_date) }}</td>
                             <td class="py-3">
-                                <div class="font-bold text-gray-900">{{ m.product?.name || 'N/A' }}</div>
+                                <div class="font-semibold text-gray-900">{{ m.product?.name || 'N/A' }}</div>
                                 <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                     <span class="font-mono text-gray-500 text-[11px]">{{ m.product?.sku }}</span>
                                     <span v-if="m.product?.category" class="px-1.5 py-0.2 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
                                         {{ m.product?.category }}
                                     </span>
-                                    <span v-if="m.product?.status" :class="getStatusClass(m.product?.status)" class="px-1.5 py-0.2 rounded-full text-[10px] font-bold border">
+                                    <span v-if="m.product?.status" :class="getStatusClass(m.product?.status)" class="px-1.5 py-0.2 rounded-full text-[10px] font-semibold border">
                                         {{ m.product?.status }}
                                     </span>
                                 </div>
                             </td>
                             <td class="py-3">
-                                <span v-if="m.type === 'stock_in'" class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <span v-if="m.type === 'stock_in'" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                     &darr; Stock In
                                 </span>
-                                <span v-else-if="m.type === 'stock_out'" class="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                <span v-else-if="m.type === 'stock_out'" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                                     &uarr; Stock Out
                                 </span>
-                                <span v-else-if="m.type === 'sale'" class="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                <span v-else-if="m.type === 'sale'" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
                                     &bull; Sale Deduction
                                 </span>
-                                <span v-else class="px-2 py-0.5 rounded text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                                <span v-else class="px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
                                     &#8646; Adjustment
                                 </span>
                             </td>
-                            <td class="py-3 text-center font-bold" 
+                            <td class="py-3 text-center font-semibold" 
                                 :class="m.type === 'stock_in' ? 'text-emerald-600' : m.type === 'stock_out' || m.type === 'sale' ? 'text-amber-700' : 'text-purple-700'">
                                 {{ m.type === 'stock_in' ? '+' : '-' }}{{ m.quantity }}
                             </td>
@@ -1305,15 +1333,15 @@ const exportLiveCsv = () => {
     <!-- ========================================================================= -->
     <!-- VIEW PRODUCT DETAILS MODAL -->
     <!-- ========================================================================= -->
-    <div v-if="showViewModal && selectedProduct" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-        <div class="bg-white border border-gray-200 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showViewModal && selectedProduct" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
+        <div class="bg-white border border-gray-200 rounded-xl w-full max-w-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in duration-150">
             <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                 <div class="flex items-center gap-3">
                     <div class="p-2 bg-[#F8B803]/20 text-[#4b5320] rounded-lg">
                         <Package class="w-5 h-5" />
                     </div>
                     <div>
-                        <h3 class="text-lg font-bold text-gray-900">{{ selectedProduct.name }}</h3>
+                        <h3 class="text-lg font-semibold text-gray-900">{{ selectedProduct.name }}</h3>
                         <p class="text-xs text-gray-500 font-mono">{{ selectedProduct.sku }} &bull; {{ selectedProduct.category }}</p>
                     </div>
                 </div>
@@ -1326,21 +1354,21 @@ const exportLiveCsv = () => {
                 <!-- Metrics Grid -->
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-gray-50/80 p-4 rounded-xl border border-gray-200/80">
                     <div>
-                        <span class="text-[11px] text-gray-500 uppercase font-semibold block">Current Stock</span>
-                        <span class="text-xl font-bold text-gray-900">{{ selectedProduct.stock }}</span>
+                        <span class="text-[11px] text-gray-500 font-semibold block">Current Stock</span>
+                        <span class="text-xl font-semibold text-gray-900">{{ selectedProduct.stock }}</span>
                         <span class="text-xs text-gray-400 ml-1">({{ selectedProduct.unit || 'pcs' }})</span>
                     </div>
                     <div>
-                        <span class="text-[11px] text-gray-500 uppercase font-semibold block">Selling Price</span>
-                        <span class="text-xl font-bold text-gray-900">{{ formatPrice(selectedProduct.price) }}</span>
+                        <span class="text-[11px] text-gray-500 font-semibold block">Selling Price</span>
+                        <span class="text-xl font-semibold text-gray-900">{{ formatPrice(selectedProduct.price) }}</span>
                     </div>
                     <div>
-                        <span class="text-[11px] text-gray-500 uppercase font-semibold block">Cost Price</span>
-                        <span class="text-xl font-bold text-gray-700">{{ formatPrice(selectedProduct.cost_price) }}</span>
+                        <span class="text-[11px] text-gray-500 font-semibold block">Cost Price</span>
+                        <span class="text-xl font-semibold text-gray-700">{{ formatPrice(selectedProduct.cost_price) }}</span>
                     </div>
                     <div>
-                        <span class="text-[11px] text-gray-500 uppercase font-semibold block">Stock Status</span>
-                        <span :class="getStatusClass(selectedProduct.status)" class="px-2 py-0.5 rounded-full text-xs font-bold border inline-block mt-1">
+                        <span class="text-[11px] text-gray-500 font-semibold block">Stock Status</span>
+                        <span :class="getStatusClass(selectedProduct.status)" class="px-2 py-0.5 rounded-full text-xs font-semibold border inline-block mt-1">
                             {{ selectedProduct.status }}
                         </span>
                     </div>
@@ -1349,8 +1377,7 @@ const exportLiveCsv = () => {
                 <!-- Reorder & Supplier Details -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                     <div class="border border-gray-200 rounded-xl p-4 space-y-2 bg-white">
-                        <h4 class="font-bold text-gray-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                            <Layers class="w-3.5 h-3.5 text-[#4b5320]" />
+                        <h4 class="font-semibold text-gray-900 text-[11px] flex items-center gap-1.5">
                             Replenishment Metrics
                         </h4>
                         <div class="flex justify-between py-1 border-b border-gray-100">
@@ -1368,8 +1395,7 @@ const exportLiveCsv = () => {
                     </div>
 
                     <div class="border border-gray-200 rounded-xl p-4 space-y-2 bg-white">
-                        <h4 class="font-bold text-gray-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                            <Building2 class="w-3.5 h-3.5 text-[#F8B803]" />
+                        <h4 class="font-semibold text-gray-900 text-[11px] flex items-center gap-1.5">
                             Associated Supplier
                         </h4>
                         <div class="flex justify-between py-1 border-b border-gray-100">
@@ -1388,14 +1414,13 @@ const exportLiveCsv = () => {
                 </div>
 
                 <div v-if="selectedProduct.description" class="border border-gray-200 rounded-xl p-4 bg-gray-50/50 text-xs">
-                    <span class="font-bold text-gray-700 uppercase tracking-wider text-[11px] block mb-1">Product Description</span>
+                    <span class="font-semibold text-gray-700 text-[11px] block mb-1">Product Description</span>
                     <p class="text-gray-600 leading-relaxed">{{ selectedProduct.description }}</p>
                 </div>
 
                 <!-- Recent Movement History for this product -->
                 <div>
-                    <h4 class="font-bold text-gray-900 uppercase tracking-wider text-xs mb-3 flex items-center gap-1.5">
-                        <History class="w-4 h-4 text-[#4b5320]" />
+                    <h4 class="font-semibold text-gray-900 text-xs mb-3 flex items-center gap-1.5">
                         Recent Stock Movement History
                     </h4>
 
@@ -1420,7 +1445,7 @@ const exportLiveCsv = () => {
                                 <tr v-for="m in productMovements" :key="m.id" class="hover:bg-gray-50">
                                     <td class="p-2 text-gray-500 whitespace-nowrap">{{ formatDate(m.movement_date) }}</td>
                                     <td class="p-2 font-semibold capitalize">{{ m.type.replace('_', ' ') }}</td>
-                                    <td class="p-2 text-center font-bold" 
+                                    <td class="p-2 text-center font-semibold" 
                                         :class="m.type === 'stock_in' ? 'text-emerald-600' : 'text-amber-700'">
                                         {{ m.type === 'stock_in' ? '+' : '-' }}{{ m.quantity }}
                                     </td>
@@ -1454,11 +1479,11 @@ const exportLiveCsv = () => {
     <!-- ========================================================================= -->
     <!-- ADD / EDIT PRODUCT MODAL -->
     <!-- ========================================================================= -->
-    <div v-if="showAddEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-xl shadow-2xl animate-in fade-in zoom-in-95 duration-150 my-8">
+    <div v-if="showAddEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-xl shadow-xl animate-in fade-in duration-150 my-8">
             <div class="flex justify-between items-center mb-5 pb-3 border-b border-gray-100">
                 <div>
-                    <h3 class="text-xl font-bold text-gray-900">
+                    <h3 class="text-xl font-semibold text-gray-900">
                         {{ isEditing ? 'Edit Product' : 'Add New Electrical Product' }}
                     </h3>
                     <p class="text-xs text-gray-500">Configure catalog product details, pricing, and replenishment thresholds.</p>
@@ -1492,7 +1517,7 @@ const exportLiveCsv = () => {
                                v-model="formProduct.sku" 
                                type="text" 
                                placeholder=" " 
-                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs font-mono uppercase text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" 
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs font-mono text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" 
                                required />
                         <label for="prod_sku"
                                class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
@@ -1515,6 +1540,22 @@ const exportLiveCsv = () => {
                         </label>
                         <span v-if="formErrors.category" class="text-rose-600 text-xs mt-1 block">{{ formErrors.category }}</span>
                     </div>
+                </div>
+
+                <!-- Brand (optional; feeds the public quotation brand list) -->
+                <div class="relative">
+                    <input id="prod_brand"
+                           v-model="formProduct.brand"
+                           type="text"
+                           maxlength="100"
+                           placeholder=" "
+                           class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none sm:text-sm" />
+                    <label for="prod_brand"
+                           class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
+                           :class="formProduct.brand ? '-translate-y-2.5 scale-75 text-[#4b5320]' : ''">
+                        Brand (optional)
+                    </label>
+                    <span v-if="formErrors.brand" class="text-rose-600 text-xs mt-1 block">{{ formErrors.brand }}</span>
                 </div>
 
                 <div class="grid grid-cols-3 gap-3">
@@ -1681,15 +1722,15 @@ const exportLiveCsv = () => {
     <!-- ========================================================================= -->
     <!-- STOCK-IN MODAL -->
     <!-- ========================================================================= -->
-    <div v-if="showStockInModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showStockInModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-lg shadow-xl animate-in fade-in duration-150">
             <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-100">
                 <div class="flex items-center gap-2.5">
                     <div class="p-2 bg-emerald-50 text-emerald-700 rounded-lg">
                         <ArrowDownLeft class="w-5 h-5" />
                     </div>
                     <div>
-                        <h3 class="text-lg font-bold text-gray-900">Record Stock-In Inflow</h3>
+                        <h3 class="text-lg font-semibold text-gray-900">Record Stock-In Inflow</h3>
                         <p class="text-xs text-gray-500">Add incoming inventory received from suppliers or factory batches.</p>
                     </div>
                 </div>
@@ -1722,7 +1763,7 @@ const exportLiveCsv = () => {
                                type="number" 
                                min="1" 
                                placeholder=" "
-                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none font-bold sm:text-sm" 
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none font-semibold sm:text-sm" 
                                required />
                         <label for="stockin_qty"
                                class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
@@ -1816,15 +1857,15 @@ const exportLiveCsv = () => {
     <!-- ========================================================================= -->
     <!-- STOCK-OUT MODAL -->
     <!-- ========================================================================= -->
-    <div v-if="showStockOutModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showStockOutModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-lg shadow-xl animate-in fade-in duration-150">
             <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-100">
                 <div class="flex items-center gap-2.5">
                     <div class="p-2 bg-amber-50 text-amber-700 rounded-lg">
                         <ArrowUpRight class="w-5 h-5" />
                     </div>
                     <div>
-                        <h3 class="text-lg font-bold text-gray-900">Record Stock-Out Deduction</h3>
+                        <h3 class="text-lg font-semibold text-gray-900">Record Stock-Out Deduction</h3>
                         <p class="text-xs text-gray-500">Record outgoing electrical supplies with strict quantity checks.</p>
                     </div>
                 </div>
@@ -1851,7 +1892,7 @@ const exportLiveCsv = () => {
 
                 <div v-if="currentSelectedStockOutProduct" class="p-2.5 bg-gray-50 rounded-lg text-xs flex justify-between items-center">
                     <span class="text-gray-600">Available Stock:</span>
-                    <strong :class="currentSelectedStockOutProduct.stock === 0 ? 'text-rose-600' : 'text-emerald-700'" class="font-bold text-sm">
+                    <strong :class="currentSelectedStockOutProduct.stock === 0 ? 'text-rose-600' : 'text-emerald-700'" class="font-semibold text-sm">
                         {{ currentSelectedStockOutProduct.stock }} {{ currentSelectedStockOutProduct.unit || 'pcs' }}
                     </strong>
                 </div>
@@ -1865,7 +1906,7 @@ const exportLiveCsv = () => {
                                min="1" 
                                :max="currentSelectedStockOutProduct?.stock || 99999"
                                placeholder=" "
-                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none font-bold sm:text-sm" 
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none font-semibold sm:text-sm" 
                                required />
                         <label for="stockout_qty"
                                class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
@@ -1964,15 +2005,15 @@ const exportLiveCsv = () => {
     <!-- ========================================================================= -->
     <!-- STOCK ADJUSTMENT MODAL -->
     <!-- ========================================================================= -->
-    <div v-if="showAdjustModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showAdjustModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-lg shadow-xl animate-in fade-in duration-150">
             <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-100">
                 <div class="flex items-center gap-2.5">
                     <div class="p-2 bg-purple-50 text-purple-700 rounded-lg">
                         <Sliders class="w-5 h-5" />
                     </div>
                     <div>
-                        <h3 class="text-lg font-bold text-gray-900">Physical Stock Count Adjustment</h3>
+                        <h3 class="text-lg font-semibold text-gray-900">Physical Stock Count Adjustment</h3>
                         <p class="text-xs text-gray-500">Correct physical inventory discrepancies, damaged units, or write-offs.</p>
                     </div>
                 </div>
@@ -2005,7 +2046,7 @@ const exportLiveCsv = () => {
                                type="number" 
                                min="0" 
                                placeholder=" "
-                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none font-bold sm:text-sm" 
+                               class="peer block w-full rounded-xl border border-gray-200 bg-white px-3.5 pt-5 pb-2 text-xs text-gray-900 focus:border-[#4b5320] focus:ring-1 focus:ring-[#4b5320] focus:outline-none font-semibold sm:text-sm" 
                                required />
                         <label for="adjust_physical_count"
                                class="pointer-events-none absolute top-3.5 left-3.5 origin-[0] -translate-y-2.5 scale-75 transform text-xs font-semibold text-gray-500 duration-200 peer-placeholder-shown:translate-y-0 peer-placeholder-shown:scale-100 peer-focus:-translate-y-2.5 peer-focus:scale-75 peer-focus:text-[#4b5320]"
@@ -2074,8 +2115,8 @@ const exportLiveCsv = () => {
     <!-- ========================================================================= -->
     <!-- CSV IMPORT MODAL (REAL VALIDATION, PREVIEW, & IMPORT) -->
     <!-- ========================================================================= -->
-    <div v-if="showImportModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-        <div class="bg-white border border-gray-200 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showImportModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
+        <div class="bg-white border border-gray-200 rounded-xl w-full max-w-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in duration-150">
             <!-- Modal Header -->
             <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                 <div class="flex items-center gap-3">
@@ -2083,8 +2124,8 @@ const exportLiveCsv = () => {
                         <FileSpreadsheet class="w-5 h-5" />
                     </div>
                     <div>
-                        <h3 class="text-lg font-bold text-gray-900">Import Inventory from CSV</h3>
-                        <p class="text-xs text-gray-500">Upload spreadsheet with validation, error detection, and preview</p>
+                        <h3 class="text-lg font-semibold text-gray-900">Import Inventory</h3>
+                        <p class="text-xs text-gray-500">PDF, Excel, CSV, JPG or PNG &middot; checked and previewed before anything is saved</p>
                     </div>
                 </div>
                 <button @click="showImportModal = false" class="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100">
@@ -2101,23 +2142,24 @@ const exportLiveCsv = () => {
                          isDragging ? 'border-[#F8B803] bg-[#F8B803]/5' : 'border-gray-300 hover:border-gray-400 bg-gray-50/60',
                          importedFile ? 'border-emerald-500 bg-emerald-50/20' : ''
                      ]"
-                     class="border-2 border-dashed rounded-xl p-5 text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-2"
+                     class="border-2 border-dashed rounded-xl p-5 text-center transition-colors cursor-pointer flex flex-col items-center justify-center gap-2"
                      @click="fileInputRef?.click()">
                     
                     <input ref="fileInputRef" 
                            type="file" 
-                           accept=".csv,text/csv,application/vnd.ms-excel" 
+                           :accept="IMPORT_ACCEPT"
                            class="hidden" 
                            @change="handleFileSelect" />
 
                     <div v-if="!importedFile" class="flex flex-col items-center">
-                        <div class="w-10 h-10 rounded-full bg-white shadow-xs flex items-center justify-center text-gray-400 mb-2 border border-gray-100">
+                        <div class="w-10 h-10 rounded-full bg-white flex items-center justify-center text-gray-400 mb-2 border border-gray-100">
                             <Upload class="w-5 h-5 text-[#4b5320]" />
                         </div>
                         <p class="text-sm font-semibold text-gray-800">
-                            Click to select CSV or drag and drop file here
+                            Click to select a file or drag and drop it here
                         </p>
-                        <p class="text-xs text-gray-400 mt-0.5">Supports CSV columns: SKU, Name, Category, Unit, Cost Price, Selling Price, Stock, Reorder Level, Reorder Quantity</p>
+                        <p class="text-xs text-gray-500 mt-0.5">PDF, Excel (.xlsx/.xls), CSV, JPG or PNG &middot; up to 10 MB</p>
+                        <p class="text-xs text-gray-400 mt-0.5">Columns: SKU, Name, Category, Brand, Unit, Cost Price, Selling Price, Stock, Reorder Level, Reorder Quantity</p>
                     </div>
 
                     <div v-else class="flex items-center justify-between w-full bg-white p-3 rounded-lg border border-emerald-200">
@@ -2126,7 +2168,7 @@ const exportLiveCsv = () => {
                                 <FileSpreadsheet class="w-6 h-6" />
                             </div>
                             <div>
-                                <p class="text-sm font-bold text-gray-900">{{ importedFile.name }}</p>
+                                <p class="text-sm font-semibold text-gray-900">{{ importedFile.name }}</p>
                                 <p class="text-xs text-gray-500">{{ (importedFile.size / 1024).toFixed(1) }} KB</p>
                             </div>
                         </div>
@@ -2151,7 +2193,14 @@ const exportLiveCsv = () => {
                 <!-- Validation Loader -->
                 <div v-if="isValidatingCsv" class="py-6 text-center text-xs text-gray-500">
                     <RefreshCw class="w-5 h-5 animate-spin mx-auto mb-2 text-[#4b5320]" />
-                    Analyzing and validating CSV schema & rows...
+                    <template v-if="isOcrFile">Reading your file&hellip; photos and scanned PDFs can take up to a minute.</template>
+                    <template v-else>Reading and checking the rows&hellip;</template>
+                </div>
+
+                <!-- OCR warning -->
+                <div v-if="csvValidationResult?.warning" class="p-3 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-xl flex items-start gap-2">
+                    <AlertTriangle class="w-4 h-4 shrink-0 text-amber-600" />
+                    <span>{{ csvValidationResult.warning }}</span>
                 </div>
 
                 <!-- Error Message -->
@@ -2166,28 +2215,30 @@ const exportLiveCsv = () => {
                     <div class="grid grid-cols-2 gap-3">
                         <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 flex items-center justify-between">
                             <span class="text-xs font-semibold">Valid Records Ready:</span>
-                            <span class="text-lg font-black">{{ csvValidationResult.valid_count }}</span>
+                            <span class="text-lg font-semibold">{{ csvValidationResult.valid_count }}</span>
                         </div>
                         <div :class="csvValidationResult.invalid_count > 0 ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-gray-50 border-gray-200 text-gray-500'" 
                              class="p-3 border rounded-xl flex items-center justify-between">
                             <span class="text-xs font-semibold">Invalid / Rejected Rows:</span>
-                            <span class="text-lg font-black">{{ csvValidationResult.invalid_count }}</span>
+                            <span class="text-lg font-semibold">{{ csvValidationResult.invalid_count }}</span>
                         </div>
                     </div>
 
                     <!-- Invalid Rows Details -->
                     <div v-if="csvValidationResult.invalid_rows.length > 0" class="p-3 bg-rose-50/70 border border-rose-200 rounded-xl text-xs space-y-1 max-h-32 overflow-y-auto">
-                        <div class="font-bold text-rose-800 mb-1">The following rows failed validation and will be skipped:</div>
+                        <div class="font-semibold text-rose-800 mb-1">The following rows failed validation and will be skipped:</div>
                         <div v-for="(inv, idx) in csvValidationResult.invalid_rows" :key="idx" class="text-rose-700 flex items-start gap-2">
-                            <span class="font-mono font-bold">Row {{ inv.row }}:</span>
+                            <span class="font-mono font-semibold">Row {{ inv.row }}:</span>
                             <span>{{ inv.sku }} &mdash; {{ inv.errors.join('; ') }}</span>
                         </div>
                     </div>
 
                     <!-- Preview Table -->
                     <div v-if="csvValidationResult.valid_rows.length > 0" class="space-y-1">
-                        <h4 class="text-xs font-bold uppercase tracking-wider text-gray-600">Data Preview (First {{ Math.min(csvValidationResult.valid_rows.length, 4) }} items)</h4>
-                        <div class="border border-gray-200 rounded-lg overflow-hidden max-h-40 overflow-y-auto">
+                        <h4 class="text-xs font-semibold text-gray-600">
+                            Data Preview ({{ previewRows.length < csvValidationResult.valid_rows.length ? `first ${previewRows.length} of ${csvValidationResult.valid_rows.length}` : `${previewRows.length}` }} items)
+                        </h4>
+                        <div class="border border-gray-200 rounded-lg overflow-hidden max-h-56 overflow-y-auto">
                             <table class="w-full text-left text-xs border-collapse">
                                 <thead class="bg-gray-50 text-gray-600 border-b border-gray-200 sticky top-0">
                                     <tr>
@@ -2200,17 +2251,17 @@ const exportLiveCsv = () => {
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100 bg-white">
-                                    <tr v-for="(row, idx) in csvValidationResult.valid_rows.slice(0, 4)" :key="idx" class="hover:bg-gray-50">
+                                    <tr v-for="(row, idx) in previewRows" :key="idx" class="hover:bg-gray-50">
                                         <td class="p-2 font-mono text-gray-600 font-medium">{{ row.sku }}</td>
                                         <td class="p-2 font-medium text-gray-900">{{ row.name }}</td>
                                         <td class="p-2 text-gray-600">{{ row.category }}</td>
                                         <td class="p-2 text-gray-800 font-semibold">{{ formatPrice(row.price) }}</td>
-                                        <td class="p-2 text-center font-bold text-gray-900">{{ row.stock }}</td>
+                                        <td class="p-2 text-center font-semibold text-gray-900">{{ row.stock }}</td>
                                         <td class="p-2">
-                                            <span v-if="row.is_update" class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                                            <span v-if="row.is_update" class="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
                                                 Update Existing
                                             </span>
-                                            <span v-else class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                            <span v-else class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                                 New Item
                                             </span>
                                         </td>
@@ -2223,21 +2274,21 @@ const exportLiveCsv = () => {
                     <!-- Import Mode -->
                     <div class="pt-2 border-t border-gray-100">
                         <label class="block text-xs font-semibold text-gray-700 mb-2">Import Strategy</label>
-                        <div class="grid grid-cols-2 gap-3">
+                        <div :class="canDelete ? 'grid-cols-2' : 'grid-cols-1'" class="grid gap-3">
                             <label :class="importMode === 'append' ? 'border-[#F8B803] bg-[#F8B803]/5 ring-1 ring-[#F8B803]' : 'border-gray-200 bg-white'"
-                                   class="border rounded-xl p-3 cursor-pointer transition-all flex items-start gap-2">
+                                   class="border rounded-xl p-3 cursor-pointer transition-colors flex items-start gap-2">
                                 <input type="radio" v-model="importMode" value="append" class="mt-1 accent-[#4b5320]" />
                                 <div>
-                                    <span class="text-xs font-bold text-gray-900 block">Merge & Update</span>
+                                    <span class="text-xs font-semibold text-gray-900 block">Merge & Update</span>
                                     <span class="text-[11px] text-gray-500 block">Append new items and update matching existing SKUs.</span>
                                 </div>
                             </label>
 
-                            <label :class="importMode === 'replace' ? 'border-rose-500 bg-rose-50/20 ring-1 ring-rose-500' : 'border-gray-200 bg-white'"
-                                   class="border rounded-xl p-3 cursor-pointer transition-all flex items-start gap-2">
+                            <label v-if="canDelete" :class="importMode === 'replace' ? 'border-rose-500 bg-rose-50/20 ring-1 ring-rose-500' : 'border-gray-200 bg-white'"
+                                   class="border rounded-xl p-3 cursor-pointer transition-colors flex items-start gap-2">
                                 <input type="radio" v-model="importMode" value="replace" class="mt-1 accent-rose-600" />
                                 <div>
-                                    <span class="text-xs font-bold text-gray-900 block">Replace Active List</span>
+                                    <span class="text-xs font-semibold text-gray-900 block">Replace Active List</span>
                                     <span class="text-[11px] text-gray-500 block">Archive existing catalog and initialize fresh list.</span>
                                 </div>
                             </label>
@@ -2275,19 +2326,19 @@ const exportLiveCsv = () => {
     <!-- ========================================================================= -->
     <!-- CONFIRM DELETE / ARCHIVE MODAL -->
     <!-- ========================================================================= -->
-    <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl animate-in fade-in duration-150">
             <div class="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mb-4">
                 <Trash2 class="w-6 h-6" />
             </div>
-            <h3 class="text-xl font-bold text-gray-900 mb-2">Archive / Delete Product</h3>
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">Archive / Delete Product</h3>
             <p class="text-gray-600 text-sm mb-4 leading-relaxed">
                 Are you sure you want to remove <strong class="text-gray-900">"{{ selectedProduct?.name }}"</strong> (SKU: {{ selectedProduct?.sku }})? 
                 If this item is referenced by quotations or historical sales, it will be safely archived without corrupting transaction records.
             </p>
             <div class="mt-4 mb-6">
                 <label class="block text-xs font-semibold text-gray-700 mb-1.5">
-                    Type <span class="font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
+                    Type <span class="font-mono font-semibold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">YES</span> if you wish to delete:
                 </label>
                 <input
                     v-model="deleteConfirmInput"
@@ -2323,12 +2374,12 @@ const exportLiveCsv = () => {
     <!-- ========================================================================= -->
     <!-- ACTION CONFIRMATION MODAL -->
     <!-- ========================================================================= -->
-    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-        <div class="bg-white border border-gray-200 p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+    <div v-if="showConfirmModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+        <div class="bg-white border border-gray-200 p-6 rounded-xl w-full max-w-md shadow-xl animate-in fade-in duration-150">
             <div class="w-11 h-11 rounded-full bg-amber-50 text-[#F8B803] flex items-center justify-center mb-4 border border-amber-100">
                 <CheckCircle2 class="w-6 h-6" />
             </div>
-            <h3 class="text-xl font-bold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
+            <h3 class="text-xl font-semibold text-gray-900 mb-1.5">{{ confirmOptions.title }}</h3>
             <p class="text-gray-600 text-sm mb-4 leading-relaxed">
                 {{ confirmOptions.description }}
             </p>

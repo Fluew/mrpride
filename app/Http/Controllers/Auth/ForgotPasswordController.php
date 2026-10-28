@@ -13,10 +13,17 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
 class ForgotPasswordController extends Controller
 {
+    /** Wrong guesses allowed per code (across all IPs) before the code is destroyed. */
+    private const MAX_FAILED_GUESSES = 5;
+
+    /** Codes that can be requested per email per hour (across all IPs). */
+    private const MAX_CODES_PER_HOUR = 5;
+
     protected ResendService $resendService;
 
     public function __construct(ResendService $resendService)
@@ -34,22 +41,37 @@ class ForgotPasswordController extends Controller
         ]);
 
         $email = strtolower(trim($validated['email']));
-        $throttleKey = 'forgot-password-otp:' . $email . '|' . $request->ip();
+        $throttleKey = 'forgot-password-otp:'.$email.'|'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
             $seconds = RateLimiter::availableIn($throttleKey);
+
             return back()->withErrors([
                 'email' => "Too many OTP requests. Please wait {$seconds} seconds before trying again.",
             ]);
         }
 
+        // Per-email cap (independent of IP) so rotating IPs can't mint unlimited codes to guess at.
+        $emailSendKey = 'forgot-password-otp-email:'.$email;
+        if (RateLimiter::tooManyAttempts($emailSendKey, self::MAX_CODES_PER_HOUR)) {
+            $seconds = RateLimiter::availableIn($emailSendKey);
+
+            return back()->withErrors([
+                'email' => "Too many OTP requests for this email. Please wait {$seconds} seconds before trying again.",
+            ]);
+        }
+
         RateLimiter::hit($throttleKey, 300);
+        RateLimiter::hit($emailSendKey, 3600);
 
         $user = User::where('email', $email)->first();
 
         if ($user) {
             // Generate secure 6-digit numeric OTP
             $otp = str_pad((string) random_int(100000, 999999), 6, '0', STR_PAD_LEFT);
+
+            // A fresh code gets a fresh guess budget.
+            RateLimiter::clear($this->failedGuessKey($email));
 
             // Save hashed OTP in password_reset_tokens table
             DB::table('password_reset_tokens')->updateOrInsert(
@@ -85,7 +107,7 @@ class ForgotPasswordController extends Controller
                 if (app()->isLocal()) {
                     Log::info("[DEV ONLY] Password reset OTP for {$user->email}: {$otp}");
 
-                    $statusMessage = "OTP generated for testing. Note: Resend test sandbox only delivers to the Resend account owner (assassinscreedjhon@gmail.com). For local testing, your OTP code is: {$otp}";
+                    $statusMessage = "OTP generated for testing. Note: the Resend test sandbox only delivers to the Resend account owner's address. For local testing, your OTP code is: {$otp}";
 
                     return back()->with('status', $statusMessage)
                         ->with('email', $email)
@@ -131,10 +153,11 @@ class ForgotPasswordController extends Controller
 
         $email = strtolower(trim($validated['email']));
         $otp = trim($validated['otp']);
-        $throttleKey = 'verify-otp:' . $email . '|' . $request->ip();
+        $throttleKey = 'verify-otp:'.$email.'|'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
             $seconds = RateLimiter::availableIn($throttleKey);
+
             return back()->withErrors([
                 'otp' => "Too many invalid attempts. Please wait {$seconds} seconds.",
             ]);
@@ -164,9 +187,7 @@ class ForgotPasswordController extends Controller
 
         // Verify OTP hash
         if (! Hash::check($otp, $record->token)) {
-            throw ValidationException::withMessages([
-                'otp' => 'The entered OTP code is incorrect. Please verify and try again.',
-            ]);
+            $this->recordFailedGuess($email);
         }
 
         return back()->with('otp_verified', true)->with('email', $email);
@@ -183,21 +204,18 @@ class ForgotPasswordController extends Controller
             'password' => [
                 'required',
                 'string',
-                \Illuminate\Validation\Rules\Password::min(8)
-                    ->letters()
-                    ->mixedCase()
-                    ->numbers()
-                    ->symbols(),
+                Password::default(), // same policy everywhere (AppServiceProvider)
                 'confirmed',
             ],
         ]);
 
         $email = strtolower(trim($validated['email']));
         $otp = trim($validated['otp']);
-        $throttleKey = 'verify-otp:' . $email . '|' . $request->ip();
+        $throttleKey = 'verify-otp:'.$email.'|'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
             $seconds = RateLimiter::availableIn($throttleKey);
+
             return back()->withErrors([
                 'otp' => "Too many invalid attempts. Please wait {$seconds} seconds.",
             ]);
@@ -227,9 +245,7 @@ class ForgotPasswordController extends Controller
 
         // Verify OTP hash
         if (! Hash::check($otp, $record->token)) {
-            throw ValidationException::withMessages([
-                'otp' => 'The entered OTP code is incorrect. Please verify and try again.',
-            ]);
+            $this->recordFailedGuess($email);
         }
 
         $user = User::where('email', $email)->first();
@@ -255,6 +271,7 @@ class ForgotPasswordController extends Controller
         // Clear session flags
         $request->session()->forget(['reset_email', 'otp_sent']);
         RateLimiter::clear($throttleKey);
+        RateLimiter::clear($this->failedGuessKey($email));
 
         AuditLogger::security(
             'auth.password.otp_reset_success',
@@ -270,5 +287,43 @@ class ForgotPasswordController extends Controller
             'status',
             'Your password has been reset successfully! Please log in with your new password.'
         );
+    }
+
+    private function failedGuessKey(string $email): string
+    {
+        return 'verify-otp-failures:'.$email;
+    }
+
+    /**
+     * Count a wrong OTP against the email (not the IP) and destroy the code once the budget is spent,
+     * so a 6-digit code can't be brute-forced from many IPs. Always throws.
+     */
+    private function recordFailedGuess(string $email): never
+    {
+        $key = $this->failedGuessKey($email);
+        RateLimiter::hit($key, 900);
+
+        if (RateLimiter::attempts($key) >= self::MAX_FAILED_GUESSES) {
+            DB::table('password_reset_tokens')->where('email', $email)->delete();
+            RateLimiter::clear($key);
+
+            AuditLogger::security(
+                'auth.password.otp_locked',
+                "Password reset code for {$email} destroyed after ".self::MAX_FAILED_GUESSES.' wrong guesses.',
+                null,
+                'danger',
+                ['email' => $email, 'ip' => request()->ip()],
+                'blocked',
+                request()
+            );
+
+            throw ValidationException::withMessages([
+                'otp' => 'Too many incorrect codes. This code has been cancelled. Please request a new one.',
+            ]);
+        }
+
+        throw ValidationException::withMessages([
+            'otp' => 'The entered OTP code is incorrect. Please verify and try again.',
+        ]);
     }
 }
